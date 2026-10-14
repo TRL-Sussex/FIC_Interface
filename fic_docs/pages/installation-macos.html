@@ -1,0 +1,128 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Installation (macOS)</div>
+<h1>Installation (macOS / Apple Silicon)</h1>
+<p class="subtitle">Native simulation install via RoboStack + a CPU MuJoCo backend — no Linux binaries, no CUDA.</p>
+
+<div class="admonition tip"><div class="adm-title">One command on any supported OS</div><p><code>bash install.sh</code> at the repo root detects your platform and runs the right installer — the RoboStack flow on this page on macOS, or the <a href="#installation" onclick="showPage('installation')">one-click apt flow</a> on Ubuntu 22.04/24.04. Everything below still applies; <code>install.sh</code> is just the front door.</p></div>
+
+<div class="admonition tip"><div class="adm-title">What runs on macOS</div><p>The full <strong>FIC Studio GUI</strong> and <strong>MuJoCo simulation</strong> run natively on Apple Silicon. ROS 2 comes from <a href="https://robostack.github.io/" target="_blank">RoboStack</a> (conda-forge), and simulation uses the same CPU MuJoCo simulator as on Linux (<code>mujoco_native</code>), built on the official <code>mujoco</code> wheel. <strong>Real-hardware drivers</strong> (Franka <code>libfranka</code>, Kinova Kortex, VR/ZED, RealSense) remain Linux-only and are not built here — this is a simulation build. For hardware, use the <a href="#installation" onclick="showPage('installation')">Linux install</a>.</p></div>
+
+<h2>Prerequisites</h2>
+<table>
+  <tr><th>Requirement</th><th>Detail</th></tr>
+  <tr><td><strong>macOS</strong></td><td>13+ on <strong>Apple Silicon</strong> (arm64)</td></tr>
+  <tr><td><strong>Homebrew</strong></td><td>Optional: used for Miniforge when it is installed</td></tr>
+  <tr><td><strong>Disk</strong></td><td>~10 GB free (ROS 2 + toolchain)</td></tr>
+  <tr><td><strong>Repo location</strong></td><td><strong>Not</strong> under <code>~/Documents</code>, <code>~/Desktop</code>, or <code>~/Downloads</code> — see the warning below. Use e.g. <code>~/FIC_Interface</code>.</td></tr>
+</table>
+<p>Everything else — Miniforge (conda), the ROS 2 environment, Pinocchio, MuJoCo, PyQt5, the compiler toolchain, and the workspace build — is installed by the one-command installer.</p>
+
+<div class="admonition warning"><div class="adm-title">Don't clone into <code>~/Documents</code>, <code>~/Desktop</code>, or <code>~/Downloads</code></div><p>macOS privacy protection (TCC) blocks <strong>app bundles</strong> launched from Finder/Launchpad from <em>reading</em> files in those folders. Because FIC Studio ships as a double-clickable <code>.app</code> that reads the workspace at launch, a repo in a protected folder makes the app <strong>bounce in the Dock and immediately quit</strong> (Terminal launches still work, which is why it's easy to miss). Keep the repo somewhere else — the home root (<code>~/FIC_Interface</code>), <code>~/dev/…</code>, etc. The installer refuses to run from a protected folder and tells you how to move it. If you must relocate an already-built repo, move it <em>and</em> re-run the installer — colcon bakes absolute paths, so a clean rebuild is required.</p></div>
+
+<h2>Quick Install</h2>
+<pre><code>cd ~/FIC_Interface               # NOT ~/Documents — see the warning above
+zsh fic_install/macos/install-fic-studio-macos.sh</code></pre>
+<p>The installer is <strong>idempotent</strong> (safe to re-run) and never uses <code>sudo</code> — all installs are user-scoped (conda, and Homebrew if present). Override the repo location with <code>FIC_ROOT=/path/to/FIC_Interface zsh …</code> if you run it from elsewhere.</p>
+
+<h3>What the installer does</h3>
+<table>
+  <tr><th>Step</th><th>Action</th></tr>
+  <tr><td>1</td><td>Uses <strong>Homebrew</strong> if it is installed (it is not required)</td></tr>
+  <tr><td>2</td><td>Installs <strong>Miniforge</strong> (conda/mamba) if absent, through Homebrew when there</td></tr>
+  <tr><td>3</td><td>Creates the <code>fic_ros</code> conda env with <strong>ROS 2 Humble</strong> from the <code>robostack-staging</code> + <code>conda-forge</code> channels</td></tr>
+  <tr><td>4</td><td>Installs deps into the env: compilers, cmake, colcon, ament-cmake, Eigen, TinyXML2, yaml-cpp, <strong>Pinocchio</strong>, PyQt5 with QtWebEngine, pyqtgraph, <code>numpy&ge;2</code>, SciPy, cryptography, matplotlib, <code>mujoco&ge;3.3</code>, <code>setuptools&lt;80</code></td></tr>
+  <tr><td>5</td><td>Builds the whole workspace (<code>communication</code>, <code>menagerie</code>, <code>fic_simulation</code>, <code>fic_studio</code>, <code>mujoco_native</code>, &hellip;)</td></tr>
+  <tr><td>6</td><td>Builds real <strong><code>.app</code> bundles</strong> — <em>FIC Control Studio.app</em> and <em>FIC Dev Console.app</em> — in <code>~/Applications</code> (with the FIC icon, rendered from the SVG), so they appear in Launchpad, Spotlight and the Dock. Also drops <code>.command</code> launchers as a terminal-visible fallback</td></tr>
+</table>
+
+<div class="admonition tip"><div class="adm-title">Cartesian control needs Pinocchio</div><p>The installer installs Pinocchio from conda-forge, so Cartesian IK/FK and virtual-wall features work. The build log confirms <em>"pinocchio found"</em>. Without it, robots run in degraded joint-space-only mode (see <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>).</p></div>
+
+<h2>Distributable installer (<code>.dmg</code>)</h2>
+<p>To give FIC Studio to someone who doesn't have the repo cloned, build a downloadable disk image:</p>
+<pre><code>zsh fic_install/macos/build-macos-dmg.sh
+# -> fic_install/macos/dist/FIC-Studio-Installer.dmg</code></pre>
+<p>The <code>.dmg</code> bundles the <strong>repo source</strong> only (not the ~4.5 GB conda env — dependencies are still downloaded at install time, so a network connection is required). The recipient mounts it and double-clicks <strong>Install FIC Studio.command</strong>, which:</p>
+<table>
+  <tr><th>Step</th><th>Action</th></tr>
+  <tr><td>1</td><td>Asks where to install (default <code>~/FIC_Interface</code>) and <strong>refuses</strong> a protected folder (<code>~/Documents</code>/<code>~/Desktop</code>/<code>~/Downloads</code>)</td></tr>
+  <tr><td>2</td><td>Copies the source there (a DMG is read-only, and the workspace must be built into a writable location)</td></tr>
+  <tr><td>3</td><td>Runs <code>install-fic-studio-macos.sh</code> in a Terminal, so the multi-GB download shows live progress</td></tr>
+</table>
+<div class="admonition note"><div class="adm-title">Gatekeeper on a downloaded <code>.dmg</code></div><p>A downloaded image is quarantined, so the first double-click of <strong>Install FIC Studio.command</strong> may be blocked — <strong>right-click → Open → Open</strong> once. The generated apps are ad-hoc signed for a smoother first launch.</p></div>
+
+<h2>Running</h2>
+<h3>FIC Control Studio</h3>
+<table>
+  <tr><th>Method</th><th>How</th></tr>
+  <tr><td><strong>App</strong></td><td>Open <strong>FIC Control Studio</strong> from Launchpad or Spotlight (<code>⌘Space</code> → "FIC"), or double-click <code>~/Applications/FIC Control Studio.app</code>. Drag it to the Dock to keep it there. Launches the GUI directly — no Terminal window.</td></tr>
+  <tr><td>Terminal fallback</td><td><code>fic_install/macos/FIC Control Studio.command</code> (shows logs in a Terminal), or <code>conda activate fic_ros &amp;&amp; cd fic_ws &amp;&amp; source install/setup.zsh &amp;&amp; ros2 run fic_studio fic_studio_pro</code></td></tr>
+</table>
+<h3>FIC Dev Console</h3>
+<table>
+  <tr><th>Method</th><th>How</th></tr>
+  <tr><td><strong>App</strong></td><td>Open <strong>FIC Dev Console</strong> from Launchpad/Spotlight, or <code>~/Applications/FIC Dev Console.app</code></td></tr>
+  <tr><td>Terminal fallback</td><td><code>fic_install/macos/FIC Dev Console.command</code>, or <code>… &amp;&amp; ros2 run fic_studio fic_dev</code></td></tr>
+</table>
+<div class="admonition note"><div class="adm-title">First launch &amp; Gatekeeper</div><p>The apps are unsigned ad-hoc bundles built locally by the installer (not downloaded), so Gatekeeper generally allows them. If macOS ever blocks one, right-click the app → <strong>Open</strong> once to whitelist it. The app's icon is generated from <code>fic_install/fic-control-studio.svg</code>; if you don't see it immediately, it's a Finder icon-cache delay — the installer already nudges LaunchServices to refresh.</p></div>
+<div class="admonition warning"><div class="adm-title">Use <code>setup.zsh</code>, not <code>setup.bash</code></div><p>The macOS default shell is <strong>zsh</strong>, and the ROS <code>setup.bash</code> relies on bash-only features — sourcing it under zsh silently fails to overlay the workspace, so <code>mujoco_native</code> won't be found. Always <code>source install/setup.zsh</code>. (The generated <code>.command</code> launchers already do this.)</p></div>
+<p>In the GUI: pick <strong>KinovaGen3_7DOF</strong> or <strong>Franka_FR3</strong>, press <strong>SIM</strong> (a MuJoCo viewer window opens via <code>mjpython</code>) and <strong>FIC</strong>, then choose a control mode and drive the arm with the joint sliders or Cartesian inputs. Settings → Simulation shows <strong>"MuJoCo (native CPU, macOS)"</strong>, selected automatically. Continue with the <a href="#quickstart" onclick="showPage('quickstart')">Quickstart</a> and <a href="#first-motion" onclick="showPage('first-motion')">First Motion</a> guides.</p>
+
+<h2>What differs from Linux</h2>
+<table>
+  <tr><th>Concern</th><th>Linux / Ubuntu</th><th>macOS (this build)</th></tr>
+  <tr><td>ROS 2</td><td><code>apt</code> under <code>/opt/ros</code></td><td>RoboStack conda env <code>fic_ros</code></td></tr>
+  <tr><td>Source env</td><td><code>source /opt/ros/$DISTRO/setup.bash</code></td><td><code>conda activate fic_ros</code></td></tr>
+  <tr><td>Workspace env</td><td><code>source install/setup.bash</code></td><td><code>source install/setup.zsh</code></td></tr>
+  <tr><td>Simulator</td><td><code>mujoco_native</code> (CPU), optional Newton (CUDA)</td><td><code>mujoco_native</code> (CPU, native arm64)</td></tr>
+  <tr><td>System libs</td><td><code>apt install …</code></td><td>Homebrew / conda-forge</td></tr>
+  <tr><td>Launcher</td><td><code>.desktop</code> file</td><td><code>.app</code> bundle in <code>~/Applications</code> (+ <code>.command</code> fallback)</td></tr>
+  <tr><td>CPU count in builds</td><td><code>nproc</code></td><td><code>sysctl -n hw.ncpu</code></td></tr>
+  <tr><td>Fonts</td><td>Segoe UI / Consolas</td><td>Menlo / SF Pro (auto)</td></tr>
+  <tr><td>GPU backend</td><td>Newton (NVIDIA/CUDA)</td><td>not available (no CUDA on macOS)</td></tr>
+</table>
+
+<h2>Manual Installation (Advanced)</h2>
+<p>If you prefer to run the steps yourself instead of the installer script:</p>
+<pre><code># 1. Miniforge (conda) via Homebrew
+brew install --cask miniforge
+conda init zsh   # then restart the shell
+
+# 2. RoboStack ROS 2 Humble env
+conda config --env --set channel_priority flexible
+mamba create -n fic_ros -c conda-forge -c robostack-staging ros-humble-desktop
+conda activate fic_ros
+
+# 3. Build + sim + FIC dependencies
+mamba install -c conda-forge -c robostack-staging \
+    compilers cmake ninja pkg-config colcon-common-extensions \
+    ros-humble-ament-cmake eigen tinyxml2 yaml-cpp pinocchio \
+    pyqt pyqtgraph 'numpy>=2' pyyaml 'mujoco>=3.3' 'setuptools<80'
+
+# 4. Build the simulation packages (or the whole workspace: drop --packages-select)
+cd fic_ws
+colcon build \
+    --packages-select communication menagerie fic_simulation fic_studio mujoco_native \
+    --cmake-args -DPython3_EXECUTABLE=$CONDA_PREFIX/bin/python
+source install/setup.zsh</code></pre>
+<div class="admonition warning"><div class="adm-title">Use <code>numpy&ge;2</code> (not <code>&lt;2</code>)</div><p>RoboStack's <code>ros-humble</code> on osx-arm64 is built against NumPy 2.x (its <code>std_msgs</code> cmake references <code>numpy/_core/include</code>). Pinning <code>numpy&lt;2</code> makes the <code>communication</code> package fail to configure. This is the opposite of the Linux install's <code>numpy&lt;2</code> pin.</p></div>
+<div class="admonition warning"><div class="adm-title">Pin <code>setuptools&lt;80</code>, and don't use <code>--symlink-install</code></div><p>setuptools 80 removed the legacy <code>setup.py develop/--editable/--uninstall</code> commands that colcon's <code>ament_python</code> build (and the GUI's Rebuild buttons) rely on — with a newer setuptools, builds error out. Pin <code>setuptools&lt;80</code>. For the same reason <code>--symlink-install</code> is not used on macOS; the packages are copy-installed, and <code>fic_studio</code> resolves the repo root from the <code>fic_ws</code> path component so it works either way.</p></div>
+
+<h2>Rebuilding</h2>
+<p>After code changes, use <strong>Settings → Developer → Rebuild Workspace</strong> in the GUI, or from the activated env:</p>
+<pre><code>colcon build --packages-select fic_studio \
+    --cmake-args -DPython3_EXECUTABLE=$CONDA_PREFIX/bin/python</code></pre>
+<p>See <a href="#build-tools" onclick="showPage('build-tools')">Build Tools</a> for the in-GUI build dialogs.</p>
+
+<h2>Troubleshooting</h2>
+<table>
+  <tr><th>Problem</th><th>Fix</th></tr>
+  <tr><td><code>ros2</code> / <code>colcon</code>: command not found</td><td>The env isn't active. Run <code>conda activate fic_ros</code> (the <code>.command</code> launcher does this for you)</td></tr>
+  <tr><td><code>mujoco_native</code> package not found</td><td>Source the workspace with <code>source install/setup.zsh</code> (zsh) — <em>not</em> <code>setup.bash</code></td></tr>
+  <tr><td><code>communication</code> fails, referencing <code>numpy/_core/include</code></td><td>You have <code>numpy&lt;2</code>. Run <code>mamba install -n fic_ros 'numpy>=2'</code></td></tr>
+  <tr><td>Build errors: <code>--editable</code> / <code>--uninstall</code> not recognized</td><td>setuptools is too new. Run <code>mamba install -n fic_ros 'setuptools&lt;80'</code></td></tr>
+  <tr><td>SIM / Rebuild buttons fail with a path like <code>install/fic_studio/fic_ws</code></td><td>Rebuild the workspace (this build carries the fixed repo-root resolution). The launchers also export <code>FIC_ROOT</code> as a guard</td></tr>
+  <tr><td>The app appears in <code>~/Applications</code> but <strong>bounces in the Dock and quits</strong></td><td>The repo is under a privacy-protected folder (<code>~/Documents</code>/<code>~/Desktop</code>/<code>~/Downloads</code>) and the app can't read the workspace. Move the repo out (e.g. <code>~/FIC_Interface</code>) and re-run the installer. Terminal / <code>.command</code> launches are unaffected.</td></tr>
+  <tr><td>First launch blocked: "unidentified developer"</td><td>The <code>.app</code> is ad-hoc signed locally. Right-click the app → <strong>Open</strong> once to whitelist it (double-click works thereafter).</td></tr>
+  <tr><td>MuJoCo viewer won't open</td><td>The viewer needs <code>mjpython</code> (bundled with the <code>mujoco</code> wheel); the launch file uses it automatically. Pass <code>headless:=true</code> to run without a window</td></tr>
+  <tr><td>No <code>timeout</code> command when scripting</td><td>macOS lacks it — use <code>gtimeout</code> (<code>brew install coreutils</code>) or <code>perl -e 'alarm N; exec @ARGV'</code></td></tr>
+</table>
+<p>See also <code>fic_install/macos/README.md</code> and <code>fic_ws/src/mujoco_native/README.md</code> for backend internals.</p>

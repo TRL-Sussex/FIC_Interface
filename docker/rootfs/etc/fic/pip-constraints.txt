@@ -1,0 +1,5 @@
+# Applied to every pip install in the image (PIP_CONSTRAINT).
+# numpy: ROS 2, scipy, matplotlib and OpenCV are built against Ubuntu's numpy 1.x.
+# setuptools: 80 removed `setup.py develop`, which colcon --symlink-install uses.
+numpy<2
+setuptools<80

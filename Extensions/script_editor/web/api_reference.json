@@ -1,0 +1,369 @@
+{
+ "entries": [
+  {
+   "name": "robot.state.ee_pose",
+   "signature": "",
+   "doc": "Return EE pose as [x, y, z, qx, qy, qz, qw] or [] when unknown."
+  },
+  {
+   "name": "robot.state.joint_commanded",
+   "signature": "",
+   "doc": "Return commanded joint positions in degrees (list[float])."
+  },
+  {
+   "name": "robot.state.joint_effort",
+   "signature": "",
+   "doc": "Return current joint efforts in Nm (list[float])."
+  },
+  {
+   "name": "robot.state.joint_velocity",
+   "signature": "",
+   "doc": "Return current joint velocities in rad/s (list[float])."
+  },
+  {
+   "name": "robot.state.joints",
+   "signature": "",
+   "doc": "Return current joint positions in degrees (list[float])."
+  },
+  {
+   "name": "robot.state.wrench",
+   "signature": "",
+   "doc": "Return tool wrench as (Fx, Fy, Fz, Tx, Ty, Tz) tuple, or None."
+  },
+  {
+   "name": "robot.motion.close_gripper",
+   "signature": "()",
+   "doc": "Close the gripper fully (0.0 m)."
+  },
+  {
+   "name": "robot.motion.home",
+   "signature": "()",
+   "doc": "Move to the robot home position (read from the robot config, in degrees)."
+  },
+  {
+   "name": "robot.motion.move_cartesian",
+   "signature": "(x, y, z, rx=0.0, ry=0.0, rz=0.0)",
+   "doc": "Publish a Cartesian pose command (metres; rx/ry/rz in radians, XYZ Euler)."
+  },
+  {
+   "name": "robot.motion.move_joints",
+   "signature": "(angles_deg, wait=False, timeout=10.0, tolerance=None, **kwargs)",
+   "doc": "Publish joint angles (degrees) and optionally block until reached."
+  },
+  {
+   "name": "robot.motion.open_gripper",
+   "signature": "()",
+   "doc": "Open the gripper fully (0.08 m)."
+  },
+  {
+   "name": "robot.motion.set_gripper",
+   "signature": "(width_m)",
+   "doc": "Publish gripper width clamped to [0, 0.08] metres."
+  },
+  {
+   "name": "robot.motion.set_target",
+   "signature": "(target)",
+   "doc": "Update the motion target so routing follows a mid-script switch."
+  },
+  {
+   "name": "robot.mode.active_profile",
+   "signature": "(profile_name)",
+   "doc": "Publish a named parameter profile (transient-local topic)."
+  },
+  {
+   "name": "robot.mode.admittance_planner",
+   "signature": "(enabled)",
+   "doc": "Enable or disable the admittance planner inside admittance modes."
+  },
+  {
+   "name": "robot.mode.desired_wrench",
+   "signature": "(force=(0.0, 0.0, 0.0), torque=(0.0, 0.0, 0.0))",
+   "doc": "Set the Cartesian admittance's desired wrench (N, N m); zero is plain compliance."
+  },
+  {
+   "name": "robot.mode.elbow",
+   "signature": "(enabled)",
+   "doc": "Enable or disable the elbow-up constraint."
+  },
+  {
+   "name": "robot.mode.hapfic",
+   "signature": "(enabled)",
+   "doc": "Enable or disable HapFIC hybrid Cartesian/joint mode."
+  },
+  {
+   "name": "robot.mode.postural",
+   "signature": "(enabled)",
+   "doc": "Enable or disable the null-space postural controller."
+  },
+  {
+   "name": "robot.mode.publish_mode",
+   "signature": "(mode_int)",
+   "doc": "Publish an integer control mode (1-8) and sync the GUI mode selector."
+  },
+  {
+   "name": "robot.mode.set",
+   "signature": "(mode_int)",
+   "doc": "Apply the given integer mode, delegating to publish_mode."
+  },
+  {
+   "name": "robot.process.start_bags",
+   "signature": "()",
+   "doc": "Start the ROS bag recorder."
+  },
+  {
+   "name": "robot.process.start_controller",
+   "signature": "()",
+   "doc": "Start the hardware FIC controller."
+  },
+  {
+   "name": "robot.process.start_driver",
+   "signature": "()",
+   "doc": "Start the hardware driver."
+  },
+  {
+   "name": "robot.process.start_fic",
+   "signature": "()",
+   "doc": "Start the FIC simulation controller."
+  },
+  {
+   "name": "robot.process.start_plotter",
+   "signature": "()",
+   "doc": "Start the signal plotter."
+  },
+  {
+   "name": "robot.process.start_sim",
+   "signature": "()",
+   "doc": "Start the MuJoCo simulation."
+  },
+  {
+   "name": "robot.process.start_vr",
+   "signature": "()",
+   "doc": "Start the VR relay."
+  },
+  {
+   "name": "robot.process.stop_bags",
+   "signature": "()",
+   "doc": "Stop the ROS bag recorder."
+  },
+  {
+   "name": "robot.process.stop_controller",
+   "signature": "()",
+   "doc": "Stop the hardware FIC controller."
+  },
+  {
+   "name": "robot.process.stop_driver",
+   "signature": "()",
+   "doc": "Stop the hardware driver."
+  },
+  {
+   "name": "robot.process.stop_fic",
+   "signature": "()",
+   "doc": "Stop the FIC simulation controller."
+  },
+  {
+   "name": "robot.process.stop_plotter",
+   "signature": "()",
+   "doc": "Stop the signal plotter."
+  },
+  {
+   "name": "robot.process.stop_sim",
+   "signature": "()",
+   "doc": "Stop the MuJoCo simulation."
+  },
+  {
+   "name": "robot.process.stop_vr",
+   "signature": "()",
+   "doc": "Stop the VR relay."
+  },
+  {
+   "name": "robot.target.current",
+   "signature": "",
+   "doc": "Return the current target string: 'simulation', 'hardware', or 'vr'."
+  },
+  {
+   "name": "robot.target.set_target",
+   "signature": "(target)",
+   "doc": "Set the sim/hardware/vr target (marshalled to the GUI thread)."
+  },
+  {
+   "name": "robot.tune.param_update",
+   "signature": "(param_type, value)",
+   "doc": "Publish a parameter-update string (thread-safe direct publish)."
+  },
+  {
+   "name": "robot.tune.save",
+   "signature": "(robot_name=None, joint_id=1, mode=1, params=None)",
+   "doc": "Save current tuning parameters to XML via XMLManager (marshalled)."
+  },
+  {
+   "name": "robot.safety.broadcast_stop",
+   "signature": "()",
+   "doc": "Send stop to every active robot (marshalled for safety)."
+  },
+  {
+   "name": "robot.safety.estop",
+   "signature": "()",
+   "doc": "Publish mode 1 to park the robot and trigger the GUI emergency stop."
+  },
+  {
+   "name": "robot.safety.pause",
+   "signature": "()",
+   "doc": "Publish mode 1 to park the robot (hardware safe state)."
+  },
+  {
+   "name": "robot.topics.cleanup",
+   "signature": "()",
+   "doc": "Destroy all subscriptions (call at script teardown)."
+  },
+  {
+   "name": "robot.topics.get",
+   "signature": "(topic_name)",
+   "doc": "Return the latest message for topic_name, or None."
+  },
+  {
+   "name": "robot.topics.list_topics",
+   "signature": "()",
+   "doc": "Return a list of (topic_name, type_string) tuples from the ROS graph."
+  },
+  {
+   "name": "robot.topics.subscribe",
+   "signature": "(topic_name)",
+   "doc": "Subscribe to a topic by name, auto-discovering the message type."
+  },
+  {
+   "name": "robot.topics.unsubscribe",
+   "signature": "(topic_name)",
+   "doc": "Destroy the subscription for topic_name and clear its cached value."
+  },
+  {
+   "name": "robot.wait",
+   "signature": "(seconds)",
+   "doc": "Sleep for seconds, honouring the cooperative stop event at ~20 Hz."
+  },
+  {
+   "name": "robot.is_stopped",
+   "signature": "()",
+   "doc": "Return True if a cooperative stop has been requested."
+  },
+  {
+   "name": "close_gripper",
+   "signature": "()",
+   "doc": "Close the gripper fully (0.0 m)."
+  },
+  {
+   "name": "get_cartesian_pose",
+   "signature": "()",
+   "doc": ""
+  },
+  {
+   "name": "get_ee_position",
+   "signature": "()",
+   "doc": ""
+  },
+  {
+   "name": "get_force_torque",
+   "signature": "()",
+   "doc": ""
+  },
+  {
+   "name": "get_joint_effort",
+   "signature": "()",
+   "doc": ""
+  },
+  {
+   "name": "get_joint_positions",
+   "signature": "()",
+   "doc": ""
+  },
+  {
+   "name": "get_joint_velocity",
+   "signature": "()",
+   "doc": ""
+  },
+  {
+   "name": "get_target_mode",
+   "signature": "()",
+   "doc": ""
+  },
+  {
+   "name": "get_topic",
+   "signature": "(topic_name)",
+   "doc": "Return the latest message for topic_name, or None."
+  },
+  {
+   "name": "home",
+   "signature": "()",
+   "doc": "Move to the robot home position (read from the robot config, in degrees)."
+  },
+  {
+   "name": "is_moving",
+   "signature": "()",
+   "doc": ""
+  },
+  {
+   "name": "is_stopped",
+   "signature": "()",
+   "doc": "Return True if a cooperative stop has been requested."
+  },
+  {
+   "name": "list_topics",
+   "signature": "()",
+   "doc": "Return a list of (topic_name, type_string) tuples from the ROS graph."
+  },
+  {
+   "name": "move_cartesian",
+   "signature": "(x, y, z, rx=0.0, ry=0.0, rz=0.0)",
+   "doc": "Publish a Cartesian pose command (metres; rx/ry/rz in radians, XYZ Euler)."
+  },
+  {
+   "name": "move_joints",
+   "signature": "(angles_deg, wait=False, timeout=10.0, tolerance=None, **kwargs)",
+   "doc": "Publish joint angles (degrees) and optionally block until reached."
+  },
+  {
+   "name": "open_gripper",
+   "signature": "()",
+   "doc": "Open the gripper fully (0.08 m)."
+  },
+  {
+   "name": "set_gripper",
+   "signature": "(width_m)",
+   "doc": "Publish gripper width clamped to [0, 0.08] metres."
+  },
+  {
+   "name": "set_mode",
+   "signature": "(mode_int)",
+   "doc": "Publish an integer control mode (1-8) and sync the GUI mode selector."
+  },
+  {
+   "name": "sleep",
+   "signature": "(...)",
+   "doc": "sleep(seconds)"
+  },
+  {
+   "name": "stop",
+   "signature": "()",
+   "doc": ""
+  },
+  {
+   "name": "subscribe",
+   "signature": "(topic_name)",
+   "doc": "Subscribe to a topic by name, auto-discovering the message type."
+  },
+  {
+   "name": "unsubscribe",
+   "signature": "(topic_name)",
+   "doc": "Destroy the subscription for topic_name and clear its cached value."
+  },
+  {
+   "name": "wait",
+   "signature": "(seconds)",
+   "doc": "Sleep for seconds, honouring the cooperative stop event at ~20 Hz."
+  },
+  {
+   "name": "wait_until_stopped",
+   "signature": "(timeout=10.0)",
+   "doc": ""
+  }
+ ]
+}

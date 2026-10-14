@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=FIC Dev Console
+Comment=Lightweight ROS2 hardware teleop GUI for Force Impedance Control
+Exec=__FIC_INSTALL__/fic-dev-console.sh
+Icon=__FIC_INSTALL__/fic-control-studio.svg
+Terminal=false
+Type=Application
+Categories=Development;Science;Robotics;
+Keywords=robot;ros;fic;impedance;control;teleop;dev;
+StartupWMClass=FIC Dev Console

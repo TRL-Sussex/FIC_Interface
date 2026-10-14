@@ -1,0 +1,341 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">›</span> Simulation</div>
+<h1>Simulation (MuJoCo + fic_simulation)</h1>
+<p class="subtitle">Physics-accurate simulation with the <code>fic_simulation</code> ROS 2 control node.</p>
+
+<h2>How It Works</h2>
+<p><code>fic_simulation</code> and the MuJoCo node are <strong>separate processes</strong> communicating over ROS 2 topics. MuJoCo handles physics stepping and 3D rendering; fic_simulation handles FIC control. All simulation topics are scoped by <strong>station id</strong>: the simulator node publishes under <code>robot{N}_simulation/</code> (its <code>topic_prefix</code> parameter, set by the launch file from <code>station_id</code>, 1&ndash;4), and the controller subscribes to the same prefix via its <code>source_prefix</code> parameter. This keeps multiple side-by-side stations from cross-talking — see <a href="#topics" onclick="showPage('topics')">Topics</a>. For behavioural differences from the hardware node, see <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Sim vs Hardware</a>.</p>
+<svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="mujoco / simulation">
+
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-left { text-anchor: start; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#sim-arrowhead); }
+    .arrow-blue { stroke: #1976d2; }
+    .arrow-green { stroke: #388e3c; }
+    .arrow-orange { stroke: #f57c00; }
+    .line { stroke: #bbb; stroke-width: 1; stroke-dasharray: 4,3; }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+    .container-solid { fill: #fafbfd; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; }
+  </style>
+  <defs>
+    <marker id="sim-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+    <marker id="sim-arrowhead-blue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#1976d2"/>
+    </marker>
+    <marker id="sim-arrowhead-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#388e3c"/>
+    </marker>
+    <marker id="sim-arrowhead-orange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#f57c00"/>
+    </marker>
+  </defs>
+
+  <!-- MuJoCo box -->
+  <rect x="30" y="30" width="230" height="140" class="box box-teal"/>
+  <text x="145" y="60" class="label-bold" style="fill:#004d40">mujoco / simulation</text>
+  <text x="145" y="80" class="label-sm" style="fill:#00897b">Physics engine</text>
+  <text x="145" y="95" class="label-sm" style="fill:#00897b">+ 3D viewer</text>
+
+  <!-- fic_simulation box -->
+  <rect x="440" y="30" width="230" height="140" class="box box-green"/>
+  <text x="555" y="60" class="label-bold" style="fill:#1b5e20">fic_simulation</text>
+  <text x="555" y="80" class="label-sm" style="fill:#388e3c">FIC controller</text>
+  <text x="555" y="95" class="label-sm" style="fill:#388e3c">1 kHz control loop</text>
+
+  <!-- Arrows right (feedback) -->
+  <line x1="260" y1="55" x2="440" y2="55" class="arrow arrow-blue" style="marker-end:url(#sim-arrowhead-blue)"/>
+  <text x="350" y="48" class="label-code">robot{N}_simulation/joint_states</text>
+
+  <line x1="260" y1="80" x2="440" y2="80" class="arrow arrow-blue" style="marker-end:url(#sim-arrowhead-blue)"/>
+  <text x="350" y="73" class="label-code">robot{N}_simulation/gravity_torques</text>
+
+  <line x1="260" y1="105" x2="440" y2="105" class="arrow arrow-blue" style="marker-end:url(#sim-arrowhead-blue)"/>
+  <text x="350" y="98" class="label-code">robot{N}_simulation/force_torque</text>
+
+  <!-- Arrow left (commands) -->
+  <line x1="440" y1="140" x2="260" y2="140" class="arrow arrow-orange" style="marker-end:url(#sim-arrowhead-orange)"/>
+  <text x="350" y="155" class="label-code">robot{N}_simulation/actuators_cmds</text>
+</svg>
+
+<h2>Starting Simulation</h2>
+<ol>
+  <li>Select the robot from the toolbar dropdown.</li>
+  <li>Set <strong>Target</strong> to <em>Simulation</em> and press <strong>&#9654; Start</strong>. This launches the simulator (MuJoCo on the CPU, package <code>mujoco_native</code>, by default; see <a href="#settings" onclick="showPage('settings')">Settings</a> → Simulation for the Newton backend below), with a gripper bridge helper alongside it to drive the scene's <code>gripper</code> actuator, if present, from <code>robot{N}_gripper_width</code>.</li>
+  <li>About 2&nbsp;s later the <code>fic_simulation</code> control node auto-starts with <code>source_prefix:=robot{N}_simulation</code>.</li>
+  <li>The <strong>SIM</strong> and <strong>FIC</strong> status LEDs turn <strong>green</strong>. (There is a single Start/Stop button, not one per process — see <a href="#processes" onclick="showPage('processes')">Processes</a>.)</li>
+</ol>
+<p>Both processes are managed by the GUI — see <a href="#processes" onclick="showPage('processes')">Processes</a> for logs and manual start/stop.</p>
+
+<h2>Subscribed Topics (fic_simulation)</h2>
+<p><code>{N}</code> is the node's <code>station_id</code> parameter (default 1).</p>
+<table>
+  <tr><th>Topic</th><th>Type</th><th>Description</th></tr>
+  <tr><td><code>/robot{N}_simulation/joint_states</code></td><td>JointState</td><td>Positions, velocities, efforts from MuJoCo (~1 kHz)</td></tr>
+  <tr><td><code>/robot{N}_simulation/gravity_torques</code></td><td>Float64MultiArray</td><td>Gravity compensation torques from MuJoCo (<code>qfrc_bias</code> at zero velocity). FIC <strong>adds this raw</strong> to its output in the joint modes &mdash; check a vertical-axis joint reads ~0 Nm.</td></tr>
+  <tr><td><code>/robot{N}_simulation/force_torque</code></td><td>Wrench</td><td>EE wrench from MuJoCo F/T sensors; the FIC node uses it only with <code>wrench_from_api</code> (otherwise it estimates the external wrench from the joint torques)</td></tr>
+  <tr><td><code>robot{N}_control_mode</code></td><td>Int32</td><td>Mode selection (0–8); mode switch snaps targets to the current state so the robot holds position</td></tr>
+  <tr><td><code>command_ee_position_change_robot{N}</code></td><td>Pose</td><td>Cartesian EE target (clamped to Cartesian safety limits; also triggers an async IK solve for null-space helpers)</td></tr>
+  <tr><td><code>robot{N}_desired_joint_angles</code></td><td>Float32MultiArray</td><td>Joint targets from GUI (clamped to joint limits, rejected if FK would exit the Cartesian zone)</td></tr>
+  <tr><td><code>robot{N}_target_joint_angles</code></td><td>JointState</td><td>Named joint targets (sequences, script editor)</td></tr>
+  <tr><td><code>robot{N}_selected_robot</code></td><td>String</td><td>Robot selection → reloads the Pinocchio URDF model + robot config</td></tr>
+  <tr><td><code>robot{N}_active_profile</code></td><td>String</td><td>Active <a href="#tuning" onclick="showPage('tuning')">tuning profile</a> used when (re-)loading controller parameters</td></tr>
+  <tr><td><code>robot{N}_number_of_joints</code></td><td>Int32</td><td>Joint count; resizes internal buffers</td></tr>
+  <tr><td><code>robot{N}_safety/*</code></td><td>Float64MultiArray</td><td><code>cartesian_limits</code>, <code>joint_limits</code>, <code>velocity_limits</code> from the <a href="#safety" onclick="showPage('safety')">Safety panel</a></td></tr>
+  <tr><td><code>robot{N}_postural_enable</code> / <code>_elbow_enable</code> / <code>_hapfic_enable</code> / <code>_admittance_planner_enable</code></td><td>Bool</td><td>Null-space helper and planner toggles (see <a href="#hapfic" onclick="showPage('hapfic')">Hapfic</a>)</td></tr>
+  <tr><td><code>robot{N}_desired_wrench</code></td><td>Wrench</td><td>Desired wrench of the Cartesian admittance (modes 7/8); zero at start-up (see <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>)</td></tr>
+  <tr><td><code>robot{N}_gravity_compensated</code> / <code>_wrench_gravity_compensated</code> / <code>_wrench_from_api</code></td><td>Bool (transient local)</td><td>Runtime overrides of the robot-config flags</td></tr>
+</table>
+
+<h2>Published Topics (fic_simulation)</h2>
+<table>
+  <tr><th>Topic</th><th>Type</th><th>Description</th></tr>
+  <tr><td><code>/robot{N}_simulation/actuators_cmds</code></td><td>ActuatorCmds</td><td>Final torques to MuJoCo, actuator names <code>torq_j1</code>…<code>torq_jN</code> (after guards and optional velocity damping)</td></tr>
+  <tr><td><code>/robot{N}_simulation/actuator_torques</code></td><td>Float64MultiArray</td><td>The same final torques as a plain array (plotting/logging)</td></tr>
+  <tr><td><code>robot{N}_trajectory_data</code></td><td>Float64MultiArray</td><td>FIC internal state (N×8 floats) for the <a href="#autotuning" onclick="showPage('autotuning')">autotuner</a></td></tr>
+  <tr><td><code>/robot{N}_fic_torque_commands</code></td><td>Float64MultiArray</td><td>FIC torques after the output guard but before velocity damping</td></tr>
+  <tr><td><code>robot{N}_jacobian</code></td><td>Jacobian</td><td>Current 6×N EE Jacobian (local-world-aligned frame)</td></tr>
+  <tr><td><code>robot{N}_ee_current_pose</code></td><td>Pose</td><td>Current EE pose from Pinocchio forward kinematics</td></tr>
+</table>
+
+<h2>Torque Output</h2>
+<p>Every torque passes an <strong>output guard</strong> before publishing: non-finite values are replaced with 0 and each joint is clamped to its physical limit from <code>fic_library/config/robots_config.yaml</code> (<code>joint_torque_max</code>; fallback ceiling 150 N·m when a robot has no per-joint entry). If the Safety panel's <strong>velocity limits are enabled</strong>, a velocity damping term is added on top, scaled so the damping torque saturates exactly at the joint's torque limit when the joint reaches <code>max_joint_velocity</code>:</p>
+<pre><code>kd[i]   = torque_limit[i] / max_joint_velocity
+tau[i]  = clamp(fic_torque[i] − kd[i] × joint_velocity[i], ±torque_limit[i])</code></pre>
+<p>A robot driven in simulation uses its config's <code>sim_max_joint_vel</code> when it has one (see
+<a href="#safety" onclick="showPage('safety')">Safety</a>). The Kinova Gen3 model's joints have a viscous damping of
+5&nbsp;N&middot;m&middot;s/rad (its wall scenes keep 45).</p>
+<p>With velocity limits disabled, torques are published undamped (guarded and clamped only). This replaced the old fixed <code>−10·q̇</code> damping term during the June 2026 safety remediation — see <a href="#safety" onclick="showPage('safety')">Safety</a>.</p>
+<svg viewBox="0 0 700 130" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="State snapshot">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#simtq-arrowhead); }
+  </style>
+  <defs>
+    <marker id="simtq-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+  </defs>
+  <rect x="10" y="35" width="120" height="60" class="box box-blue"/>
+  <text x="70" y="55" class="label-bold" style="fill:#0d47a1">State snapshot</text>
+  <text x="70" y="72" class="label-sm">10 Hz filters, mutex</text>
+  <line x1="130" y1="65" x2="152" y2="65" class="arrow"/>
+  <rect x="152" y="35" width="130" height="60" class="box box-green"/>
+  <text x="217" y="52" class="label-bold" style="fill:#1b5e20">FIC torques</text>
+  <text x="217" y="68" class="label-sm">mode 0–8 + helpers</text>
+  <text x="217" y="82" class="label-sm">+ gravity comp</text>
+  <line x1="282" y1="65" x2="304" y2="65" class="arrow"/>
+  <rect x="304" y="35" width="130" height="60" class="box box-red"/>
+  <text x="369" y="52" class="label-bold" style="fill:#b71c1c">Output guard</text>
+  <text x="369" y="68" class="label-sm">hard-fault latch,</text>
+  <text x="369" y="82" class="label-sm">NaN→0, clamp ±τmax</text>
+  <line x1="434" y1="65" x2="456" y2="65" class="arrow"/>
+  <rect x="456" y="35" width="120" height="60" class="box box-orange"/>
+  <text x="516" y="52" class="label-bold" style="fill:#e65100">Vel. damping</text>
+  <text x="516" y="68" class="label-sm">only if velocity</text>
+  <text x="516" y="82" class="label-sm">limits enabled</text>
+  <line x1="576" y1="65" x2="598" y2="65" class="arrow"/>
+  <rect x="598" y="35" width="94" height="60" class="box box-teal"/>
+  <text x="645" y="55" class="label-bold" style="fill:#004d40">Publish</text>
+  <text x="645" y="74" class="label-code">actuators_cmds</text>
+  <text x="350" y="115" class="label-sm">fic_simulation torque pipeline — runs every 1 ms</text>
+</svg>
+
+<h2>Control Loop (1 kHz)</h2>
+<ol>
+  <li>Guard — skip until a robot and joint count have been received and the Pinocchio model is loaded</li>
+  <li>Snapshot state (under mutex) → release mutex before computing</li>
+  <li>Detect mode change → reset init flag (also reset by the hapfic toggle, robot selection, and new joint targets)</li>
+  <li>Compute EE velocity = Jacobian × q̇</li>
+  <li>Initialise controllers when the init flag is down — loads <code>(robot, mode, profile)</code> parameters from the installed <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a> (<code>&lt;fic_simulation share&gt;/config/config.xml</code>, installed from <code>fic_library/config/config.xml</code>). With hapfic active on modes 6/7/8, its joint and Cartesian parameters load from the HAP-FIC block (<code>&lt;mode id="100"&gt;</code>; modes 4 and 6 on a robot without one)</li>
+  <li>Compute FIC torques per joint/axis; modes 1&ndash;4 and hapfic add MuJoCo's gravity torque <code>g(q)</code> on top (the FIC law has no gravity term), and in modes 3/4 it is also the commanded effort the interaction torque is measured against</li>
+  <li>Apply null-space helpers (postural / elbow) on Cartesian modes if enabled</li>
+  <li>Hard-fault check — if any joint exceeds the config's physical position limits, latch a fault and output gravity compensation only until a new robot is loaded</li>
+  <li>Output guard, optional velocity damping, then publish trajectory_data, torque commands, actuator commands</li>
+</ol>
+
+<h2>Signal Filtering</h2>
+<table>
+  <tr><th>Signal</th><th>Cutoff</th><th>Sample Rate</th></tr>
+  <tr><td>Joint torques</td><td>10 Hz</td><td>1000 Hz</td></tr>
+  <tr><td>Joint positions</td><td>10 Hz</td><td>1000 Hz</td></tr>
+  <tr><td>Joint velocities</td><td>10 Hz</td><td>1000 Hz</td></tr>
+</table>
+
+<h2>Inverse Kinematics</h2>
+<p>Iterative damped Jacobian pseudo-inverse using Pinocchio. It runs asynchronously in a detached thread on each incoming Cartesian target, so the 1 kHz loop never waits for it. Its result, <code>q_target_ik</code>, is hapfic's joint set-point and the target of the postural/elbow null-space helpers:</p>
+<table>
+  <tr><th>Parameter</th><th>Value</th></tr>
+  <tr><td>Convergence</td><td>1e-6 (SE3 log-map error norm)</td></tr>
+  <tr><td>Max iterations</td><td>5000</td></tr>
+  <tr><td>Step size (DT)</td><td>0.01</td></tr>
+  <tr><td>Damping</td><td>1e-6 on <code>J·Jᵀ</code> diagonal</td></tr>
+  <tr><td>Per-step velocity clamp</td><td>0.5 (norm of the update)</td></tr>
+</table>
+<p>Higher precision than the hardware node (1e-6 vs 1e-4, 5000 vs 1000 iterations) since it is off the real-time path.</p>
+
+<h2>Important Notes</h2>
+<ul>
+  <li><strong>Start-up mode is 1</strong> (Joint Impedance) until the GUI publishes a mode on <code>robot{N}_control_mode</code> — see <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a></li>
+  <li><strong>Gravity torques prefer MuJoCo's</strong> (they include gripper/attachment mass from the scene). Pinocchio's <code>computeGeneralizedGravity</code> (arm-only URDF) is used only as a fallback until the first MuJoCo gravity message arrives</li>
+  <li><strong>Trajectory data is N×8</strong> (hardware is N×5 — extra channels for the autotuner)</li>
+  <li><strong>Robot selection reloads the controller's Pinocchio model and config</strong> — avoid during active control. The MuJoCo scene itself does <em>not</em> follow: switching robots restarts the simulator process (the GUI does this when you toggle SIM)</li>
+  <li><strong>Every mode switch snaps targets to the current state</strong> (joint targets in modes 1–4, EE pose in modes 5–8) so the robot holds position instead of jumping to a stale target</li>
+</ul>
+
+<h2>Scenes, Models and Reset</h2>
+<p>The simulator node loads its MJCF scene from the <code>simulation/model_file</code> ROS parameter, which the launch file resolves from <code>robot_name:=</code> against the <code>menagerie</code> package:</p>
+<table>
+  <tr><th><code>robot_name</code></th><th>Scene file (menagerie share)</th></tr>
+  <tr><td><code>Franka_FR3</code></td><td><code>model/Franka_FR3/xml/scene.xml</code></td></tr>
+  <tr><td><code>KinovaGen3_7DOF</code></td><td><code>model/KinovaGen3_7DOF/xml/scene.xml</code></td></tr>
+  <tr><td><code>IIWA_14</code></td><td><code>model/IIWA_14/XML/scene.xml</code></td></tr>
+  <tr><td><code>Pendulum</code></td><td><code>model/Pendulum/xml/pendulum.xml</code></td></tr>
+</table>
+<p>Any other robot runs from its config's <code>mujoco_xml_path</code>: the Studio passes it as <code>model_file:=</code>, so the launch map needs no entry. <code>.xml</code>/<code>.urdf</code> scenes and compiled <code>.mjb</code> models load; the <code>mujoco</code> wheel's bundled plugins (e.g. the cable model) are available without setup.</p>
+<p><strong>Start pose.</strong> A fixed-base arm starts with every joint at 0 unless its robot config sets
+  <code>sim_start_at_home: true</code> (the Kinova Gen3 does): it then spawns at its <code>q_home_rad</code> and
+  is held there until the first actuator command, so the controller starts at home instead of swinging the arm to
+  it. The Studio passes the pose as the launch argument <code>initial_joint_positions:=q1,q2,...</code> (radians,
+  the first joints in model order), which both backends accept.</p>
+<p>The parameter is read <strong>once at startup</strong> on both backends — there is no runtime model hot-reload, so switching robots means stopping and relaunching SIM (which the toolbar button does for you). In multi-robot scenes, MuJoCo element names carry an <code>r1_</code>/<code>r2_</code> prefix; the controller's <code>joint_name_prefix</code> parameter matches its joints against those names, and the F/T publisher falls back to scanning for any sensor whose name ends in <code>force_sensor</code>/<code>torque_sensor</code>.</p>
+<p><strong>Reset service:</strong> <code>robot{N}_simulation/sim_reset</code> (<code>communication/srv/SimulationReset</code>) resets the MuJoCo state, applies the requested base pose (floating-base models only) and named joint positions, and clears the actuator commands. The request's <code>header.frame_id</code> must equal the loaded model's name (e.g. <code>KinovaGen3_7DOF scene</code>) or the reset is refused.</p>
+<pre><code>ros2 service call /robot1_simulation/sim_reset communication/srv/SimulationReset \
+  "{header: {frame_id: 'KinovaGen3_7DOF scene'}, joint_state: {name: [Actuator2, Actuator4], position: [0.5, 1.0]}}"</code></pre>
+
+<h3>Simulator rates and timing</h3>
+<table>
+  <tr><th>Topic</th><th>Rate</th></tr>
+  <tr><td><code>joint_states</code>, <code>gravity_torques</code></td><td>1 kHz (<code>publish_rate_hz</code>)</td></tr>
+  <tr><td><code>imu_data</code></td><td>500 Hz</td></tr>
+  <tr><td><code>force_torque</code>, <code>body_poses</code></td><td>200 Hz</td></tr>
+  <tr><td><code>odom</code></td><td>50 Hz</td></tr>
+</table>
+<p>Physics steps at the MJCF's own <code>timestep</code> (1&nbsp;ms for the arms; override with the <code>sim_dt</code> launch argument), paced to the wall clock. Rates are capped by the physics rate. In the viewer, <kbd>Space</kbd> pauses and resumes and <kbd>Backspace</kbd> resets to the spawn state.</p>
+<div class="admonition note"><div class="adm-title">A dead controller leaves the arm limp</div><p>A torque command the controller stops refreshing for 0.2&nbsp;s is zeroed, so if the FIC controller dies the simulated arm falls under gravity instead of pushing on with its last torque. Position-type actuators (the Robotiq <code>gripper</code>) keep their last setpoint, because the gripper bridge publishes only when the width changes. Several publishers can share <code>actuators_cmds</code> (the controller and the gripper bridge, or one controller per robot of a multi-robot scene); commands are merged per actuator name.</p></div>
+
+<h2>Safety Enforcement in Simulation</h2>
+<p>Since the June 2026 safety remediation, <code>fic_simulation</code> enforces the <a href="#safety" onclick="showPage('safety')">Safety panel</a> limits itself, not just in the GUI:</p>
+<ul>
+  <li><strong>Target clamping</strong> — Cartesian targets are clamped to the enabled zone; joint targets are clamped to joint limits and <em>rejected</em> if forward kinematics would place the EE outside the Cartesian zone.</li>
+  <li><strong>Virtual wall</strong> — in joint modes, an EE past an enabled Cartesian boundary gets a restoring force (2000 N/m) mapped through <code>Jᵀ</code>, bounding the robot at the limit.</li>
+  <li><strong>Velocity limits</strong> — enable the per-joint damping term in the torque pipeline above.</li>
+  <li><strong>Hard-fault latch</strong> — a joint beyond its physical config limits switches output to gravity compensation only until a robot reload.</li>
+  <li><strong>Output torque guard</strong> — NaN/Inf → 0, per-joint clamp on everything published.</li>
+</ul>
+
+<hr>
+
+<h2>Simulator Backends: MuJoCo (CPU) vs MuJoCo Newton (GPU)</h2>
+<p>The <strong>SIM</strong> button can launch one of two backends. The choice lives in
+<code>Settings → Simulation</code> and is persisted to
+<code>~/.robot_selector_gui_settings.yaml</code> as <code>simulation.backend</code>:</p>
+<table>
+  <tr><th>Backend</th><th><code>backend</code> value</th><th>Launch package</th><th>Engine version</th><th>Hardware</th></tr>
+  <tr><td><strong>MuJoCo</strong> (default)</td><td><code>mujoco_native</code></td><td><code>mujoco_native</code> (Python)</td><td>the installed <code>mujoco</code> wheel (the Docker image pins 3.10.0)</td><td>CPU: Linux x86-64 and arm64, macOS</td></tr>
+  <tr><td><strong>MuJoCo Newton</strong> (optional)</td><td><code>newton</code></td><td><code>mujoco_newton</code> (Python)</td><td>newton <strong>1.3.0</strong> + mujoco-warp <strong>3.8.1</strong> (pip <code>mujoco</code> 3.8.1)</td><td>NVIDIA GPU (CUDA via Warp)</td></tr>
+</table>
+<div class="admonition note"><div class="adm-title">The C++ <code>mujoco</code> package was retired in v4.5.0</div><p>Until v4.5.0 the default on Linux x86-64 was a C++ simulator (<code>fic_ws/src/mujoco</code>, DeepMind's <code>simulate</code> linked against a vendored x86-64 <code>libmujoco</code>), and <code>mujoco_native</code> served macOS, arm64 and floating-base robots. Its features (1&nbsp;kHz state, IMU, F/T with prefixed sensors, the <code>sim_reset</code> service, multi-publisher commands, pause/reset in the viewer) were ported into <code>mujoco_native</code>, which is now the only CPU simulator. A saved <code>backend: mujoco</code> loads as <code>mujoco_native</code>.</p></div>
+
+<h3>How dispatch works</h3>
+<p><a href="#processes" onclick="showPage('processes')">process_mixin</a><code>._start_simulation()</code> reads the
+backend setting and runs one of:</p>
+<pre><code>ros2 launch mujoco_native simulation_launch.py robot_name:=&lt;robot&gt; station_id:=&lt;N&gt; model_file:=&lt;scene&gt;
+ros2 launch mujoco_newton simulation_launch.py robot_name:=&lt;robot&gt; station_id:=&lt;N&gt; model_file:=&lt;scene&gt;</code></pre>
+<p>A robot whose config sets <code>sim_backend</code> (<code>mujoco_native</code> or <code>newton</code>) uses that backend whatever the setting says.</p>
+<p>Both launch files accept the same <code>robot_name:=</code> argument and end up publishing
+the same five topics (<code>joint_states</code>, <code>odom</code>, <code>imu_data</code>,
+<code>gravity_torques</code>, <code>force_torque</code>) and subscribing to <code>actuators_cmds</code> —
+so the FIC controller node sees the same interface either way. If Newton is selected
+but the <code>mujoco_newton</code> package isn't built (e.g. you toggled the setting before
+running <code>colcon build</code>), the dispatcher logs a WARN and falls back to the CPU simulator.</p>
+
+<h3>The Newton backend (mujoco_newton)</h3>
+<p>NVIDIA <strong>Newton</strong> (currently <strong>1.3.0</strong>, with <code>mujoco-warp
+3.8.1</code> and <code>warp-lang 1.14</code>) is a Python-first physics engine built on NVIDIA Warp
+(JIT-compiled CUDA kernels). The <code>SolverMuJoCo</code> Newton ships <em>is</em> MuJoCo's solver
+running on Warp — physics behaviour matches MuJoCo, but stepping happens on the GPU. The
+<code>mujoco_newton</code> ROS 2 package wraps that solver in a node with the same topic
+contract as the CPU simulator:</p>
+<table>
+  <tr><th>Component</th><th>Detail</th></tr>
+  <tr><td>Package</td><td><code>fic_ws/src/mujoco_newton/</code> (ament_python)</td></tr>
+  <tr><td>Node</td><td><code>simulation_mujoco_newton_{N}</code> per station (entry point: <code>simulation</code>; the CPU simulator's node is <code>simulation_mujoco_native_{N}</code>)</td></tr>
+  <tr><td>Launch</td><td><code>ros2 launch mujoco_newton simulation_launch.py robot_name:=Pendulum [headless:=true] [device:=cuda:0]</code></td></tr>
+  <tr><td>MJCF loader</td><td><code>newton.ModelBuilder.add_mjcf(path)</code> — pass the file path so <code>&lt;compiler meshdir&gt;</code> resolves correctly</td></tr>
+  <tr><td>Solver</td><td><code>newton.solvers.SolverMuJoCo(model, use_mujoco_cpu=False)</code></td></tr>
+  <tr><td>Integrator</td><td>Taken from MJCF <code>&lt;option&gt;</code> tag (Euler or implicitfast — mujoco_warp doesn't support all MuJoCo integrators)</td></tr>
+  <tr><td>Step rate</td><td>500 Hz default (<code>sim_dt = 0.002</code>); worker thread with real-time pacing</td></tr>
+  <tr><td>Publish rate</td><td>200 Hz default</td></tr>
+  <tr><td>Joint names</td><td>Newton's body-path prefix (e.g. <code>pendulum/worldbody/base_link/Actuator1</code>) is stripped to bare names for parity with the CPU simulator</td></tr>
+</table>
+
+<h3>Topic parity between the backends</h3>
+<p>Topics below are shown relative to the shared <code>robot{N}_simulation/</code> prefix.</p>
+<table>
+  <tr><th>Topic</th><th>MuJoCo (CPU)</th><th>Newton backend</th></tr>
+  <tr><td><code>joint_states</code></td><td>real positions, velocities, efforts</td><td>real positions, velocities; effort = 0</td></tr>
+  <tr><td><code>odom</code></td><td>floating-base pose/twist (zero for fixed-base robots)</td><td>same</td></tr>
+  <tr><td><code>imu_data</code></td><td>from MJCF accelerometer/gyro/framequat sensors</td><td>stamped-but-empty (Newton solver doesn't expose <code>sensordata</code>)</td></tr>
+  <tr><td><code>gravity_torques</code></td><td>g(q): <code>qfrc_bias</code> at zero velocity, on a scratch copy of the live state</td><td><strong>real values</strong> — <code>mj_inverse</code> on the CPU <code>mj_model</code>/<code>mj_data</code> mirror that <code>SolverMuJoCo</code> builds internally, with the current pose synced in and damper/spring/frictionloss disabled (verified to match a standalone MuJoCo ground-truth computation exactly)</td></tr>
+  <tr><td><code>contact_torques</code></td><td>joint torques of the constraint and applied forces (<code>qfrc_constraint + qfrc_applied</code>), one per hinge; Hapfic's task-space admittance in Modes 7/8 estimates its wrench from them</td><td>not published (Hapfic in Modes 7/8 falls back to the joint-effort estimate)</td></tr>
+  <tr><td><code>force_torque</code></td><td>from MJCF <code>force_sensor</code> + <code>torque_sensor</code> (or <code>*force_sensor</code>/<code>*torque_sensor</code>)</td><td>empty Wrench</td></tr>
+  <tr><td><code>actuators_cmds</code> (sub)</td><td>writes to <code>data.ctrl[i]</code> (by actuator name, merged across publishers)</td><td>writes to <code>control.joint_f</code> (generalised forces → <code>qfrc_applied</code>), resolved through an <strong>actuator-name → DoF map</strong> parsed from the MJCF's <code>&lt;actuator&gt;</code> block — <em>not</em> <code>joint_act</code>, which is for position/velocity-mode actuators</td></tr>
+</table>
+<div class="admonition warning"><div class="adm-title">Newton publishes empty IMU / F-T messages</div><p>Newton's <code>SolverMuJoCo</code> doesn't expose <code>mjData-&gt;sensordata</code>, so IMU and force-torque stay zeroed on the Newton backend. Subscribers that gate on magnitude are unaffected; subscribers that need real IMU or F-T data should run the CPU simulator. Gravity torques <em>are</em> real on both backends.</p></div>
+
+<h3>Known limitations of the Newton backend</h3>
+<ul>
+  <li><strong>First launch JIT-compiles 30–60 s of CUDA kernels</strong> for mesh-heavy MJCFs (Kinova, Franka), then caches them in <code>~/.cache/warp/</code>. The SIM button shows "running" during this window but no viewer appears yet. Subsequent launches load from cache and the viewer comes up within ~3 s. Tail <code>/tmp/fic_sim_mujoco_newton_*.log</code> if you want to watch progress.</li>
+  <li><strong>MJCF compatibility is per-file.</strong> Newton's importer uses Python's strict <code>xml.etree.ElementTree</code>, while libmujoco's C parser is forgiving. Expect to occasionally fix XML quirks on new robots — e.g. <code>class="X"pos="0 0 0"</code> (no space between attributes) loads fine in MuJoCo but trips Newton with <em>not well-formed (invalid token)</em>.</li>
+  <li><strong>IMU and F-T topics carry empty payloads</strong> (see the parity table above — gravity torques are real). Switch to the CPU simulator if you need IMU or force-torque data.</li>
+  <li><strong><code>pyglet ≥ 2.0</code> is required</strong> for Newton's OpenGL viewer. Without it, Newton runs successfully but headless and you'll see <em>"Falling back to headless mode: OpenGLRenderer requires pyglet (version &gt;= 2.0) to be installed"</em> in <code>/tmp/fic_sim_mujoco_newton_*.log</code>. The installer pulls pyglet automatically; for manual setups: <code>pip install --break-system-packages 'pyglet&gt;=2.0'</code>.</li>
+  <li><strong>Headless when <code>$DISPLAY</code> is unavailable.</strong> Over SSH without X-forwarding, ViewerGL falls back to headless with a WARN.</li>
+</ul>
+
+<h3>Diagnosing failed launches</h3>
+<p>If the SIM button toggles to "running" but no window opens, the dispatcher writes the
+subprocess's combined stdout/stderr to <code>/tmp/fic_sim_&lt;backend&gt;_&lt;timestamp&gt;.log</code>
+(path is logged to the <a href="#log-viewer" onclick="showPage('log-viewer')">Logs</a> at launch time). A QTimer-based health check fires
+after a warmup window — 2 s for the CPU simulator, 8 s for Newton (JIT compilation) — and
+if the subprocess has already died, the Log Viewer gets the
+last lines of the log and a modal dialog summarises the failure. While the subprocess
+is JIT-compiling kernels (alive but quiet), the health check passes and the dialog stays
+hidden.</p>
+
+<h3>When to use which</h3>
+<table>
+  <tr><th>Situation</th><th>Backend</th></tr>
+  <tr><td>Default workstation use, single robot, sequence playback, teleop</td><td>MuJoCo (CPU)</td></tr>
+  <tr><td>You hit any of Newton's MJCF compatibility issues</td><td>MuJoCo (CPU)</td></tr>
+  <tr><td>You need real IMU or F-T sensor data in simulation</td><td>MuJoCo (CPU)</td></tr>
+  <tr><td>You're running parallel-environment RL training (future)</td><td>Newton (GPU)</td></tr>
+  <tr><td>You're benchmarking GPU sim throughput on simple MJCFs</td><td>Newton (GPU)</td></tr>
+</table>
+<div class="admonition tip"><div class="adm-title">Newton is groundwork, not a perf upgrade for teleop</div><p>For a single arm, Newton's GPU step is not faster end-to-end than the CPU MuJoCo loop on a modern CPU — the win shows up at hundreds of parallel envs. The Settings switch and matching topic contract are mostly about avoiding a rewrite later, when RL data generation becomes a real workflow.</p></div>
+
+<div class="doc-footer">
+  <p>Published work behind MuJoCo: <a href="#references" onclick="showPage('references')">References</a></p>
+</div>

@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>fic_simulation</name>
+  <version>4.1.0</version>
+  <description>FIC Simulation - ROS 2 controller node for MuJoCo simulation</description>
+  <maintainer email="at717@sussex.ac.uk">Adnan</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>pinocchio</depend>
+  <depend>menagerie</depend>
+  <depend>communication</depend>
+  <depend>ament_index_cpp</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

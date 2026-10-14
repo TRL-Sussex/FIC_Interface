@@ -1,0 +1,12 @@
+{
+  "id": "sequences",
+  "name": "Sequences",
+  "description": "Record waypoints (joint, Cartesian, gripper), build motion sequences, and play them back with configurable hold times.",
+  "sidebar_icon": "▷",
+  "sidebar_section": "Programming",
+  "web": {
+    "page": "page.js",
+    "poll_ms": 300,
+    "css": "page.css"
+  }
+}

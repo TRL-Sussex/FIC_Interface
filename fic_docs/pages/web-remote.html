@@ -1,0 +1,308 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Web Remote</div>
+<h1>Web Remote</h1>
+<p class="subtitle">The Studio's controls in any browser on the network, laid out for a phone &mdash; served by the Studio itself, for as long as it runs. New in v4.3.0.</p>
+
+<h2>Overview</h2>
+<p>FIC Control Studio runs a small web server alongside its window. Open its address on a phone,
+tablet or laptop on the same network and you get the <a href="#control-panel" onclick="showPage('control-panel')">control bar</a>,
+the <a href="#dashboard" onclick="showPage('dashboard')">Dashboard</a> readout and the session controls,
+arranged for the screen you are holding. Nothing is installed on the phone and nothing extra runs on
+the robot PC: the Studio is the server, so the page works exactly as long as the Studio does.</p>
+<p>Every button on the page runs the same handler as the matching button in the Studio, and joint or
+pose targets are written into the Studio's own fields before they are published. The phone and the
+desktop therefore never disagree about what a button does, and each shows what the other commanded.</p>
+
+<figure>
+<svg viewBox="0 0 700 250" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="Web remote data flow">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .label { font: 600 13px system-ui, sans-serif; fill: #222; text-anchor: middle; }
+    .label-sm { font: 11px system-ui, sans-serif; fill: #555; text-anchor: middle; }
+    .arrow { stroke: #666; stroke-width: 1.6; fill: none; marker-end: url(#wr-arr); }
+  </style>
+  <defs><marker id="wr-arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#666"/></marker></defs>
+  <rect class="box box-blue" x="10" y="40" width="150" height="70"/>
+  <text class="label" x="85" y="70">Phone / browser</text>
+  <text class="label-sm" x="85" y="90">page from the Studio</text>
+  <rect class="box box-green" x="230" y="20" width="200" height="110"/>
+  <text class="label" x="330" y="48">FIC Studio</text>
+  <text class="label-sm" x="330" y="70">web server thread</text>
+  <text class="label-sm" x="330" y="88">&#8595; Qt thread</text>
+  <text class="label-sm" x="330" y="106">same handlers as the buttons</text>
+  <rect class="box box-orange" x="500" y="20" width="190" height="50"/>
+  <text class="label" x="595" y="50">fic_hardware / FIC sim</text>
+  <rect class="box box-grey" x="500" y="90" width="190" height="50"/>
+  <text class="label" x="595" y="120">other Studios</text>
+  <path class="arrow" d="M160,62 L228,62"/>
+  <text class="label-sm" x="194" y="55">commands</text>
+  <path class="arrow" d="M228,92 L162,92"/>
+  <text class="label-sm" x="194" y="108">state 10 Hz</text>
+  <path class="arrow" d="M430,45 L498,45"/>
+  <text class="label-sm" x="464" y="38">ROS topics</text>
+  <path class="arrow" d="M430,115 L498,115"/>
+  <text class="label-sm" x="464" y="108">page cards</text>
+  <text class="label-sm" x="350" y="170">Commands: JSON POST (one browser in control). State: Server-Sent Events.</text>
+  <text class="label-sm" x="350" y="190">Discovery: /fic_studio/web_remotes on the shared ROS domain.</text>
+</svg>
+</figure>
+
+<h2>Opening it</h2>
+<ol>
+  <li>Start FIC Control Studio as usual. The web remote starts with it (it can be turned off in
+    <a href="#settings" onclick="showPage('settings')">Settings</a> &#9656; Web Remote).</li>
+  <li>Find the address. The Studio shows it in three places: the log (<em>"Web remote at http://&hellip;"</em>),
+    the tooltip of the <strong>WEB</strong> indicator in the status bar, and the Web Remote settings card,
+    which also labels each address as LAN or Tailscale.</li>
+  <li>Open <code>https://&lt;address&gt;:8088/</code> on the phone. It must be on the same network,
+    or on the same Tailscale network as the robot PC. The browser warns once about the certificate
+    (the Studio signs its own &mdash; see <a href="#web-remote-accounts">Signing in</a>); accept it.</li>
+  <li>Sign in. The first Studio in a lab makes an <code>admin</code> account and says its password
+    once: in the Studio's log, and on its standard output. A robot PC with no monitor therefore still
+    has it &mdash; <code>journalctl --user -u fic-studio | grep "first sign-in"</code> on that
+    machine. Change it on the <strong>Users</strong> page.</li>
+  <li>Tap <strong>Take control</strong> to command the robot. Until then the page only watches.</li>
+</ol>
+<div class="admonition tip"><div class="adm-title">Add it to the home screen</div>
+<p>In the phone browser's share menu choose <em>Add to Home Screen</em>. The page opens full-screen
+like an app. The URL hash remembers the tab (<code>#control</code>, <code>#dashboard</code>,
+<code>#session</code>, <code>#log</code>) and, on a desktop, the open panel (<code>#joint</code>,
+<code>#cart</code>&hellip;), so a bookmark returns to the same place.</p></div>
+
+<h2>Layouts</h2>
+<p>One page, two arrangements, chosen by screen width (760&nbsp;px):</p>
+<table>
+  <tr><th>Control</th><th>Desktop browser</th><th>Phone</th></tr>
+  <tr><td>STOP</td><td>Top bar, right</td><td>Top bar, always visible</td></tr>
+  <tr><td>Take control / Release</td><td>Top bar</td><td>Top bar</td></tr>
+  <tr><td>Target (Simulation / Hardware / VR), Start / Stop</td><td>Top bar, centre</td><td>Session tab</td></tr>
+  <tr><td>Joint and Cart menus: modes, options, config</td><td>Control bar &#9656; Joint / Cart panels</td><td>Control tab, Joint | Cart switch</td></tr>
+  <tr><td>Joint targets or end-effector target</td><td>Inside the Joint / Cart panel</td><td>Control tab</td></tr>
+  <tr><td>Gripper, Home</td><td>Control bar</td><td>Control tab, bottom</td></tr>
+  <tr><td>Quick Actions, Snapshot, Contact</td><td>Control bar panels</td><td>Session tab</td></tr>
+  <tr><td>Dashboard (Base, Joints, End effector, wrench, contact)</td><td>Main area</td><td>Dashboard tab</td></tr>
+  <tr><td>3D view of the robot</td><td>Dashboard card (Robot)</td><td>3D tab</td></tr>
+  <tr><td>Extensions</td><td><strong>Extensions</strong> in the top bar</td><td>Add-ons tab</td></tr>
+  <tr><td>Log</td><td>Dashboard card</td><td>Log tab</td></tr>
+  <tr><td>Other Studios</td><td>Switcher in the top bar</td><td>Session tab</td></tr>
+</table>
+<p>Colours are the Studio's current theme; change the theme in the Studio and the page follows.
+Each target row shows the commanded value, a slider with an orange mark at the measured position,
+&minus;&nbsp;/&nbsp;+ jog buttons (hold to repeat) with a selectable step, and the measured value.</p>
+
+<h2>Taking control</h2>
+<p>Any number of browsers can watch. Only one at a time can command:</p>
+<ul>
+  <li><strong>Take control</strong> claims it if nobody holds it. While someone does, the button reads
+    <em>In use</em> and the banner names them.</li>
+  <li>The page keeps control by sending a heartbeat every second; a command also counts. Control is
+    lost after <strong>3&nbsp;s</strong> without either.</li>
+  <li>The page gives control up at once when it is hidden: the phone locks, the browser goes to the
+    background, or the tab closes.</li>
+  <li>Nobody can take control from a live holder. The Studio can: <em>Take control back</em> in
+    Settings &#9656; Web Remote.</li>
+  <li><strong>STOP never needs control.</strong> Any connected browser can press it.</li>
+</ul>
+
+<h2>Safety behaviour</h2>
+<table>
+  <tr><th>Situation</th><th>What happens</th></tr>
+  <tr><td>STOP pressed on any browser</td><td>The Studio's full <a href="#estop" onclick="showPage('estop')">E-STOP</a> runs (graceful stop, then process teardown). Control is taken away, and motion commands are refused for 2&nbsp;s so a jog already on its way cannot re-command the arm. STOP fires on press, not on release.</td></tr>
+  <tr><td>Slider or &plusmn; on a touch screen</td><td>The edit waits: the row turns orange and a <strong>Send / Revert</strong> bar appears. Nothing moves until Send. A stray touch while scrolling therefore changes nothing.</td></tr>
+  <tr><td>Slider with a mouse</td><td>Releasing the slider (or pressing Enter in the value) sends it, as the Studio does.</td></tr>
+  <tr><td>Live publish on</td><td>Edits stream at up to 10 per second, always including the last one. It switches off when control is lost.</td></tr>
+  <tr><td>Start / Stop</td><td>Hold 1.2&nbsp;s to confirm. A start on Hardware with no driver command configured is refused with a message instead of opening a dialog on the desktop.</td></tr>
+  <tr><td>Home while a sequence plays</td><td>The page asks first.</td></tr>
+  <tr><td>The Studio switched robot</td><td>Commands carry the robot the page is showing and are refused if it no longer matches; the page reloads its controls.</td></tr>
+  <tr><td>Target is VR</td><td>Commanding is locked, as in the Studio: the headset drives.</td></tr>
+  <tr><td>Legged robot</td><td>Cart is disabled (no kinematics solver), as in the Studio.</td></tr>
+  <tr><td>The Studio closes or crashes</td><td>The page shows <em>not reachable</em> and reconnects when the Studio returns. The robot processes are stopped by the Studio's own teardown, exactly as without the web remote.</td></tr>
+</table>
+<div class="admonition warning"><div class="adm-title">Still a shared machine</div>
+<p>Signing in decides who may open the page and what they see, not who is in the room. Anyone signed
+in can take control when it is free, and STOP once signed in. The certificate is the Studio's own, so
+a browser trusts it only after you accept it. The software STOP is no substitute for the hardware
+emergency stop.</p></div>
+
+<h2>Extensions in the browser</h2>
+<p>The Studio's extensions &mdash; and the Studio pages the web app has no version of its own for
+(Multi-Robot, Tuning, Safety, Locomotion) &mdash; are Qt pages. Rather than write each one again for
+the browser, the Studio describes the page it already has &mdash; buttons, tick boxes, drop-downs, numbers, sliders,
+text, logs &mdash; and the web app draws the same controls and sends back what was used. An
+extension written next month appears on its own, with nothing added here.</p>
+<ul>
+  <li><strong>Choosing one</strong> &mdash; the drop-down lists the Studio pages first, then every
+    extension this Studio has loaded (Settings &#9656; Extensions decides which those are). The page follows the Studio's own,
+    refreshing about every two seconds while it is open.</li>
+  <li><strong>Using one needs control</strong>, exactly as the control bar does: until
+    <em>Take control</em> the controls are shown but dimmed, and the Studio refuses them.</li>
+  <li><strong>What is not mirrored</strong> &mdash; a plot, a 3D view or a custom widget has no
+    browser equivalent, so it is listed as <em>only in the Studio</em> rather than quietly left
+    out.</li>
+  <li><strong>Values follow the Studio</strong>: change something in the Studio and the browser
+    shows it, and the other way round. A half-typed number is left alone while it is being typed.</li>
+</ul>
+<div class="admonition warning"><div class="adm-title">It is the real panel</div>
+<p>A button in the browser runs the same handler as the button in the Studio &mdash; including the
+ones that move the arm. Give the <code>extensions</code> page only to people you would hand the
+Studio to, and remember the control lease is what decides who may press anything.</p></div>
+
+<h2 id="web-remote-accounts">Signing in</h2>
+<p>The page asks for a name and password, and shows only the pages that person is allowed. It is
+served over HTTPS, so the password does not cross the lab in the clear.</p>
+<ul>
+  <li><strong>Anyone can make their own account</strong> &mdash; <em>Make one</em> on the sign-in
+    screen asks for a name and a password (eight characters or more) and signs them straight in.
+    What they get is the page and <strong>the simulation only</strong>: they can drive a simulated
+    robot, but they cannot move the target off simulation, and nothing they press reaches an arm
+    while the Studio is on hardware or VR. E-STOP still works. An admin lifts that with the
+    <em>Simulation only</em> switch on the <strong>Users</strong> page. Turn self sign-up off with
+    <code>web_remote.signup</code>.</li>
+  <li><strong>The first admin</strong> &mdash; a Studio with no user list makes one: user
+    <code>admin</code> with a random password, said once in the log and on standard output (the
+    journal keeps it: <code>journalctl --user -u fic-studio | grep "first sign-in"</code>). Nothing
+    else can be done until someone signs in with it.</li>
+  <li><strong>Pages</strong> &mdash; <code>control</code>, <code>view3d</code>, <code>dashboard</code>,
+    <code>session</code>, <code>log</code>, <code>extensions</code>. An admin ticks them per person on the
+    <strong>Users</strong> page (in the sidebar, for admins only). A tab or card that is not ticked
+    is not shown, and the Studio refuses the matching requests as well: hiding is not the lock.</li>
+  <li><strong>Commanding the robot</strong> needs the <code>control</code> page. Without it the page
+    watches: no control bar, no Take control.</li>
+  <li><strong>STOP</strong> works for anyone signed in, whatever their pages.</li>
+  <li><strong>Admins</strong> see every page and may add, remove and change users, including setting a
+    new password for someone who forgot theirs.</li>
+  <li><strong>A lab that is locked out</strong> &mdash; <a href="#settings" onclick="showPage('settings')">Settings</a>
+    &#9656; Web Remote has <strong>Reset admin password&hellip;</strong>. Whoever is at the Studio is
+    at the machine, so the old password is not needed: type a new one, or leave it empty and the
+    Studio makes one up and shows it (and says it on standard output, for a robot PC with no
+    monitor). Every browser is signed out, and the new password reaches the lab's other Studios
+    like any other change.</li>
+  <li><strong>Sessions</strong> live in the Studio's memory: restarting a Studio signs everyone out,
+    and a session left alone for 12 hours ends. Eight wrong passwords in a row make that name wait a
+    minute.</li>
+</ul>
+<p>Passwords are never stored &mdash; only a scrypt hash with a per-user salt, in
+<code>~/.fic_studio/accounts.json</code> (mode 0600), beside this machine's certificate.</p>
+
+<h3>One user list for the lab</h3>
+<p>Every Studio shares the same list over ROS (<code>/fic_studio/accounts</code>, republished every
+5&nbsp;s), newest version winning. An admin therefore edits users once &mdash; on the Master &mdash;
+and within seconds the others have taken it and saved it, including Studios started later. Hashes
+travel between Studios on the lab's own ROS domain; nothing of the kind reaches a browser.</p>
+<div class="admonition tip"><div class="adm-title">Turning it off</div>
+<p>A lab that does not want accounts sets <code>web_remote.accounts</code> to false: the page then
+behaves as it did before, open to anyone who can reach the port. <code>web_remote.https</code> does the
+same for the certificate. Both are on by default.</p></div>
+
+<h2>Several Studios</h2>
+<p>Every Studio serves its own page, titled with its host and station (for example
+<em>robot2 &middot; Station 1</em>). If the port is taken &mdash; a second Studio on the same
+machine &mdash; the next free port is used (8089, 8090&hellip;) and the log says so.</p>
+<p>Studios find each other over ROS: each publishes a small card for its page on
+<code>/fic_studio/web_remotes</code> every 2&nbsp;s and drops any Studio not heard from for 7&nbsp;s.
+Every page lists the others in its switcher, choosing the address on the same network as the
+browser. Studios must share a ROS domain to see each other, as they already do to share robots.</p>
+
+<h2>Settings</h2>
+<table>
+  <tr><th>Key</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>web_remote.enabled</code></td><td>true</td><td>Serve the page. Applied at once from the settings card.</td></tr>
+  <tr><td><code>web_remote.port</code></td><td>8088</td><td>First port to try; the next free one is used if it is taken. <em>Apply</em> restarts the server.</td></tr>
+  <tr><td><code>web_remote.accounts</code></td><td>true</td><td>Ask for a name and password, and show each person only their pages.</td></tr>
+  <tr><td><code>web_remote.signup</code></td><td>true</td><td>Let a visitor make their own account. They get the simulation only until an admin says otherwise.</td></tr>
+  <tr><td><code>web_remote.https</code></td><td>true</td><td>Serve with this machine's self-signed certificate (made on first use, renewed a month before it expires). A browser that opens the old <code>http://</code> address is redirected to it.</td></tr>
+</table>
+<p>The card also carries <strong>Take control back</strong> and <strong>Reset admin
+password&hellip;</strong>, the two things that need the machine rather than the page.</p>
+<p>The <strong>WEB</strong> indicator in the status bar is grey when no browser is connected, green
+with a count when some are, blue while a browser holds control, and red if the server could not
+start. Its tooltip lists the addresses.</p>
+
+<h2>How it works</h2>
+<ul>
+  <li><strong>Server</strong> &mdash; <code>fic_studio/web_remote/server.py</code>, the Python standard
+    library only. It serves a fixed set of files and nothing else, accepts commands only as JSON (so a
+    web page on another site cannot send them), and pushes state as Server-Sent Events.</li>
+  <li><strong>Threading</strong> &mdash; requests arrive on server threads; every command and every
+    snapshot runs on the Studio's Qt thread through <code>MainThreadInvoker</code>, the thread its own
+    buttons use. A command that waited too long is dropped rather than run late; STOP is never dropped.</li>
+  <li><strong>Commands and state</strong> &mdash; <code>web_remote/actions.py</code> maps each command onto
+    the Studio handler and builds the snapshot from the same fields the desktop shows.</li>
+  <li><strong>Control lease</strong> &mdash; <code>web_remote/lease.py</code>.</li>
+  <li><strong>Extensions</strong> &mdash; <code>web_remote/qtmirror.py</code> describes a Qt page as
+    data and applies what the browser sends back, on the Qt thread. Widgets are addressed by their
+    place in the tree, and a page that changed under a phone is refused rather than clicked
+    blindly.</li>
+  <li><strong>Accounts</strong> &mdash; <code>web_remote/accounts.py</code> (the store and the
+    permissions), <code>web_remote/auth.py</code> (sessions), <code>web_remote/tls.py</code> (the
+    certificate), <code>web_remote/sync.py</code> (one list for the lab, over ROS).</li>
+  <li><strong>3D view</strong> &mdash; <code>web_remote/scene.py</code> reads the robot's MuJoCo model
+    and sends its shape once; <code>static/view3d.js</code> draws it and poses it from the same joint
+    feedback the Dashboard shows, so on hardware it is the arm's measured position.</li>
+  <li><strong>Discovery</strong> &mdash; <code>web_remote/discovery.py</code>.</li>
+  <li><strong>Studio wiring</strong> &mdash; <code>mixins/web_remote_mixin.py</code>: start and stop, the
+    10&nbsp;Hz state push, the status-bar indicator and the settings card. It is a mixin like the
+    <a href="#gamepad" onclick="showPage('gamepad')">gamepad</a> rather than an extension, because it
+    needs the E-STOP and process control that extensions deliberately do not get.</li>
+  <li><strong>Page</strong> &mdash; <code>web_remote/static/</code>: <code>index.html</code>,
+    <code>app.js</code>, <code>app.css</code>. No build step.</li>
+</ul>
+
+<h2>HTTP API</h2>
+<p>For scripts. The page itself uses only these endpoints. With accounts on, every request but
+<code>GET /api/session</code> and <code>POST /api/login</code> needs the session cookie
+(<code>fic_session</code>) from a login, and a script must accept the Studio's certificate
+(<code>curl --cacert ~/.fic_studio/web-cert.pem</code>, or <code>-k</code>).</p>
+<table>
+  <tr><th>Request</th><th>Body / query</th><th>Returns</th></tr>
+  <tr><td><code>GET /api/session</code></td><td>&mdash;</td><td><code>{ok, auth}</code>: who is signed in, their pages, whether they may command</td></tr>
+  <tr><td><code>POST /api/login</code></td><td><code>{user, password}</code></td><td><code>{ok, auth}</code> and the cookie; 401 wrong, 429 locked out</td></tr>
+  <tr><td><code>POST /api/register</code></td><td><code>{user, password}</code></td><td><code>{ok, auth}</code> and the cookie; 400 if the name is taken or the password is short, 403 if sign-up is off</td></tr>
+  <tr><td><code>POST /api/logout</code></td><td>&mdash;</td><td><code>{ok}</code></td></tr>
+  <tr><td><code>GET /api/users</code></td><td>&mdash;</td><td><code>{ok, users, pages}</code>, admins only (no hashes)</td></tr>
+  <tr><td><code>POST /api/users</code></td><td><code>{user, password?, role?, pages?, sim_only?, remove?}</code></td><td><code>{ok, users}</code>, admins only</td></tr>
+  <tr><td><code>GET /api/state</code></td><td><code>?client=&lt;id&gt;</code></td><td><code>{ok, state, control}</code></td></tr>
+  <tr><td><code>GET /api/events</code></td><td><code>?client=&lt;id&gt;&amp;name=&lt;label&gt;</code></td><td>Event stream: <code>state</code> (~10&nbsp;Hz), <code>control</code> (on change)</td></tr>
+  <tr><td><code>GET /api/panels</code></td><td>&mdash;</td><td><code>{ok, panels}</code>: the extensions this Studio has loaded</td></tr>
+  <tr><td><code>GET /api/panel</code></td><td><code>?id=&lt;extension&gt;</code></td><td><code>{ok, panel}</code>: its controls as data (<code>sig</code>, <code>nodes</code>)</td></tr>
+  <tr><td><code>GET /api/scene</code></td><td>&mdash;</td><td><code>{ok, scene}</code>: the robot's shape for the 3D view</td></tr>
+  <tr><td><code>POST /api/control</code></td><td><code>{client, name, op}</code>, op = take | release | heartbeat</td><td><code>{ok, control}</code>; 409 when someone else holds it</td></tr>
+  <tr><td><code>POST /api/command</code></td><td><code>{client, name, action, args}</code></td><td><code>{ok}</code> or <code>{ok: false, error, message}</code>; 403 without control (except <code>estop</code>)</td></tr>
+</table>
+<p>Commands (<code>args</code> may also carry <code>robot</code>, checked against the Studio's robot):</p>
+<table>
+  <tr><th>action</th><th>args</th></tr>
+  <tr><td><code>estop</code></td><td>&mdash;</td></tr>
+  <tr><td><code>set_mode</code></td><td><code>index</code> 0&ndash;7 (Joint Impedance &hellip; Cartesian Admittance Haptic)</td></tr>
+  <tr><td><code>set_option</code></td><td><code>name</code> = admittance_planner | postural | elbow | hapfic, <code>value</code></td></tr>
+  <tr><td><code>set_profile</code></td><td><code>name</code></td></tr>
+  <tr><td><code>send_joints</code></td><td><code>degrees</code>: one value per joint row, <code>null</code> for view-only rows (Joint modes)</td></tr>
+  <tr><td><code>send_pose</code></td><td><code>x, y, z</code> (m), <code>ax, ay, az, angle</code> (axis&ndash;angle, degrees) (Cartesian modes)</td></tr>
+  <tr><td><code>gripper</code></td><td><code>percent</code> 0 (closed) &ndash; 100 (open)</td></tr>
+  <tr><td><code>home</code></td><td><code>confirm</code> when a sequence plays</td></tr>
+  <tr><td><code>set_target</code></td><td><code>target</code> = simulation | hardware | vr (not while running)</td></tr>
+  <tr><td><code>session</code></td><td><code>op</code> = start | stop, <code>confirm: true</code></td></tr>
+  <tr><td><code>sequence</code></td><td><code>op</code> = play | loop | stop, <code>name</code></td></tr>
+  <tr><td><code>capture</code></td><td><code>kind</code> = cartesian | joint | gripper, <code>sequence</code></td></tr>
+  <tr><td><code>contact_calibrate</code></td><td>&mdash;</td></tr>
+  <tr><td><code>panel</code></td><td><code>extension</code>, <code>path</code>, <code>kind</code>, <code>value</code> &mdash; use one control on an extension's page; the reply carries the page again</td></tr>
+</table>
+
+<h2>Troubleshooting</h2>
+<table>
+  <tr><th>Symptom</th><th>Check</th></tr>
+  <tr><td>The page does not load</td><td>Use the address and port the Studio shows (the port is part of it). The phone must be on the same network, or on the same Tailscale account's network. If a firewall is enabled on the robot PC, allow the port: <code>sudo ufw allow 8088/tcp</code>.</td></tr>
+  <tr><td>Loads over the LAN but not over Tailscale</td><td>After switching Tailscale accounts the robot PC has a new address; the phone must be signed in to that same account. Turn the web remote off and on (or restart the Studio) so the Studio lists the new address.</td></tr>
+  <tr><td>"Take control" reads <em>In use</em></td><td>Another browser holds control; the banner names it. Wait for it to release, or take control back in the Studio's settings card.</td></tr>
+  <tr><td>A command is refused</td><td>The message says why: not in control, the wrong kind of mode for that target, VR target, the E-STOP hold-off, or the Studio switched robot.</td></tr>
+  <tr><td>Studios missing from the switcher</td><td>They must share the ROS domain and run v4.3.0 or later.</td></tr>
+  <tr><td>The browser says the connection is not private</td><td>Expected: the Studio signs its own certificate. Accept it once, or install <code>~/.fic_studio/web-cert.pem</code> on the devices that use the page.</td></tr>
+  <tr><td>Nobody knows the admin password</td><td>Any admin can set a new one for anyone on the Users page. With no admin left, use <strong>Reset admin password&hellip;</strong> in Settings &#9656; Web Remote on any Studio in the lab; it shows the new password and shares it with the others. On a robot PC with no monitor, read it with <code>journalctl --user -u fic-studio | grep "password for"</code>.</td></tr>
+  <tr><td>A user added on one Studio cannot sign in on another</td><td>They must share the ROS domain (the same thing that shares robots). The list is republished every 5&nbsp;s, so give it a moment; a Studio with a newer list wins.</td></tr>
+  <tr><td>"This account may use the simulation only"</td><td>They made their own account. An admin turns off <em>Simulation only</em> for them on the Users page.</td></tr>
+  <tr><td>A page or tab is missing</td><td>An admin has not ticked it for that person. The Users page shows what they have.</td></tr>
+  <tr><td>"Could not open port" in the log</td><td>All ten ports from the configured one up are in use, or the port needs root (below 1024). Pick another port in Settings.</td></tr>
+</table>

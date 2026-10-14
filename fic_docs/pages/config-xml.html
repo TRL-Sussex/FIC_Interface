@@ -1,0 +1,425 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">›</span> config.xml</div>
+<h1>config.xml Reference</h1>
+<p class="subtitle">Location: <code>fic_library/config/config.xml</code></p>
+
+<h2>Overview</h2>
+<p>This file stores all FIC tuning parameters, organised per robot, per control mode (1&ndash;8),
+per <strong>tuning profile</strong>, and per joint (or Cartesian axis). It is read by
+<code>fic_param_loader.hpp</code> (C++ controller) when the robot or mode needs a new tuning
+set and whenever the tuning on disk changes, and by <code>xml_manager.py</code> (Python GUI) for live editing. The file currently
+contains an entry for each robot: <code>KinovaGen3_7DOF</code>, <code>Franka_FR3</code>,
+<code>IIWA_14</code>, <code>Pendulum</code>.
+The robot-description file <code>robots_config.yaml</code> lives in the same directory
+(see <a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a>).</p>
+
+<div class="admonition warning"><div class="adm-title">Which copy do the nodes read?</div>
+<p>The C++ nodes do <strong>not</strong> read <code>fic_library/config/config.xml</code> directly.
+Both <code>fic_simulation.cpp</code> and <code>fic_hardware.cpp</code> resolve the path via
+the installed package share directory:</p>
+<pre><code>get_package_share_directory("fic_simulation") + "/config/config.xml"</code></pre>
+<p><code>fic_simulation</code>'s CMakeLists installs <code>fic_library/config/</code> into
+<code>share/fic_simulation/</code>. With <code>colcon build --symlink-install</code> the installed
+copy is a symlink back to the source file, so edits take effect on the next reload; with a plain
+<code>colcon build</code> you must rebuild <code>fic_simulation</code> for edits to be seen by the
+controller. The Python GUI always edits the source file in <code>fic_library/config/</code>
+(resolved by <code>find_config_path()</code>).</p></div>
+
+<div class="admonition tip"><div class="adm-title">Profiles — named tuning sets</div>
+<p>Every control-mode block carries a <code>profile="..."</code> attribute. Profiles let you store
+multiple named tuning variants for the same mode (e.g. <code>default</code>, <code>Stiff</code>,
+<code>Gentle</code>) and swap between them at runtime. Profiles are <strong>robot-scoped</strong>:
+the name <code>Stiff</code> is a robot-wide label that may have concrete per-mode overrides for some
+modes and fall back to <code>default</code> for others.</p></div>
+
+<h2>Uniform <code>&lt;mode&gt;</code> Schema</h2>
+<p>Every tuning entry under a robot is a <code>&lt;mode&gt;</code> element with three attributes:</p>
+<table>
+  <tr><th>Attribute</th><th>Type</th><th>Description</th></tr>
+  <tr><td><code>id</code></td><td>int 1&ndash;8</td><td>Control mode index (see Control Modes page)</td></tr>
+  <tr><td><code>name</code></td><td>string</td><td>Human-readable mode name (e.g. <code>"Joint Impedance"</code>)</td></tr>
+  <tr><td><code>profile</code></td><td>string</td><td>Tuning profile name. <code>"default"</code> always exists; others are user-created. A missing attribute is treated as <code>"default"</code></td></tr>
+</table>
+<p>The <code>name</code> attributes used in the shipped file match the GUI's mode table
+(<code>CONTROL_MODES</code> in <code>xml_manager.py</code>; see
+<a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>):</p>
+<table>
+  <tr><th>id</th><th><code>name</code> attribute</th><th>id</th><th><code>name</code> attribute</th></tr>
+  <tr><td>1</td><td>Joint Impedance</td><td>5</td><td>Cartesian Impedance</td></tr>
+  <tr><td>2</td><td>Joint Impedance With Planner</td><td>6</td><td>Cartesian Planner</td></tr>
+  <tr><td>3</td><td>Joint Admittance</td><td>7</td><td>Cartesian Admittance</td></tr>
+  <tr><td>4</td><td>Joint Admittance Haptic</td><td>8</td><td>Cartesian Admittance Haptic</td></tr>
+</table>
+<p>Mode 0 (Idle) has no tuning entry. Joint elements use zero-based ids
+(<code>&lt;joint id="0"&gt;</code> &hellip; <code>id="6"</code> for a 7-DOF arm). Only the
+<code>id</code> attribute is used for matching &mdash; the loader ignores <code>name</code>.</p>
+
+<h2>Full Structure</h2>
+<p>Excerpt from the shipped file (actual <code>Franka_FR3</code> default values):</p>
+<pre><code>&lt;robots&gt;
+  &lt;robot name="Franka_FR3"&gt;
+
+    &lt;!-- Joint modes (1-4): one &lt;joint&gt; block per joint --&gt;
+    &lt;mode id="1" name="Joint Impedance" profile="default"&gt;
+      &lt;joint id="0"&gt;
+        &lt;controller&gt;
+          &lt;stiffness&gt;200.000&lt;/stiffness&gt;
+          &lt;diff_effort_max&gt;100.2&lt;/diff_effort_max&gt;
+          &lt;error_max&gt;0.05,0.5&lt;/error_max&gt;
+          &lt;force_max&gt;10,20&lt;/force_max&gt;
+          &lt;saturation_ratios&gt;0.9&lt;/saturation_ratios&gt;
+          &lt;n_saturations&gt;2&lt;/n_saturations&gt;
+          &lt;asymmetric&gt;false&lt;/asymmetric&gt;
+          &lt;n_neg_sat&gt;1&lt;/n_neg_sat&gt;
+        &lt;/controller&gt;
+      &lt;/joint&gt;
+      &lt;!-- joint id="1" ... id="6" --&gt;
+    &lt;/mode&gt;
+
+    &lt;mode id="2" name="Joint Impedance With Planner" profile="default"&gt;
+      &lt;joint id="0"&gt;
+        &lt;controller&gt;
+          &lt;stiffness&gt;200.000&lt;/stiffness&gt;
+          &lt;diff_effort_max&gt;100.2&lt;/diff_effort_max&gt;
+          &lt;error_max&gt;0.05,0.5&lt;/error_max&gt;
+          &lt;force_max&gt;10,20&lt;/force_max&gt;
+          &lt;saturation_ratios&gt;0.9&lt;/saturation_ratios&gt;
+          &lt;velocity&gt;1.3963&lt;/velocity&gt;
+          &lt;n_saturations&gt;2&lt;/n_saturations&gt;
+          &lt;asymmetric&gt;false&lt;/asymmetric&gt;
+          &lt;n_neg_sat&gt;1&lt;/n_neg_sat&gt;
+        &lt;/controller&gt;
+        &lt;planner&gt;
+          &lt;stiffness&gt;15780.0&lt;/stiffness&gt;
+          &lt;vel_desired&gt;0.4&lt;/vel_desired&gt;
+          &lt;acc_max&gt;5000.0&lt;/acc_max&gt;
+          &lt;damping_ratio&gt;0.01&lt;/damping_ratio&gt;
+          &lt;frequency&gt;150.0&lt;/frequency&gt;
+        &lt;/planner&gt;
+      &lt;/joint&gt;
+    &lt;/mode&gt;
+
+    &lt;!-- Cartesian modes (5-8): one &lt;cartesian&gt; block with 4 axes --&gt;
+    &lt;mode id="5" name="Cartesian Impedance" profile="default"&gt;
+      &lt;cartesian&gt;
+        &lt;x&gt;&lt;controller&gt;...&lt;/controller&gt;&lt;/x&gt;
+        &lt;y&gt;&lt;controller&gt;...&lt;/controller&gt;&lt;/y&gt;
+        &lt;z&gt;&lt;controller&gt;...&lt;/controller&gt;&lt;/z&gt;
+        &lt;q&gt;&lt;controller&gt;...&lt;/controller&gt;&lt;/q&gt;  &lt;!-- orientation --&gt;
+      &lt;/cartesian&gt;
+    &lt;/mode&gt;
+
+    &lt;!-- User-created profile override (extends existing mode with custom tuning) --&gt;
+    &lt;mode id="2" name="Joint Impedance With Planner" profile="Gentle"&gt;
+      &lt;joint id="0"&gt;
+        &lt;controller&gt;
+          &lt;stiffness&gt;8.5&lt;/stiffness&gt;   &lt;!-- softer than default --&gt;
+          &lt;!-- other controller params ... --&gt;
+        &lt;/controller&gt;
+        &lt;planner&gt;...&lt;/planner&gt;
+      &lt;/joint&gt;
+    &lt;/mode&gt;
+
+    &lt;!-- Robot-scoped null-space tasks (no mode id, no profile) --&gt;
+    &lt;postural&gt;
+      &lt;controller&gt;...&lt;/controller&gt;
+      &lt;planner&gt;...&lt;/planner&gt;   &lt;!-- written for round-trip; runtime uses controller only --&gt;
+    &lt;/postural&gt;
+    &lt;elbow&gt;
+      &lt;controller&gt;...&lt;/controller&gt;
+    &lt;/elbow&gt;
+
+  &lt;/robot&gt;
+&lt;/robots&gt;</code></pre>
+<p>The <code>&lt;postural&gt;</code> and <code>&lt;elbow&gt;</code> blocks configure the null-space
+helper toggles available in Cartesian modes (see <a href="#control-modes" onclick="showPage('control-modes')">Control
+Modes</a> and <a href="#hapfic" onclick="showPage('hapfic')">HapFIC</a>). They sit directly under
+<code>&lt;robot&gt;</code> &mdash; they are <strong>not</strong> per-mode and <strong>not</strong>
+per-profile; a single block is shared by every Cartesian mode that invokes the task.</p>
+
+<h2>Profile Resolution &amp; Fallback</h2>
+<p>At runtime, the controller resolves <code>(robot, mode, profile)</code> as follows:</p>
+<ol>
+  <li>Search for a <code>&lt;mode&gt;</code> with exactly matching <code>id</code> and <code>profile</code>. If found, use it.</li>
+  <li>Otherwise fall back to the <code>&lt;mode&gt;</code> with the same <code>id</code> and <code>profile="default"</code> (implemented by <code>findModeElement()</code> in <code>fic_param_loader.hpp</code>).</li>
+  <li>If even the default is missing, use the loader's built-in safe defaults (no segfault).</li>
+</ol>
+<p><strong>HAP-FIC</strong> has a block of its own, <code>&lt;mode id="100" name="HAP-FIC"&gt;</code>: its joint layer
+in <code>&lt;joint&gt;</code> and its Cartesian layer in <code>&lt;cartesian&gt;</code>. Id 100 is not a control mode; both nodes read it
+whenever HAP-FIC is on in modes 6&ndash;8 (<code>fic::tuningKeyFor</code>), resolving the profile as above. A robot with no
+HAP-FIC block at all runs HAP-FIC on mode 4&rsquo;s joints and mode 6&rsquo;s Cartesian block, as before the block existed.</p>
+<p>This means a profile like <code>Gentle</code> only needs concrete blocks for the modes you want to customise;
+other modes transparently inherit the default tuning. The GUI shows a <code>(fallback → default)</code>
+indicator next to any profile that falls back for the currently selected mode.</p>
+<p>The loader injects its safe memory defaults <em>before</em> parsing the XML, then overwrites
+whatever it finds, so a partially-populated block is fine &mdash; missing elements silently keep
+the defaults. When a mode block or the whole file is missing entirely, the loader logs to stderr
+and keeps the memory defaults:</p>
+<pre><code>[fic] config.xml load FAILED at &lt;path&gt; — planner will use defaults (vel_desired=0)
+[fic] no &lt;mode id="N" profile="P"&gt; for robot &lt;name&gt; — planner defaults (vel_desired=0)</code></pre>
+<div class="admonition tip"><div class="adm-title">Symptom: joints sag under gravity</div>
+<p>A failed config load leaves <code>vel_desired = 0</code> in the planner, which historically
+manifested as joints slowly sagging under gravity in planner modes. If you see that, check the
+node's console output (<a href="#log-viewer" onclick="showPage('log-viewer')">Logs</a>) for the
+<code>[fic]</code> error lines above.</p></div>
+
+<h2>Data Flow</h2>
+<svg viewBox="0 0 700 250" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="config.xml data flow">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#configxml-arrowhead); }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+  </style>
+  <defs>
+    <marker id="configxml-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+  </defs>
+  <text x="350" y="18" class="label-title">config.xml data flow</text>
+
+  <!-- GUI -->
+  <rect x="30" y="45" width="180" height="60" class="box box-purple"/>
+  <text x="120" y="65" class="label-bold">FIC Control Studio</text>
+  <text x="120" y="85" class="label-code">xml_manager.py (XMLManager)</text>
+
+  <!-- source file -->
+  <rect x="280" y="45" width="180" height="60" class="box box-orange"/>
+  <text x="370" y="65" class="label-bold">Source file</text>
+  <text x="370" y="85" class="label-code">fic_library/config/config.xml</text>
+
+  <!-- installed copy -->
+  <rect x="280" y="145" width="180" height="60" class="box box-grey"/>
+  <text x="370" y="165" class="label-bold">Installed copy</text>
+  <text x="370" y="185" class="label-code">share/fic_simulation/config/</text>
+
+  <!-- nodes -->
+  <rect x="520" y="145" width="160" height="60" class="box box-green"/>
+  <text x="600" y="165" class="label-bold">fic_simulation /</text>
+  <text x="600" y="181" class="label-bold">fic_hardware</text>
+  <text x="600" y="196" class="label-code">fic_param_loader.hpp</text>
+
+  <!-- arrows -->
+  <path class="arrow" d="M 210 75 L 280 75"/>
+  <text x="245" y="63" class="label-sm">read / write</text>
+  <path class="arrow" d="M 370 105 L 370 145"/>
+  <text x="425" y="125" class="label-sm">symlink-install</text>
+  <path class="arrow" d="M 460 175 L 520 175"/>
+  <text x="490" y="163" class="label-sm">load</text>
+  <path class="arrow" d="M 210 105 Q 240 230 520 195"/>
+  <text x="300" y="228" class="label-code">robot&lt;N&gt;_active_profile (std_msgs/String)</text>
+</svg>
+<p>The GUI edits the source file; the controller nodes read the installed copy. Since v4.4.0 they
+read the whole tuning for the current robot and mode once and keep it in memory; they read it again
+only when the robot, joint count or mode changes, or when the tuning on disk changes (a
+<code>robot&lt;N&gt;_param_update</code> message, sent on every SAVE TO XML, or a profile change).
+See <em>When the Nodes Read the File</em> below.</p>
+
+<h2>When the Nodes Read the File</h2>
+<p>Reading <code>config.xml</code> parses the file once per joint plus a Cartesian pass; one read
+measured about 29&nbsp;ms on the lab PC, against a 1&nbsp;ms control tick. Both nodes therefore
+read the tuning into one in-memory set (<code>fic::TuningSet</code>, built by
+<code>fic::loadTuningSet()</code> in <code>fic_param_loader.hpp</code>) holding every joint, the
+Cartesian axes and, where needed, the <code>&lt;postural&gt;</code> block. The set is labelled with
+what it was read for (<code>fic::TuningKey</code>): robot, joint count, the mode the joint
+parameters come from, the mode the Cartesian parameters come from, and whether the postural block
+is included.</p>
+<table>
+  <tr><th>Event</th><th>What the node does</th></tr>
+  <tr><td>Mode change, robot selection, joint-count change, HAP-FIC on/off where it changes the mode the parameters come from</td><td>The key changes, so a new set is read. Until it is in memory the control loop returns early and sends no new command; then the controllers start on it.</td></tr>
+  <tr><td><code>robot&lt;N&gt;_param_update</code> (any payload)</td><td>The set is read again with the same key. The controllers keep running on the old set until the new one is ready, then switch to it on the next tick.</td></tr>
+  <tr><td><code>robot&lt;N&gt;_active_profile</code> with a different name</td><td>As <code>param_update</code>, with the new profile.</td></tr>
+  <tr><td>A new joint or Cartesian target</td><td>No read. Where a joint target re-seeds the controllers (<code>robot&lt;N&gt;_target_joint_angles</code> in <code>fic_simulation</code> outside mode 1; <code>robot&lt;N&gt;_desired_joint_angles</code> in mode 2, or in the other modes except 1 while the admittance planner is on) they re-seed from the set already in memory, which takes microseconds. A Cartesian target does not re-seed them.</td></tr>
+  <tr><td>A <code>robot&lt;N&gt;_hapfic_enable</code> repeating the current value</td><td>Ignored.</td></tr>
+</table>
+<p>The read runs on a background thread (<code>std::async</code>), so the 1&nbsp;ms loop never
+waits on the file. A finished read that no longer matches what the loop wants (the mode or robot
+changed while it ran) is dropped and the read is started again for the new key. A read that fails
+(an exception from the loader, logged as <code>Init Failed</code>) is not retried every tick: the
+node tries again on the next change of key, <code>param_update</code> or profile. Each
+installed set is logged as <code>Controllers Initialized &hellip; (tuning read from
+config.xml)</code>.</p>
+<div class="admonition note"><div class="adm-title">Before v4.4.0</div>
+<p>The nodes re-read the file inside the control loop whenever <code>initControllerPLanner</code>
+was cleared, and outside Joint Impedance (mode 1) a streamed joint target cleared it
+(on <code>robot&lt;N&gt;_target_joint_angles</code>, which only <code>fic_simulation</code> takes, in every
+such mode; on <code>robot&lt;N&gt;_desired_joint_angles</code>, in both nodes, in mode 2 and in the other modes
+while the admittance planner is on), as did
+every <code>hapfic_enable</code> message even with an unchanged value. In MuJoCo, with targets
+streamed at 100&nbsp;Hz, the FIC loop fell from 1000&nbsp;Hz to 74&nbsp;Hz in mode 2 and 65&nbsp;Hz in
+mode 3; <code>hapfic_enable</code> re-sent at 20&nbsp;Hz brought it to 405&nbsp;Hz. With the
+tuning set all of these run at 1000&nbsp;Hz, including a tuning save while targets stream.</p></div>
+
+<h2>Parameter Reference</h2>
+<h3>Three Sub-Blocks per Joint / Per-Axis</h3>
+<p>Each <code>&lt;joint&gt;</code> and each Cartesian axis (<code>&lt;x&gt;</code>/<code>&lt;y&gt;</code>/<code>&lt;z&gt;</code>/<code>&lt;q&gt;</code>) &mdash; and the robot-scoped <code>&lt;postural&gt;</code> &mdash; groups its parameters into up to three sibling sub-blocks, each owned by a runtime sub-system:</p>
+<table>
+  <tr><th>Sub-block</th><th>Present in</th><th>Consumed by</th></tr>
+  <tr><td><code>&lt;controller&gt;</code></td><td>every mode, postural, elbow</td><td>FIC inner loop (saturation mapping, force limits)</td></tr>
+  <tr><td><code>&lt;planner&gt;</code></td><td>Modes 2, 6, 7, 8 (edited by the GUI); postural (round-trip only)</td><td>Trajectory planner (smooths target before the inner loop)</td></tr>
+  <tr><td><code>&lt;admittance&gt;</code></td><td>Modes 3, 4, 7, 8</td><td>Virtual admittance (converts force to motion)</td></tr>
+</table>
+<p>The GUI's <code>CONTROL_MODES</code> table drives which sub-blocks are shown per mode
+(planner for 2/6/7/8, admittance for 3/4/7/8). The shipped file also carries
+<code>&lt;planner&gt;</code> blocks under joint-admittance modes 3/4 for some robots; the C++
+loader reads any sub-block it finds regardless of mode, so those values are loaded if present.
+The postural <code>&lt;planner&gt;</code> block is written so existing configs round-trip, but the
+runtime postural path only consumes the controller parameters.</p>
+<p>Prior to v2.5.3 the <code>&lt;controller&gt;</code> fields were direct children of the parent block. Loaders retain a legacy fallback so un-migrated files still load, but all new tooling writes the nested form.</p>
+
+<h3><code>&lt;controller&gt;</code> Sub-Element</h3>
+<table>
+  <tr><th>XML Element</th><th>Type</th><th>Description</th></tr>
+  <tr><td><code>&lt;stiffness&gt;</code></td><td>float</td><td>Linear spring constant K0 (N/m or Nm/rad)</td></tr>
+  <tr><td><code>&lt;diff_effort_max&gt;</code></td><td>float</td><td>Read by the loader, but no controller uses it. Kept so existing files and tools load; not on the Tuning pages, and a save keeps the stored value.</td></tr>
+  <tr><td><code>&lt;error_max&gt;</code></td><td>float,float,&hellip;</td><td>Saturation breakpoints xb1,xb2,&hellip; (rad or m)</td></tr>
+  <tr><td><code>&lt;force_max&gt;</code></td><td>float,float,&hellip;</td><td>Force values f1,f2,&hellip; at breakpoints (N or Nm)</td></tr>
+  <tr><td><code>&lt;saturation_ratios&gt;</code></td><td>float[]</td><td>Blend factors per segment (higher = more linear)</td></tr>
+  <tr><td><code>&lt;velocity&gt;</code></td><td>float</td><td>Nominal velocity (joint blocks; present in planner modes and postural)</td></tr>
+  <tr><td><code>&lt;n_saturations&gt;</code></td><td>int</td><td>Number of saturation stages the FIC mapping uses (loader default 4; GUI range 2&ndash;8)</td></tr>
+  <tr><td><code>&lt;asymmetric&gt;</code></td><td>bool</td><td>If <code>true</code>, separate positive/negative saturation layouts (default <code>false</code>; accepts <code>true</code>/<code>1</code>/<code>yes</code>)</td></tr>
+  <tr><td><code>&lt;n_neg_sat&gt;</code></td><td>int</td><td>Negative-side stage count when <code>asymmetric=true</code> (loader default 2; GUI range 1&ndash;4; ignored otherwise)</td></tr>
+</table>
+
+<h3>Planner Sub-Element</h3>
+<table>
+  <tr><th>XML Element</th><th>Type</th><th>Description</th></tr>
+  <tr><td><code>&lt;stiffness&gt;</code> (joint) / <code>&lt;stiffness_P&gt;</code> (Cartesian)</td><td>float</td><td>Planner-specific stiffness. <strong>Joint</strong> planner blocks use <code>&lt;stiffness&gt;</code>; <strong>Cartesian</strong> axis planner blocks use <code>&lt;stiffness_P&gt;</code> &mdash; the C++ loader only reads the tag matching the block type</td></tr>
+  <tr><td><code>&lt;vel_desired&gt;</code></td><td>float</td><td>Desired trajectory velocity (shipped values range 0.3&ndash;3.0)</td></tr>
+  <tr><td><code>&lt;acc_max&gt;</code></td><td>float</td><td>Max acceleration</td></tr>
+  <tr><td><code>&lt;damping_ratio&gt;</code></td><td>float</td><td>Velocity damping (shipped values 0.005&ndash;0.05)</td></tr>
+  <tr><td><code>&lt;frequency&gt;</code></td><td>float</td><td>Planner update rate (Hz; 150.0 everywhere in the shipped file)</td></tr>
+  <tr><td><code>&lt;wrapped&gt;</code></td><td>int</td><td>Legacy. Present in some joint planner blocks and round-tripped by the GUI (<code>planner_wrapped</code>), but <strong>ignored by the C++ loader</strong> &mdash; at runtime joint wrapping is derived from the robot's continuous-joint flags (<code>setWrapped()</code> in <code>fic_control.h</code>)</td></tr>
+</table>
+
+<h3>Admittance Sub-Element</h3>
+<table>
+  <tr><th>XML Element</th><th>Type</th><th>Description</th></tr>
+  <tr><td><code>&lt;InvM&gt;</code></td><td>float</td><td>Inverse virtual mass (shipped values range from 3e-6 up to 1.0; loader default 1.0)</td></tr>
+  <tr><td><code>&lt;Damping&gt;</code></td><td>float</td><td>Admittance damping (shipped values 4.0&ndash;96.9; loader default 10.0)</td></tr>
+  <tr><td><code>&lt;dFlow&gt;</code></td><td>float,float</td><td>Acceleration bounds for admittance</td></tr>
+  <tr><td><code>&lt;Flow&gt;</code></td><td>float,float</td><td>Velocity bounds</td></tr>
+  <tr><td><code>&lt;Pose&gt;</code></td><td>float,float</td><td>Position deviation bounds</td></tr>
+</table>
+<p>Note the capitalised tag names (<code>InvM</code>, <code>Damping</code>, <code>dFlow</code>,
+<code>Flow</code>, <code>Pose</code>) &mdash; XML tags are case-sensitive and both loaders match
+them exactly. See <a href="#tuning" onclick="showPage('tuning')">Manual Tuning</a> for the GUI-enforced editing
+ranges and <a href="#admittance-validation" onclick="showPage('admittance-validation')">Admittance Validation</a> for how these
+values were characterised.</p>
+
+<h2>XMLManager API (Python)</h2>
+<p>The GUI uses <code>xml_manager.py</code> to read and write config.xml. Every load/save method accepts
+an optional <code>profile="default"</code> argument:</p>
+<table>
+  <tr><th>Method</th><th>Description</th></tr>
+  <tr><td><code>load_joint_params(robot, joint, mode, profile="default")</code></td><td>Load parameters for one joint / mode / profile (falls back to <code>default</code> if profile missing)</td></tr>
+  <tr><td><code>save_joint_params(robot, joint, mode, params, profile="default")</code></td><td>Save parameters into a specific profile — creates the <code>&lt;mode&gt;</code> block if it doesn't exist yet</td></tr>
+  <tr><td><code>load_cartesian_params(robot, mode, profile="default")</code></td><td>Load all four Cartesian axes</td></tr>
+  <tr><td><code>save_cartesian_axis(robot, mode, axis, params, profile="default")</code></td><td>Save one Cartesian axis</td></tr>
+  <tr><td><code>get_all_profiles(robot)</code></td><td>Union of profile names across every mode for the robot. <strong>Use this for UI selectors.</strong></td></tr>
+  <tr><td><code>get_available_profiles(robot, mode)</code></td><td>Profiles that have a concrete block for this mode (used to compute the fallback indicator)</td></tr>
+  <tr><td><code>clone_profile(robot, mode, src, dst)</code></td><td>Create a new <code>&lt;mode id=N profile=dst&gt;</code> by cloning from <code>(mode, src)</code></td></tr>
+  <tr><td><code>delete_profile(robot, mode, profile)</code></td><td>Remove a profile's block for one mode only</td></tr>
+  <tr><td><code>delete_profile_everywhere(robot, profile)</code></td><td>Remove a profile from every mode it appears in; returns the count removed. Refuses <code>default</code>.</td></tr>
+  <tr><td><code>load_postural_params(robot)</code> / <code>save_postural_params(robot, params)</code></td><td>Read/write the robot-scoped <code>&lt;postural&gt;</code> block (no mode, no profile)</td></tr>
+  <tr><td><code>load_elbow_params(robot)</code> / <code>save_elbow_params(robot, params)</code></td><td>Read/write the robot-scoped <code>&lt;elbow&gt;</code> block</td></tr>
+  <tr><td><code>get_available_robots()</code> / <code>get_available_modes(robot)</code></td><td>Enumerate robot entries and the mode ids present for one robot</td></tr>
+  <tr><td><code>get_num_joints(robot, mode=1, profile="default")</code></td><td>Count <code>&lt;joint&gt;</code> blocks in a mode</td></tr>
+  <tr><td><code>ensure_robot(robot, num_joints=7)</code></td><td>Create a full default entry if the robot is missing (load/save methods call this instead of raising on unknown robots)</td></tr>
+  <tr><td><code>save()</code></td><td>Write changes to disk</td></tr>
+  <tr><td><code>reload()</code></td><td>Re-read from disk (discard in-memory changes)</td></tr>
+</table>
+<p><code>XMLManager()</code> locates the file via <code>find_config_path()</code>, which prefers
+<code>fic_library/config/config.xml</code> relative to the source tree; pass
+<code>config_path=</code> to override.</p>
+
+<h2>C++ Loader API</h2>
+<p><code>fic_param_loader.hpp</code> exposes two functions that both accept a
+<code>profile_name</code> argument (default <code>"default"</code>):</p>
+<pre><code>fic::ParameterLoader::loadJointParams(
+    xml_file, robot_name, joint_id,
+    scalars, lists, planner, admittance,
+    control_mode = 1, is_postural = false,
+    profile_name = "default");
+
+fic::ParameterLoader::loadCartesianParams(
+    xml_file, robot_name,
+    cart_params,
+    control_mode = 5,
+    profile_name = "default");</code></pre>
+<p>Internally, <code>findModeElement(robot, mode, profile)</code> iterates <code>&lt;mode&gt;</code>
+children and falls back to <code>default</code> automatically if the requested profile isn't present.
+For <code>is_postural = true</code> the mode/profile arguments are ignored and the loader reads the
+robot-scoped <code>&lt;postural&gt;</code> block directly (it also accepts a legacy capitalised
+<code>&lt;Postural&gt;</code> tag). Both loaders retain a pre-v2.5.3 fallback: if a joint or axis
+block has no <code>&lt;controller&gt;</code> child, controller fields are read as direct children
+of the block itself.</p>
+
+<h2>Runtime Profile Switching</h2>
+<p>Both <code>fic_hardware</code> and <code>fic_simulation</code> subscribe to a
+station-scoped String topic:</p>
+<pre><code>robot&lt;N&gt;_active_profile   (std_msgs/String)</code></pre>
+<p>where <code>&lt;N&gt;</code> is the station id (see <a href="#topics" onclick="showPage('topics')">Topics</a>).
+An empty string is treated as <code>"default"</code>; a message that matches the current profile is
+ignored. When the profile actually changes, the node updates its internal
+<code>active_profile_</code>:</p>
+<ul>
+  <li>Both nodes then read the tuning again with the new profile, in the background, and switch
+  the controllers to it when it is ready (see <em>When the Nodes Read the File</em>). The
+  controllers run on the old profile until then.</li>
+  <li><strong>fic_simulation</strong> subscribes reliable and transient-local (as the GUI and the
+  experiment runner publish it), so a profile chosen before the node started is still received;
+  <strong>fic_hardware</strong> subscribes with a plain depth-10 QoS.</li>
+</ul>
+<p>Both nodes log <code>Active tuning profile: &lt;name&gt;</code> on change. The GUI publishes to
+this topic whenever the user changes the Config dropdown in the Tuning panel or a
+<a href="#control-panel" onclick="showPage('control-panel')">Control Panel</a> robot card (extra cards publish to their
+own <code>robot&lt;N&gt;_active_profile</code>), and after adding or deleting a profile.</p>
+<div class="admonition tip"><div class="adm-title">HapFIC loads its own tuning</div>
+<p>When the <a href="#hapfic" onclick="showPage('hapfic')">HapFIC</a> helper is active (modes 6&ndash;8), both nodes load
+its joint and Cartesian parameters from the <strong>HAP-FIC</strong> block, <code>&lt;mode id="100"&gt;</code>, of the
+active profile, whichever Cartesian mode is selected (<code>fic::tuningKeyFor</code> keys both layers to 100). A robot
+without a HAP-FIC block falls back to the <strong>mode 4</strong> joints and the <strong>mode 6</strong> Cartesian
+block. Tune the HAP-FIC block (HAP-FIC at the end of the Tuning panel's Mode list) to affect HapFIC behaviour.</p></div>
+
+<h2>Manual Editing</h2>
+<pre><code># Edit the source file (path relative to the repository root)
+nano fic_library/config/config.xml
+
+# Tell the running node the file changed (sim and hardware; the payload is only logged)
+ros2 topic pub --once /robot1_param_update std_msgs/String "data: robot1:manual:0"
+
+# Or switch profile: a DIFFERENT name forces a read (a message equal to the
+# current profile is ignored)
+ros2 topic pub --once /robot1_active_profile std_msgs/String "data: Gentle"
+ros2 topic pub --once /robot1_active_profile std_msgs/String "data: default"</code></pre>
+<p>Both nodes read the file again on either message. If your workspace was <em>not</em> built
+with <code>--symlink-install</code>, rebuild <code>fic_simulation</code> so the installed copy under
+<code>share/fic_simulation/config/</code> picks up your edits (see
+<a href="#build-tools" onclick="showPage('build-tools')">Build Tools</a>).</p>
+
+<div class="admonition warning"><div class="adm-title">Validation</div>
+<p>The GUI validates parameter ranges before saving. If you edit the XML manually, ensure values
+stay within the ranges documented in the <a href="#tuning" onclick="showPage('tuning')">Manual Tuning</a> page.
+Invalid values may cause the controller to behave unpredictably. Malformed numeric list entries
+(e.g. a stray letter in <code>error_max</code>) are silently skipped by the C++ loader, which can
+shorten the breakpoint list without warning &mdash; keep lists comma-separated numbers only, with
+<code>error_max</code> and <code>force_max</code> the same length.</p></div>
+
+<h2>Related Pages</h2>
+<ul>
+  <li><a href="#tuning" onclick="showPage('tuning')">Manual Tuning</a> &mdash; the GUI panel that edits these values, with per-parameter ranges</li>
+  <li><a href="#autotuning" onclick="showPage('autotuning')">Autotuning</a> &mdash; writes optimised values back into the active profile</li>
+  <li><a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a> &mdash; what each mode id does</li>
+  <li><a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a> &mdash; <code>robots_config.yaml</code>, joint limits and robot descriptions</li>
+</ul>

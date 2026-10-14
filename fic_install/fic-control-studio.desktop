@@ -1,0 +1,15 @@
+[Desktop Entry]
+Name=FIC Control Studio
+Comment=ROS2 Force Impedance Control GUI with MuJoCo Simulation
+Exec=__FIC_INSTALL__/fic-control-studio.sh
+Icon=__FIC_INSTALL__/fic-control-studio.svg
+Terminal=false
+Type=Application
+Categories=Development;Science;Robotics;
+Keywords=robot;ros;fic;impedance;control;mujoco;simulation;
+StartupWMClass=FIC Control Studio
+Actions=Classic;
+
+[Desktop Action Classic]
+Name=Classic interface
+Exec=__FIC_INSTALL__/fic-control-studio.sh --classic

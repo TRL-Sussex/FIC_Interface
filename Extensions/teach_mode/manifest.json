@@ -1,0 +1,12 @@
+{
+  "id": "teach_mode",
+  "name": "Teach Mode",
+  "description": "Put the robot in zero-torque admittance, guide it by hand, and record waypoints (joint, Cartesian, gripper) into the sequence library.",
+  "sidebar_icon": "✎",
+  "sidebar_section": "Programming",
+  "web": {
+    "page": "page.js",
+    "css": "page.css",
+    "poll_ms": 300
+  }
+}

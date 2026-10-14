@@ -1,0 +1,62 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Multi-Robot</div>
+<h1>Multi-Robot</h1>
+<p class="subtitle">Every Studio on the network on one page: see each robot, stop them all, pair them for teleoperation.</p>
+
+<h2>Overview</h2>
+<p>A lab runs one FIC Control Studio per robot PC, each on its own <strong>station</strong>, all on one ROS domain (see <a href="#multi-pc-setup" onclick="showPage('multi-pc-setup')">Multi-PC Lab Setup</a>). The Multi-Robot page finds the other Studios by itself &mdash; there is nothing to add by hand &mdash; and has three parts:</p>
+<table>
+  <tr><th>Part</th><th>What it is for</th></tr>
+  <tr><td><strong>Fleet</strong></td><td>A card for every Studio on the network, with <strong>E-STOP ALL</strong> and <strong>PAUSE ALL</strong>.</td></tr>
+  <tr><td><strong>Teleoperation</strong></td><td>Make one station's arm follow another's. See <a href="#teleoperation" onclick="showPage('teleoperation')">Teleoperation</a>.</td></tr>
+  <tr><td><strong>Control</strong></td><td>The Simulation / Hardware / VR switch, Home, Reset and Send for the robot the control bar drives.</td></tr>
+</table>
+
+<h2>Stations: Robot 1&ndash;4 and Master</h2>
+<p>The toolbar's <strong>Robot</strong> selector sets this Studio's station. It restarts the Studio to re-point its topics.</p>
+<table>
+  <tr><th>Station</th><th>Topics</th><th>For</th></tr>
+  <tr><td><strong>Robot 1&hellip;4</strong></td><td><code>robot1_*</code>&hellip;<code>robot4_*</code></td><td>The PC wired to that robot. PC&nbsp;<em>N</em> is Robot&nbsp;<em>N</em>.</td></tr>
+  <tr><td><strong>Master</strong></td><td><code>robotNNN_*</code> (100&ndash;999, from the PC name)</td><td>The control seat, e.g. a lab's control PC. It has no arm of its own: it watches and commands the fleet, Any number of PCs can be Master at once: each takes its own number, so their simulations never meet each other or a real arm.</td></tr>
+</table>
+<div class="admonition warning"><div class="adm-title">One Studio per station</div>
+<p>Two Studios on the same station both command the same robot. The Fleet section shows a red warning naming both machines when that happens. A PC that has never run the Studio starts as Robot&nbsp;1, so set the station before the first real run.</p></div>
+
+<h2>Fleet</h2>
+<p>Every Studio announces itself about once a second. A Studio that has not been heard from for 3.5&nbsp;s drops off the page. Each card shows:</p>
+<ul>
+  <li>the station, and <em>this Studio</em> on your own card;</li>
+  <li>the host name, the robot, and whether it runs in <strong>SIM</strong>, on <strong>HARDWARE</strong> or in <strong>VR</strong>;</li>
+  <li>its state:
+    <ul>
+      <li><strong>running</strong>: a session is started;</li>
+      <li><strong>live</strong>: joint data is flowing;</li>
+      <li><strong>idle</strong>: neither;</li>
+    </ul></li>
+  <li>its control mode;</li>
+  <li>any teleop pairing: <em>leads Robot&nbsp;3</em>, or <em>follows Robot&nbsp;1</em> (<em>holding</em> when the leader's data has paused).</li>
+</ul>
+<table>
+  <tr><th>Button</th><th>Does</th></tr>
+  <tr><td><strong>Drive</strong></td><td>Points this Studio's control area at that station, so the control bar commands it. If that arm is on hardware, you are asked to confirm first. Your own card has no Drive button.</td></tr>
+  <tr><td><strong>Web</strong></td><td>Opens that Studio's <a href="#web-remote" onclick="showPage('web-remote')">web remote</a> in a browser.</td></tr>
+  <tr><td><strong>E-STOP ALL</strong></td><td>E-stops every Studio on the network, this one included, through each Studio's own E-stop path. Each E-stop halts its controller, then its processes.</td></tr>
+  <tr><td><strong>PAUSE ALL</strong></td><td>Sends <em>Pause Controller</em> to every station. It only affects hardware.</td></tr>
+</table>
+<div class="admonition warning"><div class="adm-title">Not a safety-rated stop</div>
+<p>E-STOP ALL travels over the network. It needs the network and the receiving Studio to be up. Each robot's own E-stop remains the primary stop.</p></div>
+
+<h2>Driving another station</h2>
+<p><strong>Drive</strong> adds that station's publishers to this Studio, but it does not subscribe to that station's 1&nbsp;kHz state topics. Streaming them across the network would load DDS and that robot's control loop. The control area can therefore command the station, but it shows no live joint values for it.</p>
+
+<h2>Teleop lock</h2>
+<p>The toolbar's <strong>Teleop</strong> checkbox disables this Studio's local commanding, so its robot can only be driven from outside: another Studio, teleoperation, VR or a gamepad. <a href="#estop" onclick="showPage('estop')">E-STOP</a> always stays live.</p>
+
+<h2>For developers</h2>
+<ul>
+  <li><code>fic_studio.fleet.presence</code>: the presence cards. Topic <code>/fic/fleet/presence</code> (<code>std_msgs/String</code>, JSON).</li>
+  <li><code>fic_studio.fleet.commands</code>: lab-wide commands. Topic <code>/fic/fleet/command</code>, commands <code>estop</code> and <code>pause</code>. Each command carries an id, so it runs once.</li>
+  <li><code>fic_studio.fleet.stations</code>: station numbers and labels. The setting <code>MASTER&nbsp;=&nbsp;0</code> becomes a per-PC station (<code>master_station(host)</code>).</li>
+  <li><code>fic_studio.mixins.fleet_mixin</code>: the page sections.</li>
+</ul>
+<p>The core modules are Qt-free and are tested without a network (<code>test/test_fleet.py</code>).</p>
+<p><code>card_robot_type()</code> and <code>_card_topic_rid()</code> (<code>multi_robot_mixin</code>) remain available for extensions.</p>

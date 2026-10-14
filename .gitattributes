@@ -1,0 +1,13 @@
+# The Docker image's scripts must keep LF line endings even when the repo is
+# checked out on Windows; the Windows launcher's batch file needs CRLF.
+docker/** text eol=lf
+docker/**/*.png binary
+docker/fic-studio.cmd text eol=crlf
+docker/fic-studio.ps1 text eol=crlf
+
+# Changelogs only gain entries; merge them by keeping both sides' lines so a
+# branch that added its own entry does not conflict with main's new release.
+CHANGELOG.md merge=union
+fic_docs/pages/changelog.html merge=union
+# The "What's new" boxes on the docs home page grow the same way.
+fic_docs/pages/home.html merge=union

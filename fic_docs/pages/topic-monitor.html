@@ -1,0 +1,219 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Topic Monitor</div>
+<h1>Topic Monitor</h1>
+<p class="subtitle">Namespace-grouped topic tree with per-field live inspection &mdash; directly in FIC Control Studio.</p>
+
+<h2>Overview</h2>
+<p>The Topic Monitor panel discovers all active ROS 2 topics, groups them by robot namespace, and lets you subscribe to
+them to view live message data broken down field-by-field &mdash; without opening a separate terminal. The raw string
+dump is complemented by a structured <strong>inspector card</strong> that shows each field value alongside a micro-bar for
+numeric scalars, plus a small sparkline of recent message arrivals. It is implemented in
+<code>fic_studio/mixins/topic_monitor_mixin.py</code>.</p>
+
+<h2>Interface Layout</h2>
+<p>The panel is a horizontal splitter below a filter row, with a stats bar at the bottom:</p>
+<ul>
+  <li><strong>Left: Topic Tree</strong> &mdash; topics grouped by robot namespace, with an Hz chip and a Monitor toggle per topic</li>
+  <li><strong>Right: Inspector Card</strong> &mdash; field-by-field live breakdown for the selected topic, plus arrival-rate sparkline and raw stream</li>
+</ul>
+
+<h2>Topic Tree</h2>
+<p>Topics are organised into a <strong>namespace tree</strong> (one collapsible parent per namespace, labelled with its
+topic count). Grouping handles both naming styles used by the framework:</p>
+<ul>
+  <li><strong>Path-style</strong> &mdash; the first path segment becomes the group, e.g. <code>/robot1_simulation/joint_states</code> groups under <code>/robot1_simulation</code></li>
+  <li><strong>Flat FIC naming</strong> &mdash; an embedded <code>robotN</code> token is detected, so <code>robot1_target_joint_angles</code> groups under <code>robot1</code></li>
+  <li><strong>Everything else</strong> (e.g. <code>/rosout</code>) falls into the <code>(global)</code> group</li>
+</ul>
+<p>Expansion state is preserved across list refreshes, and a lone namespace is auto-expanded. The tree has three columns:</p>
+<table>
+  <tr><th>Column / Element</th><th>Description</th></tr>
+  <tr><td><strong>Namespace group</strong></td><td>Parent row: namespace with total topic count in parentheses, e.g. <code>robot1&nbsp;&nbsp;(12)</code>; not selectable</td></tr>
+  <tr><td><strong>Topic / Namespace</strong></td><td>Child row: leaf name only (last path segment); full topic path shown as a tooltip on hover</td></tr>
+  <tr><td><strong>Hz</strong></td><td>Fractional messages per second to 1 d.p. over a rolling 5-second window (e.g. <code>19.8 Hz</code>); shows <code>-</code> for topics that are not monitored, since rates are measured from received messages, not from the graph</td></tr>
+  <tr><td><strong>Monitor / Stop</strong></td><td>Toggle button to start/stop subscribing to this topic</td></tr>
+</table>
+
+<div class="admonition warning"><div class="adm-title">Hz readings saturate at 20.0 Hz</div>
+<p>Rates are computed from a per-topic timestamp buffer capped at 100 entries, counted over a 5-second window
+(<code>count / 5.0</code>). A topic faster than 20 Hz fills the buffer in under 5 seconds, so the reading tops out at
+<code>20.0 Hz</code>. The 1 kHz <code>joint_states</code> stream from the simulator and other fast telemetry will
+therefore read 20.0 Hz here &mdash; use <code>ros2 topic hz</code> in a terminal for an exact figure.</p></div>
+
+<h2>Message Flow</h2>
+<svg viewBox="0 0 700 320" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;" role="img" aria-label="Topic Monitor data flow">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#topmon-arrowhead); }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+  </style>
+  <defs>
+    <marker id="topmon-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+  </defs>
+
+  <text x="350" y="18" class="label-title">Topic Monitor data flow</text>
+
+  <!-- ROS 2 side -->
+  <rect x="15" y="35" width="235" height="265" class="container"/>
+  <text x="132" y="52" class="label-bold">ROS 2 side (spin thread)</text>
+  <rect x="35" y="70" width="195" height="48" class="box box-blue"/>
+  <text x="132" y="86" class="label">Graph discovery</text>
+  <text x="132" y="103" class="label-code">get_topic_names_and_types()</text>
+  <rect x="35" y="200" width="195" height="60" class="box box-green"/>
+  <text x="132" y="218" class="label">Subscription callback</text>
+  <text x="132" y="234" class="label-code">_on_message_received()</text>
+  <text x="132" y="248" class="label-sm">per-topic, queue depth 10</text>
+
+  <!-- Shared state -->
+  <rect x="280" y="130" width="150" height="170" class="container"/>
+  <text x="355" y="147" class="label-bold">Shared state</text>
+  <rect x="292" y="160" width="126" height="34" class="box box-grey"/>
+  <text x="355" y="177" class="label-code">topic_last_msg (100)</text>
+  <rect x="292" y="205" width="126" height="34" class="box box-grey"/>
+  <text x="355" y="222" class="label-code">topic_cached_msg</text>
+  <rect x="292" y="250" width="126" height="34" class="box box-grey"/>
+  <text x="355" y="267" class="label-code">topic_msg_count</text>
+
+  <!-- Qt UI side -->
+  <rect x="460" y="35" width="225" height="265" class="container"/>
+  <text x="572" y="52" class="label-bold">Qt thread (UI)</text>
+  <rect x="478" y="70" width="190" height="48" class="box box-orange"/>
+  <text x="573" y="86" class="label">Topic tree + Hz chips</text>
+  <text x="573" y="103" class="label-sm">1 Hz rate timer patches col. 1</text>
+  <rect x="478" y="145" width="190" height="52" class="box box-purple"/>
+  <text x="573" y="162" class="label">Inspector fields + sparkline</text>
+  <text x="573" y="180" class="label-sm">~15 Hz timer, page-visible only</text>
+  <rect x="478" y="225" width="190" height="52" class="box box-teal"/>
+  <text x="573" y="242" class="label">Raw stream</text>
+  <text x="573" y="260" class="label-sm">buffered, pausable</text>
+
+  <!-- Arrows -->
+  <path class="arrow" d="M 230 94 L 478 94"/>
+  <text x="354" y="82" class="label-sm">every 2 s (auto) / Refresh</text>
+  <path class="arrow" d="M 230 215 L 292 180"/>
+  <path class="arrow" d="M 230 226 L 292 222"/>
+  <path class="arrow" d="M 230 240 L 292 264"/>
+  <path class="arrow" d="M 418 175 L 478 118"/>
+  <text x="452" y="132" class="label-sm">Hz calc</text>
+  <path class="arrow" d="M 418 216 L 478 185"/>
+  <text x="446" y="212" class="label-sm">introspect</text>
+  <path class="arrow" d="M 132 260 L 132 288 L 573 288 L 573 277"/>
+  <text x="355" y="308" class="label-sm">message_received pyqtSignal (thread-safe UI delivery)</text>
+</svg>
+
+<h2>Inspector Card</h2>
+<p>Selecting a topic in the tree activates the inspector. If the topic is not yet monitored, selection
+<strong>auto-subscribes</strong> it (and persists it as a favourite), and the raw stream is cleared for the new topic.
+The card shows a live field-by-field breakdown of the latest cached message using
+<code>rosidl_runtime_py.convert.message_to_ordereddict()</code> (with fallbacks to
+<code>msg.get_fields_and_field_types()</code> and then <code>__slots__</code> when that library is unavailable):</p>
+<ul>
+  <li><strong>Scalar fields</strong> &mdash; label + current value + a <code>LimitBar</code> micro-bar for numeric scalars, filled with <code>|value|</code> clamped to the 0&ndash;1 range</li>
+  <li><strong>Nested messages</strong> &mdash; collapsed to a compact summary, e.g. <code>{...(3 keys)}</code></li>
+  <li><strong>Arrays / sequences</strong> &mdash; up to 4 elements shown in full; longer arrays are truncated to the first 3 plus a total count, e.g. <code>[0.1, 0.2, 0.3, ... (7)]</code></li>
+  <li><strong>Formatting</strong> &mdash; floats to 4 decimal places; strings longer than 60 characters truncated</li>
+  <li><strong>Arrival-rate sparkline</strong> &mdash; a small <code>TrajectoryPlot</code> of message recency over the last 5 seconds (1 = just arrived, 0 = 5 s old)</li>
+  <li><strong>Raw stream</strong> &mdash; one timestamped block per message of the <em>selected</em> topic, format <code>[HH:MM:SS.mmm] &lt;str(msg)&gt;</code>; individual messages are truncated at 2000 characters</li>
+</ul>
+<p>Field rows are rebuilt only when the field set changes; otherwise the ~15 Hz refresh patches value labels and bars
+in place, so the inspector stays responsive on fast topics.</p>
+
+<h2>Controls</h2>
+<table>
+  <tr><th>Control</th><th>Description</th></tr>
+  <tr><td><strong>Refresh</strong></td><td>Manually re-scan the ROS graph for topics (<code>&#8635; Refresh</code>); an initial scan runs when the page is built</td></tr>
+  <tr><td><strong>Auto-refresh</strong></td><td>Checkbox enabling automatic topic discovery every 2 seconds; <strong>off by default</strong></td></tr>
+  <tr><td><strong>Filter</strong> (text)</td><td>Case-insensitive substring search on topic names; applied in real time as you type</td></tr>
+  <tr><td><strong>Role</strong> (dropdown)</td><td>All Topics &mdash; Publishers Only &mdash; Subscribers Only &mdash; Services &mdash; Actions. Publishers/Subscribers filters use <code>node.count_publishers()</code> / <code>node.count_subscribers()</code>; Services/Actions match <code>/srv/</code> or <code>/action/</code> in the type name</td></tr>
+  <tr><td><strong>Pause / Resume</strong></td><td>Freeze the raw-stream display without stopping the subscription; Hz chips and the inspector keep updating</td></tr>
+  <tr><td><strong>Clear</strong></td><td>Clear the raw message buffer</td></tr>
+  <tr><td><strong>Buffer</strong> (spin)</td><td>Raw-stream buffer: 1&ndash;1000 messages (default 50); the oldest block is dropped when the limit is exceeded</td></tr>
+</table>
+
+<h2>Favourites</h2>
+<p>Monitored topics are persisted across restarts as a <code>{topic_name: msg_type}</code> map under
+<code>topic_monitor.monitored</code> in the studio settings file
+<code>~/.robot_selector_gui_settings.yaml</code> (written by the settings auto-save, see
+<a href="#settings" onclick="showPage('settings')">Settings</a>). When the page is built, previously monitored topics are automatically
+re-subscribed; if the ROS node is not yet available the restore is silently skipped.</p>
+
+<div class="admonition tip"><div class="adm-title">Monitoring is subscription-based</div>
+<p>Clicking <strong>Monitor</strong> dynamically imports the message class from the advertised type string
+(e.g. <code>sensor_msgs/msg/JointState</code>) and creates a real <code>rclpy</code> subscription with queue depth 10.
+Types the studio cannot import (unsourced workspaces, custom interfaces) log an error to the
+<a href="#log-viewer" onclick="showPage('log-viewer')">Logs</a> under the <code>Monitor</code> source instead of crashing the panel.</p></div>
+
+<h2>Stats Bar</h2>
+<p>The bottom of the panel shows summary statistics:</p>
+<ul>
+  <li><strong>Topics</strong> &mdash; total topics discovered in the last scan</li>
+  <li><strong>Monitoring</strong> &mdash; how many topics are actively subscribed</li>
+  <li><strong>Total Messages</strong> &mdash; messages received across all monitored topics</li>
+</ul>
+
+<h2>Refresh &amp; Update Rates</h2>
+<table>
+  <tr><th>Timer</th><th>Interval</th><th>Purpose</th></tr>
+  <tr><td>Rate calculator</td><td>1000 ms</td><td>Patches the Hz cell in place (no full tree rebuild); rolling 5 s window, 1 d.p.</td></tr>
+  <tr><td>Auto-refresh</td><td>2000 ms</td><td>Rescans the topic list; runs only while the Auto-refresh checkbox is enabled</td></tr>
+  <tr><td>Inspector refresh</td><td>67 ms (~15 Hz)</td><td>Updates field values, micro-bars and sparkline for the selected topic; runs only while the Topic Monitor page is visible</td></tr>
+  <tr><td>Message callback</td><td>Real-time</td><td>Thread-safe <code>pyqtSignal</code> emission from ROS 2 subscriber callbacks into the Qt thread</td></tr>
+</table>
+
+<h2>Bug Fixes (v3.9.3)</h2>
+<ul>
+  <li><strong>Alphabetical sort</strong> &mdash; topics are sorted alphabetically within each namespace group</li>
+  <li><strong>Working Publishers / Subscribers filter</strong> &mdash; previously dead; implemented via <code>node.count_publishers()</code> / <code>node.count_subscribers()</code></li>
+  <li><strong>Fractional Hz</strong> &mdash; rolling 5 s window replaces the old 1-second integer-only count</li>
+  <li><strong>No per-tick full rebuild</strong> &mdash; rate ticks patch only the Hz cell instead of recreating every row</li>
+  <li><strong>Stop-monitoring cleanup</strong> &mdash; <code>_stop_monitoring</code> removes all per-topic dict entries (<code>topic_rates</code>, <code>topic_msg_count</code>, <code>topic_last_msg</code>, <code>topic_cached_msg</code>) to prevent memory leaks</li>
+  <li><strong>Persisted favourites</strong> &mdash; monitored topics survive restart</li>
+</ul>
+
+<h2>Terminal Equivalents</h2>
+<p>The Topic Monitor provides a GUI alternative to these terminal commands (topic names follow the flat
+<code>robot{N}_</code> convention for controller topics and the <code>robot{N}_simulation/</code> prefix for simulator
+topics &mdash; see <a href="#topics" onclick="showPage('topics')">Topics</a> for the full reference):</p>
+<pre><code># List all topics (equivalent to Refresh)
+ros2 topic list -t
+
+# Monitor a topic's rate (equivalent to Hz column, without the 20 Hz cap)
+ros2 topic hz /robot1_q_current
+
+# Echo messages (equivalent to Raw Stream)
+ros2 topic echo /robot1_simulation/joint_states
+
+# Get publisher / subscriber counts (equivalent to role filter)
+ros2 topic info /robot1_q_current --verbose</code></pre>
+
+<h2>Troubleshooting</h2>
+<table>
+  <tr><th>Symptom</th><th>Explanation / Fix</th></tr>
+  <tr><td>Hz column shows <code>-</code></td><td>The topic is not monitored; rates are measured from received messages, so click <strong>Monitor</strong> (or select the topic) first</td></tr>
+  <tr><td>Fast topic reads exactly <code>20.0 Hz</code></td><td>Timestamp buffer saturation (see warning above); use <code>ros2 topic hz</code> for exact rates</td></tr>
+  <tr><td><code>Failed to monitor &lt;topic&gt;</code> in the log</td><td>The message package is not importable in the studio's environment &mdash; source the workspace that defines the interface before launching the studio</td></tr>
+  <tr><td>Raw stream stays empty</td><td>Check that the topic is <em>selected</em> (only the selected topic streams), the display is not paused, and a publisher exists (Role filter: Publishers Only)</td></tr>
+  <tr><td>Favourites did not restore</td><td>Restore is skipped if the ROS node was unavailable at page build; re-toggle Monitor once and the favourite is re-saved</td></tr>
+</table>
+
+<h2>Related Pages</h2>
+<ul>
+  <li><a href="#topics" onclick="showPage('topics')">Topics</a> &mdash; reference of all framework topic names and conventions</li>
+  <li><a href="#dashboard" onclick="showPage('dashboard')">Dashboard</a> &mdash; live field cards and <code>LimitBar</code> widgets reused in the inspector</li>
+  <li><a href="#dev-console" onclick="showPage('dev-console')">Dev Console</a> &mdash; full time-series plots for selected signals</li>
+  <li><a href="#experiments" onclick="showPage('experiments')">Experiments</a> &mdash; recording data from active topics</li>
+  <li><a href="#log-viewer" onclick="showPage('log-viewer')">Logs</a> &mdash; where Monitor errors and status messages appear</li>
+</ul>

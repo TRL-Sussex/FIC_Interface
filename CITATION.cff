@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "FIC Interface: FIC Control Studio"
+abstract: >-
+  ROS 2 and MuJoCo software for running robot arms under Fractal Impedance
+  Control, in simulation and on real robots.
+authors:
+  - family-names: Takriti
+    given-names: Adnan
+    affiliation: University of Sussex
+  - family-names: Tiseo
+    given-names: Carlo
+    affiliation: University of Sussex
+license: MIT
+repository-code: "https://github.com/TRL-Sussex/FIC_Interface"
+keywords:
+  - robotics
+  - impedance control
+  - ROS 2
+  - MuJoCo

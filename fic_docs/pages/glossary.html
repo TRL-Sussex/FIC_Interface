@@ -1,0 +1,171 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Glossary</div>
+<h1>Glossary</h1>
+<p class="subtitle">Plain-English definitions for the terms you'll see across the FIC Control Studio docs, XML configs, and code.</p>
+
+<div class="admonition tip"><div class="adm-title">New to impedance control?</div>
+<p>Read the <a href="#control-modes" onclick="showPage('control-modes')">Control Modes &amp; FIC Algorithm</a> page alongside this glossary — the terms here are cross-referenced throughout it.</p></div>
+
+<h2>Core concepts</h2>
+
+<h3>FIC — Fractal Impedance Control</h3>
+<p>The nonlinear impedance control algorithm at the heart of this project. Instead of a single linear spring <code>τ = K·e</code>, FIC maps position error through several <em>saturation stages</em> with progressively capped force, so a small error feels stiff while a large error is force-limited — robust against contact and without the overshoot of a high-gain PD controller. The controller also distinguishes a <em>divergence phase</em> (error growing — force follows the nonlinear profile) from a <em>convergence phase</em> (error shrinking — force is released along a virtual spring anchored at half the peak error), which keeps it stable without an explicit damping term. Implemented in <code>fic_library/include/fic/FIC.cpp</code>.</p>
+
+<h3>Impedance vs. Admittance</h3>
+<ul>
+  <li><strong>Impedance control</strong> — you set a <em>position target</em>, the controller outputs <em>torque</em>. The robot behaves like a spring anchored at your target. This is Modes 1, 2, 5, 6.</li>
+  <li><strong>Admittance control</strong> — the controller isolates the <em>external force</em> (measured minus expected), integrates it through a <em>virtual mass/damper</em>, and shifts the position target accordingly. The robot "yields" to pushes. This is Modes 3, 4, 7, 8.</li>
+</ul>
+
+<h3>Push-and-stay vs. haptic admittance (M1 / M2)</h3>
+<p>Each admittance mode comes in two variants, selected by the mode number:</p>
+<ul>
+  <li><strong>M1 — push-and-stay</strong> (Modes 3 &amp; 7). No virtual spring: each push is accumulated into a persistent offset on the target, so the arm <em>stays</em> where you left it. Used for hand-guiding, e.g. by <a href="#teach-mode" onclick="showPage('teach-mode')">Teach Mode</a>.</li>
+  <li><strong>M2 — haptic</strong> (Modes 4 &amp; 8). Also driven by the push alone, with no virtual spring, but the offset is bounded: the arm follows a push and stays where you release it within the bound (Mode 4: the joint law's outer breakpoint &plusmn;x<sub>b,n</sub>, &plusmn;0.2&nbsp;rad by default; Mode 8: &plusmn;5&nbsp;cm / &plusmn;5&deg;). Pushed beyond it, the FIC law (the joint's own in Mode 4, the Cartesian law in Mode 8) resists and returns it to the bound on release. This is the variant used for bilateral <a href="#teleoperation" onclick="showPage('teleoperation')">teleoperation</a> force feedback.</li>
+</ul>
+<p>Both variants read the same estimated external wrench (or external joint torque); only the target-update rule differs. In the code this is <code>AdmMode_</code> / <code>CartAdmMode</code> = 1 or 2 in <code>fic_control.h</code>.</p>
+
+<h3>Joint space vs. Cartesian / Task space</h3>
+<ul>
+  <li><strong>Joint space</strong> — commands and errors in joint angles <code>[q₁, q₂, …, qₙ]</code>. Modes 1–4.</li>
+  <li><strong>Cartesian / task space</strong> — commands and errors on the end-effector pose <code>[x, y, z]</code> + quaternion orientation. Modes 5–8 (torque is produced from a Cartesian wrench via <code>Jᵀ</code>).</li>
+</ul>
+
+<h3>Jacobian (J) &amp; Jᵀ</h3>
+<p>Linear map between joint velocities and end-effector velocity. FIC's Cartesian modes compute a desired wrench in task space and project it back into joint torques through the Jacobian transpose: <code>τ = Jᵀ · F_desired</code>. The model is built from the robot's URDF by Pinocchio (<code>pinocchio::computeFrameJacobian</code>), which also supplies joint limits and gravity torques.</p>
+
+<h3>Wrench</h3>
+<p>A 6-vector of force + torque <code>[Fx, Fy, Fz, Tx, Ty, Tz]</code> (<code>geometry_msgs/Wrench</code>). The Cartesian admittance modes consume the measured external wrench alone (no gravity reference). Both controller nodes estimate it from the joint torques, <code>pinv(Jᵀ)(τ_meas − g(q))</code>, unless the robot's <code>wrench_from_api</code> is true; then it comes from the vendor driver on hardware and from the <code>robot{sid}_simulation/force_torque</code> sensor topic in simulation. If the message carries no torque components, orientation admittance is silently skipped.</p>
+
+<h3>Null-space</h3>
+<p>On a 7-DOF arm with a 6-DOF end-effector task there is one redundant direction of joint motion that does not move the EE — the arm can "swim" around a fixed EE pose. Secondary tasks (postural, elbow) act in this null space: their torque is projected through <code>N = I − J⁺J</code> (damped pseudo-inverse) so they never disturb the primary EE task. The toggles live in the <em>Null-space:</em> row of the <a href="#control-panel" onclick="showPage('control-panel')">Control panel</a>.</p>
+
+<h3>Gravity compensation</h3>
+<p>The controller adds the model's gravity torques (<code>gravity_torques</code>, computed by Pinocchio from the URDF) to its output, so the FIC springs act around a weightless equilibrium. In admittance modes the same term is used as the <em>expected</em> effort when isolating what the human is applying.</p>
+
+<h2>FIC algorithm terms</h2>
+
+<svg viewBox="0 0 700 300" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="FIC error → force profile (positive side, 2 saturation stages)">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#glossary-arrowhead); }
+    .line { stroke: #bbb; stroke-width: 1; stroke-dasharray: 4,3; }
+  </style>
+  <defs>
+    <marker id="glossary-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+  </defs>
+  <text x="350" y="22" class="label-title">FIC error → force profile (positive side, 2 saturation stages)</text>
+  <!-- axes -->
+  <line x1="70" y1="250" x2="665" y2="250" class="arrow"/>
+  <line x1="70" y1="250" x2="70" y2="40" class="arrow"/>
+  <text x="620" y="268" class="label-sm">position error e</text>
+  <text x="70" y="32" class="label-sm">commanded force</text>
+  <!-- reference dashes -->
+  <line x1="220" y1="250" x2="220" y2="168" class="line"/>
+  <line x1="300" y1="250" x2="300" y2="120" class="line"/>
+  <line x1="450" y1="250" x2="450" y2="70" class="line"/>
+  <line x1="70" y1="120" x2="300" y2="120" class="line"/>
+  <line x1="70" y1="70" x2="450" y2="70" class="line"/>
+  <!-- curve -->
+  <path d="M 70 250 L 220 168" stroke="#1976d2" stroke-width="2.5" fill="none"/>
+  <path d="M 220 168 C 252 150, 268 120, 300 120" stroke="#f57c00" stroke-width="2.5" fill="none"/>
+  <path d="M 300 120 C 355 120, 400 70, 450 70" stroke="#f57c00" stroke-width="2.5" fill="none"/>
+  <path d="M 450 70 L 655 70" stroke="#c62828" stroke-width="2.5" fill="none"/>
+  <!-- annotations -->
+  <text x="140" y="185" class="label-sm" transform="rotate(-28 140 185)">linear: τ = K0·e</text>
+  <text x="220" y="264" class="label-code">S·x_b[1]</text>
+  <text x="300" y="264" class="label-code">x_b[1]</text>
+  <text x="450" y="264" class="label-code">x_b[2]</text>
+  <text x="46" y="120" class="label-code">E_max[1]</text>
+  <text x="46" y="70" class="label-code">E_max[2]</text>
+  <text x="260" y="200" class="label-sm">stage 1 (tanh blend)</text>
+  <text x="385" y="150" class="label-sm">stage 2</text>
+  <text x="555" y="52" class="label-sm">force ceiling — never exceeded</text>
+</svg>
+
+<h3>Saturation stage</h3>
+<p>FIC's error-to-force curve is piecewise: linear up to a fraction (<code>saturation_ratios</code>) of the first breakpoint, then a smooth <code>tanh</code> blend up to the first force ceiling at <code>x_b[1]</code>, then another blend up to the next ceiling at <code>x_b[2]</code>, and so on. Each piece is a "saturation stage". <code>n_saturations</code> counts the total number of stages (negative + positive sides).</p>
+
+<h3><code>x_b</code> — error breakpoints</h3>
+<p>Position-error values (rad for joints, m for translation, rad for the orientation channel) at which FIC reaches the next force ceiling. Set directly from the <code>&lt;error_max&gt;</code> list in <code>config.xml</code> — one value per stage. For symmetric configurations you list only the positive side; the negative side is mirrored automatically.</p>
+
+<h3><code>E_max</code> — force limit per stage</h3>
+<p>The maximum torque / force each saturation stage can command (called <code>E_s</code> in <code>FIC.cpp</code>). Set directly from the <code>&lt;force_max&gt;</code> list — one value per stage, matched index-for-index with <code>error_max</code>. Beyond the last breakpoint the output is clamped at the last <code>E_max</code>, which is what makes FIC intrinsically force-bounded.</p>
+
+<h3><code>saturation_ratios</code> (<code>S_Start</code>)</h3>
+<p>Per-stage fraction (clamped to 0.4–0.9 in code) of the breakpoint distance at which the smooth <code>tanh</code> blend begins. Higher values keep the response linear longer before saturating; lower values start the roll-off earlier. Edited as <em>sr</em> handles on the <a href="#tuning" onclick="showPage('tuning')">Tuning</a> canvas.</p>
+
+<h3><code>K0</code> — base stiffness</h3>
+<p>Slope of the linear region — the gain you feel for small errors. Larger K0 → "stiffer" robot. Loaded from the single <code>&lt;stiffness&gt;</code> value inside each <code>&lt;controller&gt;</code> block of <code>config.xml</code> (per robot, per mode, per profile, per joint or Cartesian axis) and applied to both error directions. See <a href="#config-xml" onclick="showPage('config-xml')">config.xml reference</a>.</p>
+
+<h3>Asymmetric saturation / <code>n_neg_sat</code></h3>
+<p>By default FIC saturates symmetrically (same curve left and right of zero). Setting <code>&lt;asymmetric&gt;true&lt;/asymmetric&gt;</code> splits the curve so the <em>negative</em> side has <code>n_neg_sat</code> stages and the positive side gets the rest; the <code>error_max</code>/<code>force_max</code> lists must then cover all <code>n_saturations</code> stages explicitly. Useful for joints with uneven physical travel.</p>
+
+<h3>Wrapping (<code>wrapToPi</code>)</h3>
+<p>Folding a joint angle into <code>[-π, π]</code>. Harmless on continuous joints but <em>destructive</em> on bounded joints whose legal range extends past π (e.g. Franka <code>fr3_joint6</code>). FIC only wraps joints flagged continuous — derived at robot-load time by parsing the URDF (<code>type="continuous"</code>, or no position limits) — see the v2.5.1 <a href="#changelog" onclick="showPage('changelog')">changelog</a> entry. Bounded joints are clamped to their URDF limits instead.</p>
+
+<h3>Planner</h3>
+<p>Smooth trajectory generator that sits between your command target and the FIC controller in Modes 2 &amp; 6, producing a time-parametrised ramp so you never command a step. Tuned via <code>&lt;planner&gt;&lt;vel_desired&gt;</code>, <code>&lt;acc_max&gt;</code> and <code>&lt;damping_ratio&gt;</code>. The same planner also smooths the shifted target inside the admittance modes: always in Cartesian admittance (7/8), and optionally in joint admittance (3/4) via the <em>Admittance Planner</em> checkbox in the Control panel (disable it for teleop / streaming targets to avoid planner resets).</p>
+
+<h3>Damping ratio (ζ) vs. <code>Kv</code></h3>
+<ul>
+  <li><strong><code>damping_ratio</code></strong> — planner parameter (<code>&lt;planner&gt;&lt;damping_ratio&gt;</code>), a velocity-damping term tied to the ramp the planner is producing.</li>
+  <li><strong><code>Kv</code></strong> (admittance modes 3, 4, 7, 8) — explicit virtual-damper coefficient on the admittance state, loaded from <code>&lt;admittance&gt;&lt;Damping&gt;</code>. Its sibling <code>&lt;InvM&gt;</code> is the inverse virtual mass — larger <code>InvM</code> means a lighter-feeling arm.</li>
+</ul>
+
+<h3>Deadband</h3>
+<p>Threshold below which the estimated external effort is treated as zero, so sensor noise and residual gravity-model bias don't make the admittance integrator drift. Three per-robot values, configured under <code>admittance_deadbands</code> in <code>robots_config.yaml</code> (editable in <a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a>): <code>joint_tau</code> (default 1.5&nbsp;Nm), <code>cart_force</code> (4.0&nbsp;N), <code>cart_torque</code> (0.2&nbsp;Nm). If your robot drifts in admittance with an unregistered tool on the flange, widen these (or register the tool's mass with the driver).</p>
+
+<h3>Workspace clamp</h3>
+<p>Bounds on how far admittance can shift the Cartesian target: push-and-stay (Mode 7) accumulates at most ±30&nbsp;cm translation and ±30° rotation; haptic (Mode 8) allows a ±5&nbsp;cm / ±5° live spring deflection. An anti-windup rule refuses steps that would push past a bound, so the target settles <em>at</em> the wall instead of winding up behind it. Separate from these, the June 2026 <a href="#safety" onclick="showPage('safety')">safety</a> remediation added enforced joint and Cartesian safety zones.</p>
+
+<h3>Postural null-space</h3>
+<p>Adds per-joint FIC springs toward the IK-preferred configuration (<code>q_target_ik_</code>) in the redundant direction, stabilising the arm's shape while the EE task runs. Runs in <em>all</em> Cartesian modes, including admittance (7/8). Enabled via the <em>Postural</em> checkbox in the Null-space row of the Control panel; tuned under the robot-level <code>&lt;postural&gt;</code> block in <code>config.xml</code>. Uses its own FIC channels (offset 9+) so it never fights the joint-mode controllers.</p>
+
+<h3>Elbow null-space</h3>
+<p>Same idea as postural but anchors only the <em>elbow link's</em> Cartesian position (3 linear FIC channels, indices 6–8), leaving the rest of the null-space free. The elbow torque is projected through <code>N = I − J⁺J</code> so the EE task is untouched. Enabled via the <em>Elbow</em> checkbox; the current elbow position is snapshotted as the hold target at the moment you tick the box.</p>
+
+<h3>Hapfic</h3>
+<p>Hybrid helper layered on the Cartesian modes: a Cartesian planner + impedance loop computes the desired wrench, projects it to joint torques via <code>Jᵀ</code>, and feeds those as the <em>desired effort</em> into per-joint haptic admittance — Cartesian precision with joint-space compliance. Toggled by the <em>Hapfic</em> checkbox in the Null-space row; the controller engages it on Modes 6/7/8. It uses dedicated FIC channels (offset 16+) and loads its joint and Cartesian layers from its own XML block, <code>&lt;mode id="100" name="HAP-FIC"&gt;</code> (Mode 4's joints and Mode 6's Cartesian block on a robot without one). Full detail on the <a href="#hapfic" onclick="showPage('hapfic')">Hapfic</a> page.</p>
+
+<h2>Workspace / infrastructure terms</h2>
+
+<h3>Station ID</h3>
+<p>Which robot a Studio drives when several FIC stations share a DDS domain: <strong>Robot&nbsp;1&ndash;4</strong> (station 1&ndash;4, topics <code>robot{N}_*</code>), or <strong>Master</strong> (setting&nbsp;0; each Master runs on its own station 100&ndash;999 taken from the PC name) &mdash; the control seat for a PC with no arm of its own, whose simulations can never reach a real arm. Switched from the <strong>Robot</strong> selector in the main toolbar (persisted as <code>general.station_id</code> in <a href="#settings" onclick="showPage('settings')">Settings</a>; changing it restarts the GUI so every subscription re-points). Every machine takes its own station; the <a href="#multi-robot" onclick="showPage('multi-robot')">Multi-Robot</a> page warns when two claim the same one.</p>
+
+<h3>Master station</h3>
+<p>Station&nbsp;0, shown as <strong>Master</strong>: the Studio at a lab's control seat. It sees every Studio on the network, can E-STOP ALL and pair any two stations for <a href="#teleoperation" onclick="showPage('teleoperation')">teleoperation</a>, and runs its own simulations on topics of its own. Several PCs can be Master at once. See <a href="#multi-robot" onclick="showPage('multi-robot')">Multi-Robot</a>.</p>
+
+<h3>Shared memory bridge</h3>
+<p>On hardware, FIC talks to the vendor driver (libfranka / Kortex) through POSIX shared-memory segments (<code>/dev/shm/robot_feedback_memory</code>) instead of ROS topics, so the control loop runs at 1&nbsp;kHz without DDS serialisation overhead. Feedback and torque commands are lock-free atomic floats. See <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Simulation vs. Hardware</a> for the full rationale.</p>
+
+<h3><code>rid</code> / robot ID</h3>
+<p>String prefix used to namespace per-robot topics, e.g. <code>robot1</code>, <code>robot2</code> — derived from the station ID (<code>robot{N}</code>). The simulation node additionally prefixes its own topics as <code>robot{sid}_simulation/</code>. See the <a href="#topics" onclick="showPage('topics')">Topics reference</a>.</p>
+
+<h3>Driver / API / vendor driver</h3>
+<p>The manufacturer-SDK program that exchanges commands and feedback with the physical robot over the shared-memory bridge: a libfranka-based torque bridge for Franka (default <code>driver_command</code> runs <code>robot_library/libfranka/build/examples/cartesian_impedance_control 172.16.0.2</code>) and a Kortex-based bridge for Kinova (<code>robot_library/Kinova/api_cpp/…/01-torque-control_00-Torque_Controller</code>). The exact command is per-robot, editable in <a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a> → Driver command, and started/stopped from the GUI via the <strong>▶ API</strong> button; its stdout is streamed into the <a href="#log-viewer" onclick="showPage('log-viewer')">log panel</a>.</p>
+
+<h3>Profile</h3>
+<p>Named tuning set for a control mode. Every <code>&lt;mode&gt;</code> block in <code>config.xml</code> carries a <code>profile="..."</code> attribute; <code>"default"</code> always exists, and you can save alternates (e.g. a gentler stiffness set) without losing your baseline. Selected per mode from the <em>Config:</em> dropdown in the Control panel; if a requested profile doesn't exist for a mode, the loader falls back to <code>default</code>. See <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a>.</p>
+
+<h3><code>robots_config.yaml</code></h3>
+<p>Robot-description file generated by the GUI (<code>fic_library/config/robots_config.yaml</code>) and read by both control nodes at robot load: URDF path, joint count, per-joint torque limits, admittance deadbands, driver/build commands. Distinct from <code>config.xml</code>, which holds the per-mode FIC tuning. Edited via <a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a>.</p>
+
+<h3>Teach mode</h3>
+<p>Guide-and-record: the robot is switched into an admittance mode — Joint Admittance (Mode&nbsp;3) or Cartesian Admittance (Mode&nbsp;7) depending on the teaching space — so you can move it by hand while the panel records waypoints and gripper steps; stopping the session switches to the matching planner mode. Started from the <a href="#teach-mode" onclick="showPage('teach-mode')">Teach Mode</a> panel.</p>
+
+<h3>E-STOP</h3>
+<p>The red <strong>E-STOP</strong> button in the main toolbar (shortcut: <code>Space</code>). Since the June 2026 safety remediation it triggers a graceful torque ramp-down rather than an instant zero-torque cut, and fans out to every loaded extension so recordings and sequences halt too. Details on the <a href="#estop" onclick="showPage('estop')">E-STOP</a> and <a href="#safety" onclick="showPage('safety')">Safety</a> pages.</p>

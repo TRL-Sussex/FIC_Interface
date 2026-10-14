@@ -1,0 +1,317 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Safety Zones</div>
+<h1>Safety Zones &amp; Safety System</h1>
+<p class="subtitle">Two-tier safety: soft GUI zones that bound the robot, and hard config limits that fault it.</p>
+
+<h2>Overview</h2>
+<p>FIC Control Studio drives force-controlled robots, so its safety nets are first-class.
+The safety system operates in <strong>two tiers</strong>:</p>
+<table>
+  <tr><th>Tier</th><th>Source</th><th>Behaviour</th><th>Use for</th></tr>
+  <tr>
+    <td><strong>1 &mdash; Soft boundary</strong></td>
+    <td>GUI Safety Zones page<br><code>fic_studio_robots.yaml</code></td>
+    <td>Virtual wall (restoring force via J<sup>T</sup>) at the boundary; robot stays mobile inside the zone. GUI logs a warning.</td>
+    <td>User-configurable workspace restrictions, experiment fencing</td>
+  </tr>
+  <tr>
+    <td><strong>2 &mdash; Hard stop</strong></td>
+    <td><code>robots_config.yaml</code><br>(<code>joint_limits_deg</code>, <code>joint_torque_limits</code>)</td>
+    <td>Exceeding a config limit latches a <strong>hard fault</strong>: output drops to gravity-compensation only (hold position), control commands are refused until the robot is re-loaded.</td>
+    <td>Physical actuator limits that must never be exceeded</td>
+  </tr>
+</table>
+<p>Both tiers are verified in simulation. They are independent and always-on &mdash; the soft zones do
+not need to be enabled for the hard stops to work, and vice versa. The
+<a href="#estop" onclick="showPage('estop')">E-STOP</a> is a third, operator-triggered layer on top of both.</p>
+
+<h2>Enforcement pipeline</h2>
+<p>All enforcement runs <strong>inside the controller node</strong> &mdash; the same code exists in
+<code>fic_ws/src/fic_simulation/src/fic_simulation.cpp</code> (simulation) and
+<code>fic_ws/src/fic_hardware/src/fic_hardware.cpp</code> (hardware), so behaviour is identical on both
+targets. Targets are sanitised at the moment they arrive (subscriber callbacks), and torques are
+guarded again in the 1&nbsp;kHz control loop before anything is published:</p>
+
+<svg viewBox="0 0 700 330" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="Target sources">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#safety-arrowhead); }
+    .arrow-green { stroke: #388e3c; marker-end: url(#safety-arrowhead-green); }
+    .arrow-orange { stroke: #f57c00; marker-end: url(#safety-arrowhead-orange); }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+  </style>
+  <defs>
+    <marker id="safety-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+    <marker id="safety-arrowhead-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#388e3c"/>
+    </marker>
+    <marker id="safety-arrowhead-orange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#f57c00"/>
+    </marker>
+  </defs>
+
+  <!-- inputs -->
+  <rect x="20" y="38" width="130" height="52" class="box box-blue"/>
+  <text x="85" y="58" class="label-bold">Target sources</text>
+  <text x="85" y="76" class="label-sm">GUI &#183; teleop &#183; scripts</text>
+
+  <rect x="20" y="120" width="130" height="52" class="box box-green"/>
+  <text x="85" y="138" class="label-code">robot{N}_safety/*</text>
+  <text x="85" y="156" class="label-sm">zone limits from GUI</text>
+
+  <rect x="20" y="210" width="130" height="52" class="box box-orange"/>
+  <text x="85" y="228" class="label-code">robots_config.yaml</text>
+  <text x="85" y="246" class="label-sm">hard limits (Tier 2)</text>
+
+  <!-- controller node -->
+  <rect x="180" y="15" width="500" height="250" class="container"/>
+  <text x="430" y="33" class="label-bold">Controller node (fic_simulation / fic_hardware)</text>
+
+  <rect x="195" y="50" width="145" height="48" class="box box-teal"/>
+  <text x="267" y="66" class="label-bold">Cartesian clamp</text>
+  <text x="267" y="84" class="label-sm">EE target &rarr; zone box</text>
+
+  <rect x="195" y="115" width="145" height="48" class="box box-teal"/>
+  <text x="267" y="131" class="label-bold">Joint clamp + FK guard</text>
+  <text x="267" y="149" class="label-sm">reject out-of-zone target</text>
+  <text x="267" y="180" class="label-sm">subscriber callbacks</text>
+
+  <rect x="370" y="50" width="130" height="48" class="box box-purple"/>
+  <text x="435" y="66" class="label-bold">FIC torques</text>
+  <text x="435" y="84" class="label-sm">modes 0&ndash;8</text>
+
+  <rect x="525" y="50" width="140" height="48" class="box box-blue"/>
+  <text x="595" y="66" class="label-bold">Virtual wall</text>
+  <text x="595" y="84" class="label-sm">J&#7488; &#183; 2000 N/m (joint modes)</text>
+
+  <rect x="525" y="115" width="140" height="48" class="box box-red"/>
+  <text x="595" y="131" class="label-bold">Hard-fault latch</text>
+  <text x="595" y="149" class="label-sm">config joint limits</text>
+
+  <rect x="525" y="180" width="140" height="48" class="box box-orange"/>
+  <text x="595" y="196" class="label-bold">Torque guard</text>
+  <text x="595" y="214" class="label-sm">NaN&rarr;0 &#183; per-joint clamp</text>
+
+  <rect x="370" y="180" width="130" height="48" class="box box-grey"/>
+  <text x="435" y="196" class="label-bold">Velocity damping</text>
+  <text x="435" y="214" class="label-sm">&minus; k&#8202;&#183;&#8202;velocity (if enabled)</text>
+
+  <text x="435" y="148" class="label-sm">1 kHz control loop</text>
+
+  <!-- output -->
+  <rect x="340" y="285" width="190" height="40" class="box box-green"/>
+  <text x="435" y="299" class="label-bold">Robot / simulator</text>
+  <text x="435" y="315" class="label-sm">ActuatorCmds torques</text>
+
+  <!-- arrows -->
+  <path class="arrow" d="M150,58 H195"/>
+  <path class="arrow" d="M150,74 H168 V139 H195"/>
+  <path class="arrow-green arrow" d="M150,146 H195"/>
+  <path class="arrow-orange arrow" d="M150,236 H180"/>
+  <path class="arrow" d="M340,66 H370"/>
+  <path class="arrow" d="M340,139 H352 V82 H370"/>
+  <path class="arrow" d="M500,74 H525"/>
+  <path class="arrow" d="M595,98 V115"/>
+  <path class="arrow" d="M595,163 V180"/>
+  <path class="arrow" d="M525,204 H500"/>
+  <path class="arrow" d="M435,228 V285"/>
+</svg>
+
+<h2>Tier 1 &mdash; Soft safety zones (GUI)</h2>
+<h3>The Safety page</h3>
+<p>Open <strong>&#8856;&nbsp;Safety</strong> from the sidebar. It is a live page, not just a
+configuration form:</p>
+<ul>
+  <li><strong>Master banner</strong> &mdash; an unmissable indicator that reads green
+      &ldquo;SAFETY ZONES ACTIVE&rdquo; or red &ldquo;SAFETY ZONES OFF &mdash; robot motion is
+      unrestricted&rdquo;. Toggle it with the master checkbox.</li>
+  <li><strong>Cartesian workspace box</strong> &mdash; per-axis X / Y / Z min &amp; max
+      (metres), each with its own enable.</li>
+  <li><strong>Joint angle bounds</strong> &mdash; per-joint min &amp; max (degrees) with a
+      single enforce toggle. The row count follows the selected robot&rsquo;s joint count.</li>
+  <li><strong>Live readout</strong> &mdash; the current end-effector position and joint angles
+      are shown beside each limit and coloured green when in&#8209;zone, red when past it &mdash;
+      so you can see exactly how close the robot is to a bound.</li>
+  <li><strong>Mode-aware</strong> &mdash; a &#9656; marks the section relevant to the active
+      control mode (joint vs Cartesian; see <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>).</li>
+</ul>
+<p>Editing any field publishes the new limits to the controller immediately, but only for the
+current session. To <strong>persist</strong> zones, edit them under
+<a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a> &rarr; <strong>Safety Zones</strong>, which
+saves them per robot under the <code>safety_zones</code> key in <code>fic_studio_robots.yaml</code>.
+Velocity limits (<code>max_joint_vel</code>, <code>max_cart_vel</code>) are only editable there
+&mdash; the live Safety page covers the Cartesian box and joint bounds.</p>
+
+<h3>Cartesian virtual wall (joint modes)</h3>
+<p>In Cartesian modes (5&ndash;8), Cartesian targets are directly clamped to the zone boundaries.
+In <strong>joint modes</strong> (1&ndash;4) there is no Cartesian target to clamp, so the
+controller uses a different mechanism:</p>
+<ul>
+  <li>A <strong>virtual wall</strong> activates when the end-effector position crosses an enabled
+      Cartesian zone boundary. It applies a restoring force in Cartesian space
+      (F&nbsp;=&nbsp;k&nbsp;&times;&nbsp;penetration, k&nbsp;=&nbsp;2000&nbsp;N/m) and projects it
+      to joint torques via J<sup>T</sup>.</li>
+  <li>The wall force is <strong>zero inside the zone</strong> &mdash; no effect on normal operation.
+      At the boundary, the robot feels a stiff spring pushing it back. Typical penetration is
+      &lt;5&nbsp;mm for a 10&nbsp;N push.</li>
+  <li>This replaces the previous behaviour where crossing a Cartesian zone in joint mode triggered a
+      <em>hard fault</em> (broadcast stop), which was unnecessarily disruptive.</li>
+</ul>
+
+<h3>Enforcement summary (Tier 1)</h3>
+<ul>
+  <li><strong>Cartesian modes</strong> &mdash; the controller clamps every commanded EE target to
+      the enabled zone boundaries before acting on it.</li>
+  <li><strong>Joint modes</strong> &mdash; the Cartesian virtual wall adds a restoring force at the
+      boundary. Additionally, each candidate joint target is FK-checked in the subscriber callback;
+      if the EE would be outside the zone, the joint target is <em>rejected</em> (the last in-zone
+      target is held).</li>
+  <li><strong>Joint limits</strong> &mdash; joint targets are clamped to the enabled per-joint
+      min/max angles.</li>
+  <li><strong>Velocity limits</strong> &mdash; when enabled, a per-joint damping torque is added
+      to the actuator command (see below).</li>
+  <li><strong>Runtime monitor</strong> &mdash; a 10&nbsp;Hz check in the GUI logs a warning when
+      the robot is past a zone boundary.</li>
+</ul>
+
+<h3>Velocity limits</h3>
+<p>Velocity limits live under <strong>Robot Config &rarr; Safety Zones</strong> and are broadcast
+on <code>robot{N}_safety/velocity_limits</code>. When <em>enabled</em> and
+<code>max_joint_vel</code>&nbsp;&gt;&nbsp;0, the controller subtracts a velocity-damping torque
+from each joint&rsquo;s final actuator command:</p>
+<pre><code>tau_out = tau - (tau_limit / max_joint_vel) * joint_velocity</code></pre>
+<p>where <code>tau_limit</code> is that joint&rsquo;s torque limit (fallback 150&nbsp;Nm). The
+faster a joint moves, the more its command is opposed &mdash; a soft brake rather than a hard cut.
+<code>max_joint_vel</code> is in rad/s. The Cartesian value <code>max_cart_vel</code> (m/s) is
+received and logged by the controller but is not currently enforced.</p>
+<p>A robot's velocity block may also set <code>sim_max_joint_vel</code>, used instead of
+<code>max_joint_vel</code> for a robot driven in simulation (the Studio sends it to robots on the
+Simulation target, and the simulation node reads it at start-up); hardware always uses
+<code>max_joint_vel</code>. The Kinova Gen3 sets 3&nbsp;rad/s, a third of its hardware damper gain,
+so large moves converge in simulation.</p>
+
+<h3>ROS topics</h3>
+<p>Limits are broadcast per station as <code>Float64MultiArray</code>:</p>
+<table>
+  <tr><th>Topic</th><th>Format</th></tr>
+  <tr><td><code>robot{N}_safety/cartesian_limits</code></td><td><code>[x_min, x_max, x_en, y_min, y_max, y_en, z_min, z_max, z_en]</code></td></tr>
+  <tr><td><code>robot{N}_safety/joint_limits</code></td><td><code>[j0_min, j0_max, j1_min, j1_max, ..., enabled]</code> (radians)</td></tr>
+  <tr><td><code>robot{N}_safety/velocity_limits</code></td><td><code>[max_joint_vel, max_cart_vel, enabled]</code></td></tr>
+</table>
+<p>The GUI publishes the <strong>same</strong> limits to every active robot &mdash; a master station
+with several robots applies one workspace box to all of them. Until the GUI publishes, the
+controller boots with a default enabled box of X,&nbsp;Y&nbsp;&isin;&nbsp;[&minus;1,&nbsp;1]&nbsp;m,
+Z&nbsp;&isin;&nbsp;[0,&nbsp;1.5]&nbsp;m.</p>
+
+<div class="admonition tip"><div class="adm-title">Verifying limits reached the controller</div>
+<p>The controller logs every update it accepts, e.g.
+<code>Updated Cartesian safety limits: X[-0.50, 0.50] ...</code> and
+<code>Updated joint safety limits for 7 joints (enabled: true)</code> &mdash; watch for these in the
+<a href="#log-viewer" onclick="showPage('log-viewer')">Logs</a>. You can also inspect the wire directly:
+<code>ros2 topic echo /robot1_safety/cartesian_limits</code> (see
+<a href="#topics" onclick="showPage('topics')">Topics</a>).</p></div>
+
+<h2>Tier 2 &mdash; Hard stops (robot config)</h2>
+<p>The <code>robots_config.yaml</code> file defines each robot&rsquo;s <strong>physical actuator
+limits</strong>. These are not user-adjustable workspace restrictions &mdash; they are the absolute
+mechanical bounds of the hardware. Exceeding them triggers an immediate fault. The file the C++
+nodes read lives at <code>fic_library/config/robots_config.yaml</code>; it is generated from
+<code>fic_studio_robots.yaml</code> by the <strong>DEPLOY TO CONTROLLER</strong> button on the
+<a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a> page, and the controller loads it when a
+robot is selected &mdash; so Tier 2 edits require a deploy plus a robot re-selection or controller
+restart to take effect.</p>
+
+<h3>Joint position limits</h3>
+<p>Defined by <code>joint_limits_deg</code> in <code>robots_config.yaml</code>:</p>
+<pre><code>joint_limits_deg:
+  lower: [-166, -101, -166, -190, -166,  -20, -130]
+  upper: [ 166,  101,  166,   -6,  166,  280,  130]</code></pre>
+<p>Every control loop iteration, the current joint positions (from the encoder / simulation) are
+checked against these limits. If <strong>any joint exceeds its config limit</strong>, the controller
+latches a <strong>hard fault</strong>:</p>
+<ul>
+  <li>Output torques are immediately overridden with gravity-compensation only (the robot holds
+      its current position).</li>
+  <li>The fault is <strong>latched</strong> &mdash; control commands are refused until the robot
+      configuration is re-loaded (selecting a new robot or re-starting the node clears it).</li>
+  <li>An <code>RCLCPP_ERROR</code> log identifies the offending joint, current angle, and the
+      violated limit (<code>HARD FAULT: Joint N at X&deg; exceeds config limit [lo, hi]&deg;</code>).</li>
+</ul>
+<p>These limits are distinct from the URDF/Pinocchio limits used by the FIC planner for target
+clamping. The planner limits prevent the controller from <em>commanding</em> past the bounds; the
+config limits catch the case where the robot <em>actually reaches</em> a forbidden angle (due to
+inertia, external forces, or a controller bug).</p>
+
+<h3>Per-joint torque limits</h3>
+<p>Defined by <code>joint_torque_limits</code> in <code>robots_config.yaml</code>:</p>
+<pre><code>joint_torque_limits:
+  max: [30, 30, 30, 30, 9, 9, 9]   # Nm per joint</code></pre>
+<p>The output torque guard clamps each joint&rsquo;s commanded torque to its own physical limit
+before the torque reaches the robot driver or simulator. This replaces the previous single scalar
+clamp (150&nbsp;Nm for all joints).</p>
+<p>Example: on a Franka FR3, joints 1&ndash;4 are clamped to &plusmn;30&nbsp;Nm and joints 5&ndash;7
+to &plusmn;9&nbsp;Nm, matching the actuator ratings. If a robot does not define
+<code>joint_torque_limits</code>, the fallback scalar (150&nbsp;Nm) is used. These same values are
+the hard ceiling for the <a href="#autotuning" onclick="showPage('autotuning')">autotuner</a>&rsquo;s
+<code>force_max</code> search.</p>
+
+<h3>Comparison</h3>
+<table>
+  <tr><th></th><th>Tier 1 &mdash; GUI safety zones</th><th>Tier 2 &mdash; Config hard stops</th></tr>
+  <tr><td><strong>Source</strong></td><td>Safety Zones page / <code>fic_studio_robots.yaml</code></td><td><code>robots_config.yaml</code></td></tr>
+  <tr><td><strong>User-adjustable?</strong></td><td>Yes, live in the GUI</td><td>YAML only (physical robot limits)</td></tr>
+  <tr><td><strong>Joint enforcement</strong></td><td>Target clamping + FK rejection</td><td>Hard fault on actual position violation</td></tr>
+  <tr><td><strong>Cartesian enforcement</strong></td><td>Target clamping (Cartesian modes) or virtual wall (joint modes)</td><td>&mdash;</td></tr>
+  <tr><td><strong>Torque enforcement</strong></td><td>&mdash;</td><td>Per-joint output clamp to actuator rating</td></tr>
+  <tr><td><strong>On violation</strong></td><td>Robot is bounded at the limit (keeps running)</td><td>Hard fault &mdash; gravity comp only, control locked</td></tr>
+  <tr><td><strong>Recovery</strong></td><td>Automatic (wall pushes robot back)</td><td>Re-load robot or restart node</td></tr>
+</table>
+
+<h2>E-STOP</h2>
+<p>Triggered by the <strong>Space</strong> key, the toolbar <strong>&#11035; E-STOP</strong>
+button, or the menu. It now stops <em>gracefully</em>: it fans out to every extension, then
+commands the controller&rsquo;s mode-0 torque ramp-down to every robot and waits a brief ramp
+window (250&nbsp;ms by default) <em>before</em> killing processes &mdash; so the robot decays to a
+safe hold instead of freezing its last torque on an abrupt kill. Each robot is then locked at its
+last-known joint pose and all processes are torn down. Full trigger list, teardown order, and
+recovery steps are on the <a href="#estop" onclick="showPage('estop')">E-STOP</a> page.</p>
+
+<h2>Runtime guards</h2>
+<ul>
+  <li><strong>Per-joint torque guard</strong> &mdash; commanded torques are forced finite
+      (NaN/Inf&nbsp;&rarr;&nbsp;0) and clamped per-joint to the actuator rating from
+      <code>robots_config.yaml</code> (falling back to 150&nbsp;Nm when no per-joint limit is
+      defined). See <em>Tier 2</em> above.</li>
+  <li><strong>Bounded force reflection</strong> &mdash; bilateral teleoperation haptic feedback
+      is gain-scaled, NaN-guarded, and saturated (&plusmn;30&nbsp;N / &plusmn;5&nbsp;N&middot;m)
+      so a spiking force/torque reading cannot be amplified unbounded onto the operator. See
+      <a href="#teleoperation" onclick="showPage('teleoperation')">Teleoperation</a>.</li>
+</ul>
+
+<h2>Hardware verification</h2>
+<p>Some nets can only be proven on real hardware &mdash; the controller-death watchdog, true
+torque saturation at the driver, and the Kinova graceful stop. These are validated separately
+via a written hardware test protocol (<code>docs/safety/hardware-verification-protocol.md</code>):
+a pre-flight checklist, net-by-net expected-vs-observed procedures, and a sign-off table.
+Everything described above is verified in simulation.</p>
+
+<div class="admonition danger"><div class="adm-title">Hardware safety</div>
+<p>Software safety limits are a last line of defence. When working with real hardware, always:
+start with low stiffness, keep E-STOP accessible, have a physical emergency stop within reach,
+and test trajectories in simulation first.</p></div>
+
+<div class="doc-footer">
+  <p>Published work behind ISO/TS 15066 and collision detection: <a href="#references" onclick="showPage('references')">References</a></p>
+</div>

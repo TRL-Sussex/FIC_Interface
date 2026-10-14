@@ -1,0 +1,49 @@
+/* Sequences web page. The UI kit draws the buttons, fields and confirmations. */
+.sq-page { display: grid; gap: var(--s3); }
+.sq-bar { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.sq-bar .btn-row { gap: var(--s2); }
+.sq-bar > .select { min-width: 13rem; }
+.sq-grow { flex: 1 1 auto; }
+.sq-to { color: var(--ink-muted); font-size: var(--fs-s); }
+.sq-status { color: var(--ink-muted); font-size: var(--fs-s); }
+.sq-status.on { color: var(--accent); font-weight: 600; }
+.sq-runs { color: var(--ink-muted); font-size: var(--fs-s); }
+.sq-runs.hw { color: var(--bad); font-weight: 600; }
+.sq-ask:empty { display: none; }
+.sq-name { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.sq-name .input { min-width: 14rem; }
+
+.sq-work { display: grid; grid-template-columns: minmax(0, 1fr) 19rem; gap: var(--s3); align-items: start; }
+.sq-work .section { margin: 0; }
+.sq-col { display: grid; gap: var(--s3); min-width: 0; }
+.sq-list { display: grid; gap: 4px; max-height: max(20rem, calc(100vh - 22rem)); overflow: auto; }
+.sq-row { display: grid; grid-template-columns: 1.6rem 5.5rem minmax(8rem, 1fr) 5.5rem auto; gap: var(--s2) var(--s3); align-items: center;
+  padding: 4px var(--s3); border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
+.sq-row.at { border-color: var(--accent); background: var(--accent-soft); }
+.sq-row.sel { border-color: var(--rule-strong); }
+.sq-row.editing { border-color: var(--warn); }
+.sq-n { color: var(--ink-muted); text-align: right; }
+.sq-t { justify-self: start; text-transform: capitalize; }
+.sq-v { font-size: var(--fs-s); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sq-row .btn-row { gap: 2px; flex-wrap: nowrap; }
+.sq-row .btn { padding-left: 8px; padding-right: 8px; }
+.sq-row .xnum { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.sq-row .xnum .input { width: 3.6rem; min-width: 0; }
+
+.sq-form-title { margin: 0 0 var(--s2); font-size: var(--fs-m); }
+.sq-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0 var(--s3); }
+.sq-or { margin: var(--s2) 0; color: var(--ink-faint); font-size: var(--fs-xs); text-align: center; }
+.sq-form .btn[hidden] { display: none; }
+
+@media (max-width: 860px) {
+  .sq-work { grid-template-columns: 1fr; }
+  .sq-row { grid-template-columns: 1.6rem 1fr 5.5rem; }
+  .sq-row > .sq-v, .sq-row > .btn-row { grid-column: 1 / -1; }
+}
+
+/* The narrow right column: short labels, inputs that fill the rest. */
+.sq-col .kit-field { grid-template-columns: 6.5rem minmax(0, 1fr); gap: var(--s3); }
+.sq-col .xnum { gap: 6px; }
+.sq-col .xnum .input.num { width: 100%; min-width: 0; }
+.sq-col .select { width: 100%; }
+.sq-grid { grid-template-columns: 1fr; }

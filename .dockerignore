@@ -1,0 +1,48 @@
+# Build context for docker/Dockerfile.
+#
+# Allowlist: ignore everything, then re-include only what the image needs.
+# Anything new at the top level of the repo (papers, datasets, vendor SDKs,
+# editor folders) therefore stays out of the image without touching this file.
+
+*
+
+!docker/
+!fic_library/
+!fic_ws/src/
+!Extensions/
+!fic_docs/
+!docs/scripting/
+!fic_api/
+!fic_install/fic-control-studio.svg
+!README.md
+
+# ── Re-exclude within the allowed trees ─────────────────────────────────────
+
+# Host build artefacts: colcon bakes absolute paths into them and they are
+# built for the host's architecture. The image builds its own.
+fic_ws/src/*/build
+fic_ws/src/*/install
+fic_ws/src/*/log
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+**/.pytest_cache
+**/.DS_Store
+
+# Newton needs an NVIDIA GPU with CUDA, which Docker Desktop cannot provide.
+# Leaving it out means the Studio never offers it (it falls back to MuJoCo).
+fic_ws/src/mujoco_newton
+
+
+# Output folders of the extensions. At runtime they live in the user's folder.
+Extensions/*/plots
+Extensions/*/runs
+Extensions/*/run_log.json
+fic_ws/src/fic_studio/fic_studio/experiments
+**/MUJOCO_LOG.TXT
+Extensions/alvr_dashboard
+
+# Maintainer output (image tarballs written by docker/build.sh), and the
+# default shared folder of docker/compose.yaml (user data).
+docker/dist
+docker/FIC_Studio

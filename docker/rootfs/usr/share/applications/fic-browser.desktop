@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=FIC Browser
+Exec=fic-browser %u
+Icon=web-browser
+Terminal=false
+NoDisplay=true
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;

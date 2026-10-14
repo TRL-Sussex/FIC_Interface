@@ -1,0 +1,576 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Tuning</div>
+<h1>Tuning Panel</h1>
+<p class="subtitle">Full-width interactive force-profile canvas with scrubbable inputs, a live operating-point overlay (v3.9.4), a live-feedback strip, and direct save to <code>config.xml</code>.</p>
+
+<h2>Overview</h2>
+<p>The Tuning Panel places the <strong>interactive FIC force-profile canvas</strong> as the full-width centerpiece.
+Below it a <strong>live-feedback strip</strong> shows tracking error, joint effort, and Cartesian wrench in real time so you
+see the effect of a gain change immediately. Scrubbable <strong>MetricField</strong> inputs replace plain text boxes — units,
+ranges, and clamping are embedded. Planner, Admittance, and Advanced parameters live in
+<strong>collapsible sections</strong> that are shown only when relevant to the selected mode and axis.</p>
+<p>Clicking <strong>SAVE TO XML</strong> writes to <code>fic_library/config/config.xml</code>. The save also publishes
+<code>robot&lt;N&gt;_param_update</code>, and both C++ controller nodes then read the file again in the
+background and switch to the new values on the next control tick once they are read (see <em>How
+Changes Reach the Controller</em> below) — no process restart or mode change is needed on simulation
+or hardware.</p>
+
+<h2>The FIC Force Profile</h2>
+<p>Every tunable channel (each joint, each Cartesian axis, elbow, postural) has the same nonlinear
+force–displacement profile, built from a linear region followed by <code>N_S/2</code> smooth (tanh) saturation stages.
+The canvas draws the intended profile below; the controller computes it in <code>getEffort()</code> in
+<code>FIC.cpp</code>, which since v4.4.0 places the outer bands differently from the canvas (see
+<em>How the controller computes it</em> after the figure):</p>
+
+<svg viewBox="0 0 700 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Annotated FIC force profile with breakpoints and saturation zones">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-left { text-anchor: start; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#tuning-arrowhead); }
+    .arrow-blue { stroke: #1976d2; }
+    .arrow-green { stroke: #388e3c; }
+    .arrow-orange { stroke: #f57c00; }
+    .line { stroke: #bbb; stroke-width: 1; stroke-dasharray: 4,3; }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+    .container-solid { fill: #fafbfd; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; }
+  </style>
+  <defs>
+    <marker id="tuning-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+  </defs>
+
+  <text x="350" y="18" class="label-title">FIC force profile (positive half) — 2 saturation stages (N_S = 4)</text>
+
+  <!-- axes -->
+  <line x1="60" y1="270" x2="670" y2="270" stroke="#999" stroke-width="1.5"/>
+  <line x1="60" y1="270" x2="60" y2="35" stroke="#999" stroke-width="1.5"/>
+  <text x="365" y="292" class="label-sm">displacement x  (rad / m)</text>
+  <text x="30" y="150" class="label-sm" transform="rotate(-90 30 150)">force F  (Nm / N)</text>
+
+  <!-- zone verticals -->
+  <line x1="150" y1="270" x2="150" y2="55" stroke="#c62828" stroke-width="1" stroke-dasharray="4,3"/>
+  <line x1="235" y1="270" x2="235" y2="55" stroke="#f57c00" stroke-width="1" stroke-dasharray="4,3"/>
+  <line x1="365" y1="270" x2="365" y2="55" stroke="#c62828" stroke-width="1" stroke-dasharray="4,3"/>
+  <line x1="465" y1="270" x2="465" y2="55" stroke="#f57c00" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="150" y="282" class="label-code">S·x_b1</text>
+  <text x="235" y="282" class="label-code">x_b1</text>
+  <text x="365" y="282" class="label-code">S·x_b2</text>
+  <text x="465" y="282" class="label-code">x_b2</text>
+
+  <!-- force levels -->
+  <line x1="60" y1="155" x2="670" y2="155" class="line"/>
+  <line x1="60" y1="75" x2="670" y2="75" class="line"/>
+  <text x="682" y="155" class="label-code" text-anchor="end">F1</text>
+  <text x="682" y="75" class="label-code" text-anchor="end">F2</text>
+
+  <!-- linear stiffness reference (teal dashed, slope K0) -->
+  <line x1="60" y1="270" x2="330" y2="55" stroke="#00897b" stroke-width="1.5" stroke-dasharray="8,5"/>
+  <text x="300" y="48" class="label-sm" fill="#00897b" style="fill:#00897b">slope K&#8320;</text>
+
+  <!-- FIC curve -->
+  <path d="M 60 270 L 150 198 C 190 166, 195 155, 235 155 L 365 155 C 415 155, 420 75, 465 75 L 665 75"
+        fill="none" stroke="#1976d2" stroke-width="2.5"/>
+
+  <!-- zone annotations -->
+  <text x="105" y="235" class="label-sm">linear</text>
+  <text x="105" y="248" class="label-code">F = K&#8320;·x</text>
+  <text x="192" y="128" class="label-sm">tanh rise → F1</text>
+  <text x="300" y="140" class="label-sm">bridge at F1</text>
+  <text x="415" y="52" class="label-sm">tanh rise → F2</text>
+  <text x="565" y="60" class="label-sm">saturated at F2</text>
+
+  <!-- draggable handles -->
+  <circle cx="235" cy="155" r="7" fill="#fff" stroke="#1976d2" stroke-width="2"/>
+  <text x="272" y="170" class="label-code">xb1·F1 handle</text>
+  <circle cx="465" cy="75" r="7" fill="#fff" stroke="#f57c00" stroke-width="2"/>
+  <text x="503" y="92" class="label-code">xb2·F2 handle</text>
+  <circle cx="150" cy="198" r="7" fill="#fff" stroke="#c62828" stroke-width="2"/>
+  <text x="150" y="215" class="label-code">S·xb1 handle</text>
+  <circle cx="365" cy="155" r="7" fill="#fff" stroke="#c62828" stroke-width="2"/>
+  <text x="365" y="172" class="label-code">S·xb2 handle</text>
+
+  <!-- live operating point with deviation connector -->
+  <line x1="320" y1="192" x2="320" y2="155" stroke="#c62828" stroke-width="1.2" stroke-dasharray="2,3"/>
+  <circle cx="320" cy="192" r="9" fill="#1976d2" opacity="0.25"/>
+  <circle cx="320" cy="192" r="5" fill="#1976d2" stroke="#fff" stroke-width="1"/>
+  <circle cx="308" cy="200" r="2.2" fill="#1976d2" opacity="0.55"/>
+  <circle cx="296" cy="207" r="2.2" fill="#1976d2" opacity="0.35"/>
+  <circle cx="285" cy="213" r="2.2" fill="#1976d2" opacity="0.2"/>
+  <text x="320" y="228" class="label-sm">live operating point ● + trail</text>
+  <text x="320" y="241" class="label-sm">connector = deviation from curve</text>
+
+  <!-- scroll hint -->
+  <text x="640" y="42" class="label-code" text-anchor="end">scroll = K&#8320; ±10 (Shift ±50)</text>
+</svg>
+
+<h2>Layout</h2>
+<pre><code>Tuning Panel                        [LOAD FROM XML] [SAVE TO XML] [VIEW XML]
+[Mode ▾] Type: Joint (NO damping…)  [Joint ID ▾ / Axis ▾]  Config: [▾] [+ Config] [- Config]
+══════════════ FIC FORCE PROFILE CANVAS (full width, draggable) ══════════════
+   handles · scroll = K₀ · live operating point ●
+ [Stiffness K₀] [N_S] [x_b (all)] [F (all)] [Ratio S] [Conv. K]   ← FICStatsBar
+ Tracking error ░░▌░░ 0.012 rad   Effort ░▌░░ 18 Nm   Wrench --   ← feedback strip
+ Δx +0.0120 · F +18.20 · dev −0.35                                ← op-point readout
+ Saved to config.xml at HH:MM:SS
+──────────────────────────────────────────────────────────────────────────────
+ CONTROLLER   Stiffness K₀ · Sat. Ratio S · N_S
+              Error Max [..][..] · Force Max [..][..] · Velocity (joint+planner)
+ ▸ PLANNER    (shown for modes 2–4, 6–8)
+ ▸ ADMITTANCE (shown for modes 3–4, 7–8)
+ ▸ ADVANCED   (Asymmetric, N_negSat)</code></pre>
+
+<h3>How the controller computes it</h3>
+<p><code>getEffort()</code> stores the breakpoints as one ordered vector <code>x_b</code> (negative
+breakpoints first, mirrored for a symmetric profile) with the forces <code>E_s</code> and ratios
+<code>S</code> beside it, and picks a band by the error:</p>
+<ul>
+  <li><strong>Linear range:</strong> between <code>S&middot;x_b</code> of the innermost negative and
+  positive breakpoints, <code>F = K&#8320;&middot;x</code> (separate K&#8320; for each sign).</li>
+  <li><strong>First band on each side:</strong> starts at <code>S&middot;x_b</code> from the linear
+  force there, <code>K&#8320;&middot;S&middot;x_b</code> (so the first negative band starts at
+  <code>&minus;K&#8320;&middot;S&middot;|x_b|</code>), and rises along the tanh to the first saturation
+  force. With a single negative band (<code>n_saturations</code> = 2) that band is bounded by
+  <code>x_b(0)</code>.</li>
+  <li><strong>Outer bands:</strong> start at the previous breakpoint and run from its force to their
+  own. Each band's condition uses the bounds
+  <code>S(i)&middot;(x_b(i) &minus; x_b(i&plusmn;1)) + x_b(i&plusmn;1)</code>.</li>
+  <li><strong>Beyond the outermost breakpoint:</strong> the outermost force, <code>F_max</code>.</li>
+</ul>
+<p>The tanh step itself is <code>getEffortValue()</code>, the same function the canvas uses.</p>
+<div class="admonition warning"><div class="adm-title">Known limitation: gaps in the band conditions</div>
+<p>With the current band conditions some errors match no band and <code>getEffort()</code> returns
+<strong>0</strong>:</p>
+<ul>
+  <li><strong>Just inside the outermost breakpoint.</strong> On both sides, errors in the last
+  <code>(1 &minus; S)</code> of the outermost band &mdash; from
+  <code>S&middot;(x_b,last &minus; x_b,prev) + x_b,prev</code> to <code>x_b,last</code> &mdash; return 0,
+  and beyond <code>x_b,last</code> the effort is <code>F_max</code>. For the KinovaGen3_7DOF Cartesian
+  profile (<code>x_b</code> = 0.05 / 0.1 / 0.2&nbsp;m, <code>S</code> = 0.9) that is |error| from 0.19
+  to 0.2&nbsp;m. Below that the outer band holds the previous band's force: the tanh rise to the
+  outermost force is never reached.</li>
+  <li><strong>The first positive band's condition never matches.</strong> Positive errors past
+  <code>S&middot;x_b</code> are taken by the next band instead, so the effort steps from
+  <code>K&#8320;&middot;S&middot;x_b</code> to the first saturation force rather than rising along the
+  tanh (on the Kinova Cartesian profile, from 9&nbsp;N to 13&nbsp;N at 0.045&nbsp;m). With
+  <code>n_saturations</code> = 2 there is no next band, and positive errors from
+  <code>S&middot;x_b</code> to <code>x_b</code> return 0.</li>
+</ul>
+<p>Errors exactly on a band boundary also return 0. These come from evaluating
+<code>getEffort()</code> directly; the controller's convergence branch scales from the effort at
+the peak error, so a zero there also gives a zero convergence stiffness. The canvas does not show
+these gaps.</p></div>
+
+<h2>Workflow</h2>
+<ol>
+  <li>Select a <strong>Control Mode</strong> (1&ndash;8) from the Mode dropdown. A label beside it shows the control space and damping situation: <em>(NO damping &mdash; use lower stiffness!)</em>, <em>(HAS damping_ratio)</em>, or <em>(HAS Kv damping)</em>. See <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>.</li>
+  <li>Select a <strong>Joint ID</strong> (0 to N&minus;1 for the selected robot) in joint modes, or an <strong>Axis</strong> (<code>x</code> / <code>y</code> / <code>z</code> / <code>q</code> / <code>elbow</code> / <code>postural</code>) in Cartesian modes 5&ndash;8.</li>
+  <li>Select a <strong>Config</strong> (tuning profile) &mdash; <code>default</code>, or a named profile you created.</li>
+  <li>Drag handles on the <strong>FIC canvas</strong> or edit the <strong>MetricField</strong> inputs below it. The canvas, stats bar, and fields stay in sync in both directions.</li>
+  <li>Watch the <strong>live-feedback strip</strong> and the <strong>operating-point marker</strong> &mdash; both refresh at ~10 Hz while the controller is running and the Tuning page is visible.</li>
+  <li>Click <strong>SAVE TO XML</strong> &rarr; validates the values, writes <code>fic_library/config/config.xml</code>, and shows a <em>Saved to config.xml at HH:MM:SS</em> stamp. It also publishes <code>robot&lt;N&gt;_param_update</code>; the controller reads the file in the background and switches to the new values when they are read.</li>
+</ol>
+
+<h2>Interactive FIC Canvas</h2>
+<p>The canvas draws the FIC force&ndash;displacement curve in real time and spans the full width of the panel.
+Each positive-side breakpoint <em>i</em> gets two draggable handles (mirrored on the negative side):</p>
+<table>
+  <tr><th>Handle / Control</th><th>Parameter</th><th>Effect</th></tr>
+  <tr><td><strong>xb<sub>i</sub>&middot;F<sub>i</sub></strong></td><td><code>error_max[i]</code> + <code>force_max[i]</code></td><td>2-D drag: horizontal moves the saturation boundary, vertical sets the saturation force. Constrained to stay strictly between neighbouring breakpoints.</td></tr>
+  <tr><td><strong>S&middot;xb<sub>i</sub></strong></td><td><code>saturation_ratios</code></td><td>Horizontal drag sets the ratio S = handle&nbsp;position / x<sub>b,i</sub>, clamped to 0.4&ndash;0.95. The GUI stores a single shared S for all stages.</td></tr>
+  <tr><td><strong>Scroll wheel</strong></td><td><code>stiffness</code> (K&#8320;)</td><td>&plusmn;10 per notch (&plusmn;50 with Shift), clamped to 1&ndash;5000</td></tr>
+  <tr><td><strong>live marker ●</strong></td><td>&mdash;</td><td>Read-only dot showing where the robot sits on the curve right now (v3.9.4)</td></tr>
+</table>
+<p>Overlays show the linear stiffness reference (teal dashed), the convergence-phase pullback line (red dashed),
+the <code>x_b</code> boundaries (orange dashed) and the <code>S&middot;x_b</code> lines (red dashed). The canvas re-themes
+automatically when you switch between the Warmth dark and light themes.</p>
+<div class="admonition tip"><div class="adm-title">Stiffness auto-clamp</div>
+<p>The panel enforces <code>K&#8320; &le; force_max[0] / error_max[0]</code> live: if you raise K&#8320; (or shrink the first
+breakpoint) past that bound, K&#8320; snaps back to the maximum. The same rule is re-checked when you save.</p></div>
+<p>The <strong>FICStatsBar</strong> cards below the canvas display the current computed values:
+<strong>Stiffness K&#8320;</strong>, <strong>N_S</strong>, <strong>x_b (all)</strong>, <strong>F (all)</strong>, <strong>Ratio S</strong>,
+and <strong>Conv. K</strong> (the convergence stiffness).</p>
+
+<h2>Live Operating Point <span style="font-size:0.7em; color:var(--accent)">(v3.9.4)</span></h2>
+<p>The canvas does not just draw the <em>designed</em> force profile &mdash; it shows <strong>where the robot is operating on that curve right now</strong>. A marker dot is painted in the canvas&rsquo;s own (displacement, force) coordinate space at the live operating point and refreshes at ~10&nbsp;Hz while the controller runs.</p>
+<ul>
+  <li><strong>Joint modes</strong> &mdash; the marker sits at (commanded&nbsp;&minus;&nbsp;measured position, measured effort) for the joint selected in the dropdown.</li>
+  <li><strong>Cartesian modes</strong> &mdash; the marker sits at (Cartesian error component, wrench component) for the selected <code>x</code>/<code>y</code>/<code>z</code>/<code>q</code> axis; <code>q</code> maps to the orientation error against the torque channel. Null-space axes (<code>elbow</code> / <code>postural</code>) show no marker.</li>
+  <li><strong>Fading trail</strong> &mdash; the last 24 samples (~2.4&nbsp;seconds) fade from old to new, so oscillation, overshoot, and settling are visible at a glance.</li>
+  <li><strong>Deviation connector</strong> &mdash; a thin dotted connector links the marker to the designed curve at the same displacement and reddens as the gap grows. When the dot sits on the curve the controller is tracking the profile; when it drifts off (and the connector reddens) the controller has saturated or is lagging.</li>
+  <li><strong>Off-scale clamp</strong> &mdash; if the operating point leaves the plotted range, a small red dot is pinned at the canvas edge instead of the normal marker.</li>
+  <li><strong>Numeric readout</strong> &mdash; a <code>&Delta;x &middot; F &middot; dev</code> line below the canvas reports the live displacement, force, and signed deviation from the curve. The marker and trail clear when telemetry is absent (controller idle) and whenever you change joint, axis, or mode.</li>
+</ul>
+
+<h2>Live-Feedback Strip</h2>
+<p>A three-bar strip below the canvas updates from a 100&nbsp;ms timer while the Tuning page is visible
+(a page-visible guard prevents background load). Each bar is centre-zero: positive values fill right in green,
+negative values fill left in red. Bars show <code>--</code> when their channel has no data:</p>
+<table>
+  <tr><th>Channel</th><th>Active in</th><th>Source</th><th>Range reference</th></tr>
+  <tr><td><strong>Tracking error</strong></td><td>Joint modes</td><td><code>joint_commanded_for() &minus; joint_positions_for()</code> for the selected joint</td><td><code>error_max[0]</code> (first breakpoint)</td></tr>
+  <tr><td><strong>Effort</strong></td><td>Joint modes</td><td><code>joint_effort_for()</code> for the selected joint</td><td><code>force_max[-1]</code> (the top of the curve)</td></tr>
+  <tr><td><strong>Wrench</strong></td><td>Cartesian modes, axes <code>x</code>/<code>y</code>/<code>z</code>/<code>q</code></td><td><code>wrench_for()</code> component for the selected axis</td><td><code>force_max[-1]</code> (peak saturation force)</td></tr>
+</table>
+<div class="admonition tip"><div class="adm-title">Reading the strip</div>
+<p>The bar fills proportionally to the configured range. A tracking-error bar at half-fill means the robot is
+sitting at <code>error_max[0] / 2</code> away from its target &mdash; right in the linear region. An effort bar near full
+means the effort is near the top of the curve, <code>force_max[-1]</code>; consider widening the saturation range or
+increasing the force breakpoints before raising stiffness further.</p></div>
+
+<h2>MetricField Inputs</h2>
+<p><strong>MetricField</strong> replaces plain text boxes throughout the panel. Each field embeds its unit label and
+a painted fill bar, and can be <em>scrubbed</em>: drag horizontally to change the value (hold Shift for fine 0.2&times;
+steps), use Up/Down keys for fixed increments, or click in to type an exact number. Values are clamped to the
+field&rsquo;s min/max on commit. Units switch automatically with the control space &mdash; <code>Nm/rad</code>, <code>Nm</code>,
+<code>rad</code> in joint modes; <code>N/m</code>, <code>N</code>, <code>m</code> in Cartesian modes.</p>
+<div class="admonition warning"><div class="adm-title">Save-time validation</div>
+<p><strong>SAVE TO XML</strong> refuses to write (with an error dialog) if the <code>error_max</code> or
+<code>force_max</code> breakpoints are not strictly ascending, or if K&#8320; exceeds
+<code>force_max[0] / error_max[0]</code>. Canvas drags cannot produce these states, but manual field edits can.</p></div>
+
+<h2>FIC Core Parameters (CONTROLLER group)</h2>
+<table>
+  <tr><th>Parameter</th><th>XML tag</th><th>Field range</th><th>Unit</th><th>Description</th></tr>
+  <tr><td>Stiffness K&#8320;</td><td><code>stiffness</code></td><td>0 &ndash; 5000</td><td>Nm/rad or N/m</td><td>Linear spring constant &mdash; the initial slope of the force curve</td></tr>
+  <tr><td>Error Max (breakpoints)</td><td><code>error_max</code></td><td>0.0001 &ndash; 3.0 each</td><td>rad or m</td><td>Saturation boundary positions, strictly ascending; edited via the <strong>BreakpointStrip</strong> (N_S/2 fields)</td></tr>
+  <tr><td>Force Max (breakpoints)</td><td><code>force_max</code></td><td>0.1 &ndash; 500 each</td><td>Nm or N</td><td>Saturation force at each breakpoint, strictly ascending (N_S/2 fields)</td></tr>
+  <tr><td>Sat. Ratio S</td><td><code>saturation_ratios</code></td><td>0.4 &ndash; 0.95</td><td>&mdash;</td><td>Fraction of each breakpoint where the tanh transition begins (higher = longer linear/flat region)</td></tr>
+  <tr><td>N_S</td><td><code>n_saturations</code></td><td>2 &ndash; 8, even</td><td>&mdash;</td><td><strong>Total</strong> saturation count; the positive half is N_S/2 breakpoints, which sets the strip lengths</td></tr>
+  <tr><td>Velocity</td><td><code>velocity</code></td><td>0 &ndash; 10</td><td>rad/s</td><td>Only shown for joint modes with a planner</td></tr>
+</table>
+
+<h3>BreakpointStrip</h3>
+<p>The <strong>error_max</strong> and <strong>force_max</strong> lists are multi-value fields: one <code>MetricField</code>
+per positive-side breakpoint, i.e. <strong>N_S/2</strong> fields. Changing the N_S spinner adds or removes fields from
+both strips (new fields are seeded at double the last value), and while <em>Asymmetric</em> is off it also keeps
+<code>n_neg_sat</code> in sync at N_S/2. The strips emit on every commit so the canvas redraws in real time.</p>
+
+<h2>Tuning Profiles (Configs)</h2>
+<p>A <strong>profile</strong> is a named tuning set for one robot. Profiles let you store variants like
+<code>Stiff</code> or <code>Gentle</code> alongside the <code>default</code> tuning and switch between them
+at runtime without re-tuning each mode.</p>
+<table>
+  <tr><th>Control</th><th>What it does</th></tr>
+  <tr><td><strong>Config dropdown</strong></td><td>Lists every profile defined anywhere for the selected robot. Selecting one publishes its name on <code>robot&lt;N&gt;_active_profile</code> (<code>String</code>, transient-local, so late-started controllers still receive it) and reloads the fields from XML.</td></tr>
+  <tr><td><strong>+ Config</strong></td><td>Prompts for a name, then clones the current <code>(mode, profile)</code> block into a new block with that name. Other modes fall back to <code>default</code> until you edit them too.</td></tr>
+  <tr><td><strong>&minus; Config</strong></td><td>After confirmation, removes the selected profile from <strong>every</strong> mode it appears in. The <code>default</code> profile cannot be deleted.</td></tr>
+</table>
+
+<div class="admonition tip"><div class="adm-title">Fallback indicator</div>
+<p>Items in the Config dropdown show <code>(fallback &rarr; default)</code> when the selected profile has no concrete
+override for the currently-selected mode. Picking that profile loads default values; saving creates the override.
+The same fallback happens inside the controller: <code>fic_param_loader.hpp</code> falls back to the
+<code>default</code> profile block whenever the requested one does not exist for a mode.</p></div>
+
+<p><strong>The <code>sim</code> profile.</strong> When a robot has a profile named <code>sim</code>, the Config
+dropdown selects it on the Simulation target and <code>default</code> on Hardware, until you pick a config
+yourself. The Kinova Gen3's <code>sim</code> profile gives the joint admittance (mode 3) the lower damping of
+mode 4 on joints 2&ndash;4, so the arm is easy to move, and slows the Cartesian planner of modes 6&ndash;8 to
+0.25&nbsp;m/s so the arm keeps up with it on large moves; modes it does not list use <code>default</code>.</p>
+
+<h3>Example: creating a "Stiff" config for modes 1 and 5</h3>
+<ol>
+  <li>Set mode to <strong>Joint Impedance</strong>, click <strong>+ Config</strong>, name it <code>Stiff</code>. Edit the joint fields and click <strong>SAVE TO XML</strong>.</li>
+  <li>Switch mode to <strong>Cartesian Impedance</strong>. The Config dropdown still shows <code>Stiff</code> &mdash; decorated with <code>(fallback &rarr; default)</code> because no Cartesian override exists yet.</li>
+  <li>Select <code>Stiff</code> (fields load from mode 5 default), edit Cartesian values, click <strong>SAVE TO XML</strong>. The indicator disappears &mdash; Stiff now has a concrete block for mode 5.</li>
+  <li>Modes 2, 3, 4, 6, 7, 8 continue to fall back to <code>default</code> at runtime until you tune them.</li>
+</ol>
+
+<h3>Live trial (web interface)</h3>
+<p>The web Tuning Panel can try changes on the robot <strong>without touching the saved config</strong>.
+<strong>Live trial</strong> copies the selected config to <code>&lt;config&gt;~trial</code> (every mode block it has)
+and makes the copy the active config, so the robot carries on with the same values. From then on each change is
+written to the copy and the controller reloads it: a typed value a moment after the last keystroke, a dragged handle
+when you let go, the wheel a moment after the last step. A value the Studio refuses (for example a stiffness above
+<code>force_max[0] / error_max[0]</code>) is not applied, and the robot keeps the last values that were.</p>
+<ul>
+  <li><strong>Keep</strong> writes the trial over the saved config, for every mode the trial changed, makes that
+    config active and deletes the copy.</li>
+  <li><strong>Discard</strong> puts the robot back on the config it ran before the trial and deletes the copy.
+    Nothing from the trial is saved.</li>
+</ul>
+<p>While a trial runs the Config selector is locked to the copy; mode, joint and axis change as usual, and a change
+still waiting to be applied is applied before the page moves on. Elbow and postural are robot-wide rather than
+per config, so they are not part of a trial: Save to XML writes them directly, as before. The copy is an ordinary
+config in <code>config.xml</code>, so a trial left behind by a crash shows up again in the panel and can still be
+kept or discarded. Starting a trial and applying to it follow the same rules as commanding the robot (not just after
+an E-stop, not while VR drives it); Keep and Discard always work.</p>
+
+<h2>HAP-FIC&rsquo;s Own Tuning</h2>
+<p>HAP-FIC is switched on in modes 6&ndash;8, and while it is on it does not use the tuning of the mode it runs in.
+It has a tuning block of its own in <code>config.xml</code>, <code>&lt;mode id="100" name="HAP-FIC"&gt;</code>, with two
+layers:</p>
+<table>
+  <tr><th>Layer</th><th>What it is</th><th>Parameters</th></tr>
+  <tr><td><strong>Joint layer</strong></td><td>A joint admittance around the torques the Cartesian layer asks for, one per joint</td><td>Controller, planner and admittance (Kv damping, inverse mass, flow limits) per joint</td></tr>
+  <tr><td><strong>Cartesian layer</strong></td><td>A Cartesian planner and FIC controller that turns the pose error into those torques</td><td>Controller and planner per axis (x, y, z, q)</td></tr>
+</table>
+<p>On the Tuning Panel, pick <strong>HAP-FIC</strong> at the end of the Mode list, then the <strong>Layer</strong>. The web
+panel opens on it when HAP-FIC is on. Tuning it changes nothing in modes 4 or 6, and tuning those modes no longer
+changes HAP-FIC. Profiles work as for any mode: a profile without a HAP-FIC block of its own uses the default
+profile&rsquo;s, and a live trial copies it along with the rest.</p>
+<p>Before HAP-FIC had a block it ran on mode 4&rsquo;s joints and mode 6&rsquo;s Cartesian block, and a robot whose
+<code>config.xml</code> has no HAP-FIC block still does (the node logs <em>HAP-FIC tuning: config.xml has no HAP-FIC
+block</em>). The panel then shows those values and the first change gives HAP-FIC its own block, copied from them.
+<code>fic_ws/src/fic_studio/tools/migrate_hapfic_tuning.py</code> adds the blocks to an older file without changing
+what any robot runs. Simulation and hardware choose the blocks in the same function,
+<code>fic::tuningKeyFor</code> in <code>fic_param_loader.hpp</code>.</p>
+<div class="admonition tip"><div class="adm-title">HAP-FIC moves on its own</div>
+<p>A ~1&nbsp;Hz swing of a few centimetres is the joint layer&rsquo;s damping being too low: with Kv 9.0 / 13.7 the
+loop closes a limit cycle. Raise <strong>Admittance &rarr; Damping</strong> on the joint layer (joint 4 on the Kinova is
+held by its InvM and needs nothing). The <code>hw_x2</code>&ndash;<code>hw_x6</code> profiles hold damping &times;2 to &times;6
+for comparison; <code>sim</code> is &times;4 and
+<code>default</code> &times;6 (Kv 54, 82.2 on joint 1), from a simulation sweep where &times;3 still oscillated and
+&times;6 held to 1.5&nbsp;mm. More damping makes the arm heavier to push: the joint layer yields at torque&nbsp;/&nbsp;Kv. The admittance
+<em>Pose</em> limits are not used: the offset is bounded by the joint&rsquo;s outer error breakpoint.</p></div>
+
+<h2>Collapsible Sections</h2>
+<p>Three collapsible sections appear below the CONTROLLER group. Each starts collapsed; click the
+<code>&#9656;</code> header to expand it. Sections that do not apply to the current mode/axis are hidden entirely:</p>
+<table>
+  <tr><th>Section</th><th>Shown for</th><th>Contents</th></tr>
+  <tr><td><strong>PLANNER</strong></td><td>Modes 2&ndash;4 and 6&ndash;8 (hidden for <code>elbow</code>/<code>postural</code>)</td><td>Stiffness P, Vel Desired, Acc Max, Damping Ratio, Frequency; Wrapped and Pos Limits for joint modes only</td></tr>
+  <tr><td><strong>ADMITTANCE</strong></td><td>Modes 3&ndash;4 and 7&ndash;8 (hidden for <code>elbow</code>/<code>postural</code>)</td><td>Inv-M, Damping Kv, dFlow, Flow, Pose</td></tr>
+  <tr><td><strong>ADVANCED</strong></td><td>Always</td><td>Asymmetric checkbox, N_negSat spinner</td></tr>
+</table>
+
+<h2>Planner Parameters</h2>
+<p>Stored in the <code>&lt;planner&gt;</code> block of each joint/axis:</p>
+<table>
+  <tr><th>Field</th><th>XML tag</th><th>Field range</th><th>Description</th></tr>
+  <tr><td>Stiffness P</td><td><code>stiffness</code> (joint) / <code>stiffness_P</code> (Cartesian)</td><td>0 &ndash; 5000</td><td>Planner attractor stiffness (separate from FIC K&#8320;)</td></tr>
+  <tr><td>Vel Desired</td><td><code>vel_desired</code></td><td>0 &ndash; 10</td><td>Desired trajectory velocity (rad/s or m/s)</td></tr>
+  <tr><td>Acc Max</td><td><code>acc_max</code></td><td>0 &ndash; 50</td><td>Acceleration limit</td></tr>
+  <tr><td>Damping Ratio</td><td><code>damping_ratio</code></td><td>0 &ndash; 2</td><td>Velocity damping &mdash; higher values reduce oscillation but slow convergence</td></tr>
+  <tr><td>Frequency</td><td><code>frequency</code></td><td>0.01 &ndash; 100 Hz</td><td>Planner update frequency</td></tr>
+  <tr><td>Wrapped</td><td><code>wrapped</code></td><td>0 / 1</td><td>Joint modes only: treat the joint as continuous (wrap-around)</td></tr>
+  <tr><td>Pos Limits</td><td><code>pos_limits lower=".." upper=".."</code></td><td>&plusmn;6.28 rad</td><td>Joint modes only: planner position limits</td></tr>
+</table>
+
+<h2>Admittance Parameters</h2>
+<p>Stored in the <code>&lt;admittance&gt;</code> block of each joint/axis:</p>
+<table>
+  <tr><th>Field</th><th>XML tag</th><th>Field range</th><th>Description</th></tr>
+  <tr><td>Inv-M</td><td><code>InvM</code></td><td>0 &ndash; 100</td><td>Inverse virtual mass &mdash; higher = more responsive to external forces</td></tr>
+  <tr><td>Damping Kv</td><td><code>Damping</code></td><td>0 &ndash; 500</td><td>Damping coefficient for compliant motion</td></tr>
+  <tr><td>dFlow [0]/[1]</td><td><code>dFlow</code></td><td>&minus;10 &ndash; 10</td><td>Flow-derivative (acceleration) limit pair</td></tr>
+  <tr><td>Flow [0]/[1]</td><td><code>Flow</code></td><td>&minus;10 &ndash; 10</td><td>Flow (velocity) limit pair</td></tr>
+  <tr><td>Pose [0]/[1]</td><td><code>Pose</code></td><td>&minus;10 &ndash; 10</td><td>Pose deviation limit pair</td></tr>
+</table>
+
+<h2>Advanced Parameters</h2>
+<table>
+  <tr><th>Parameter</th><th>Description</th></tr>
+  <tr><td><strong>Asymmetric</strong></td><td>Enable different positive/negative saturation shapes. Requires full N_S values in <code>error_max</code>/<code>force_max</code>.</td></tr>
+  <tr><td><strong>N_negSat</strong> (<code>n_neg_sat</code>)</td><td>Number of negative-side saturation points (1&ndash;4). The spinner is enabled only while Asymmetric is checked; otherwise it tracks N_S/2 automatically.</td></tr>
+</table>
+
+<h2>Null-Space Axes: elbow and postural</h2>
+<p>The Axis dropdown also offers <code>elbow</code> and <code>postural</code>. These edit the robot-scoped
+<code>&lt;elbow&gt;</code> and <code>&lt;postural&gt;</code> blocks &mdash; they are <strong>not</strong> per-mode and
+<strong>not</strong> per-profile. Saving one applies to every Cartesian mode that runs that null-space helper,
+and the Planner/Admittance sections are hidden while they are selected (postural planner fields are persisted
+for round-tripping but not consumed at runtime). See <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>
+for when the helpers engage and <a href="#hapfic" onclick="showPage('hapfic')">HapFIC</a> for the hybrid helper that reuses
+the joint parameter blocks.</p>
+
+<h2>Tuning Guidelines</h2>
+<table>
+  <tr><th>Goal</th><th>What to Change</th></tr>
+  <tr><td>Reduce oscillation</td><td>Lower K&#8320;, increase Damping Ratio (planner modes), or increase Damping Kv (admittance modes); watch the effort bar in the feedback strip</td></tr>
+  <tr><td>Faster convergence</td><td>Increase K&#8320; (watch the tracking-error bar; stop before effort saturates), increase Vel Desired</td></tr>
+  <tr><td>Softer feel (compliant)</td><td>Increase Inv-M, lower K&#8320;</td></tr>
+  <tr><td>Limit peak force</td><td>Lower the last value in the Force Max strip; the force profile saturates at that value beyond the last breakpoint</td></tr>
+  <tr><td>Wider workspace before saturation</td><td>Increase the Error Max breakpoints (keep them ascending)</td></tr>
+  <tr><td>Add a saturation stage</td><td>Raise N_S by 2 &mdash; one more field appears in each breakpoint strip and a new handle pair on the canvas</td></tr>
+</table>
+
+<div class="admonition tip"><div class="adm-title">Start low, go slow</div>
+<p>When tuning a real robot, start with low stiffness (K&#8320; &lt; 200) and small force limits (last Force Max &lt; 20 Nm).
+Increase gradually while watching the live-feedback strip. Always test in simulation first &mdash; the same
+<code>config.xml</code> drives both (see <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Simulation vs Hardware</a>).
+For automated gain search, see <a href="#autotuning" onclick="showPage('autotuning')">Autotuning</a>.</p></div>
+
+<h2>config.xml Structure</h2>
+<p>Parameters are stored per robot, per mode, per profile, per joint/axis in
+<code>fic_library/config/config.xml</code>. Excerpt (values from the shipped Kinova defaults):</p>
+<pre><code>&lt;robots&gt;
+  &lt;robot name="KinovaGen3_7DOF"&gt;
+    &lt;mode id="1" name="Joint Impedance" profile="default"&gt;
+      &lt;joint id="0"&gt;
+        &lt;controller&gt;
+          &lt;stiffness&gt;200.000&lt;/stiffness&gt;
+          &lt;diff_effort_max&gt;100.0&lt;/diff_effort_max&gt;
+          &lt;error_max&gt;0.05,0.1,0.2&lt;/error_max&gt;
+          &lt;force_max&gt;10,20,39&lt;/force_max&gt;
+          &lt;saturation_ratios&gt;0.9&lt;/saturation_ratios&gt;
+          &lt;n_saturations&gt;6&lt;/n_saturations&gt;     &lt;!-- 3 breakpoints per side --&gt;
+          &lt;asymmetric&gt;false&lt;/asymmetric&gt;
+          &lt;n_neg_sat&gt;3&lt;/n_neg_sat&gt;
+        &lt;/controller&gt;
+        &lt;!-- &lt;planner&gt; and &lt;admittance&gt; blocks for modes that use them --&gt;
+      &lt;/joint&gt;
+      &lt;!-- joints 1-6 ... --&gt;
+    &lt;/mode&gt;
+
+    &lt;!-- User profile override (only modes that need custom tuning) --&gt;
+    &lt;mode id="1" name="Joint Impedance" profile="Stiff"&gt;
+      &lt;joint id="0"&gt;...&lt;/joint&gt;
+    &lt;/mode&gt;
+
+    &lt;mode id="5" name="Cartesian Impedance" profile="default"&gt;
+      &lt;cartesian&gt;
+        &lt;x&gt;...&lt;/x&gt; &lt;y&gt;...&lt;/y&gt; &lt;z&gt;...&lt;/z&gt; &lt;q&gt;...&lt;/q&gt;
+      &lt;/cartesian&gt;
+    &lt;/mode&gt;
+
+    &lt;!-- Robot-scoped null-space blocks (no mode, no profile) --&gt;
+    &lt;postural&gt;...&lt;/postural&gt;
+    &lt;elbow&gt;...&lt;/elbow&gt;
+  &lt;/robot&gt;
+&lt;/robots&gt;</code></pre>
+<p>Read by <code>fic_param_loader.hpp</code> (C++ controller) and <code>xml_manager.py</code> (Python GUI).
+See <a href="#config-xml" onclick="showPage('config-xml')">config.xml Reference</a> for the full schema and the fallback rules.</p>
+
+<h2>How Changes Reach the Controller</h2>
+
+<svg viewBox="0 0 700 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Data flow from the Tuning Panel through config.xml to the FIC controller">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-left { text-anchor: start; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#tuning-deploy-arrowhead); }
+    .line { stroke: #bbb; stroke-width: 1; stroke-dasharray: 4,3; }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+  </style>
+  <defs>
+    <marker id="tuning-deploy-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+  </defs>
+
+  <text x="350" y="18" class="label-title">SAVE TO XML → controller reload path</text>
+
+  <!-- top row: file path -->
+  <rect x="20" y="40" width="120" height="48" class="box box-blue"/>
+  <text x="80" y="58" class="label-bold">Tuning Panel</text>
+  <text x="80" y="74" class="label-sm">SAVE TO XML</text>
+
+  <rect x="180" y="40" width="130" height="48" class="box box-blue"/>
+  <text x="245" y="58" class="label">XMLManager</text>
+  <text x="245" y="74" class="label-code">xml_manager.py</text>
+
+  <rect x="350" y="40" width="160" height="48" class="box box-orange"/>
+  <text x="430" y="58" class="label">config.xml</text>
+  <text x="430" y="74" class="label-code">fic_library/config/</text>
+
+  <rect x="550" y="40" width="130" height="48" class="box box-grey"/>
+  <text x="615" y="58" class="label">pkg share copy</text>
+  <text x="615" y="74" class="label-code">fic_simulation/config</text>
+
+  <line x1="140" y1="64" x2="180" y2="64" class="arrow"/>
+  <line x1="310" y1="64" x2="350" y2="64" class="arrow"/>
+  <line x1="510" y1="64" x2="550" y2="64" class="arrow"/>
+  <text x="530" y="50" class="label-sm">install</text>
+
+  <!-- bottom row: controller -->
+  <rect x="550" y="130" width="130" height="48" class="box box-green"/>
+  <text x="615" y="148" class="label">ParameterLoader</text>
+  <text x="615" y="164" class="label-code">fic_param_loader.hpp</text>
+
+  <rect x="350" y="130" width="160" height="48" class="box box-green"/>
+  <text x="430" y="148" class="label-bold">FIC controller node</text>
+  <text x="430" y="164" class="label-sm">sim + hardware, 1 kHz</text>
+
+  <line x1="615" y1="88" x2="615" y2="130" class="arrow"/>
+  <text x="655" y="108" class="label-sm">read in</text>
+  <text x="655" y="120" class="label-sm">background</text>
+  <line x1="550" y1="154" x2="510" y2="154" class="arrow"/>
+
+  <!-- profile topic -->
+  <rect x="20" y="130" width="120" height="48" class="box box-blue"/>
+  <text x="80" y="148" class="label">Config dropdown</text>
+  <text x="80" y="164" class="label-sm">profile select</text>
+
+  <rect x="180" y="130" width="130" height="48" class="box box-teal"/>
+  <text x="245" y="148" class="label-code">robotN_active_profile</text>
+  <text x="245" y="164" class="label-sm">String · transient-local</text>
+
+  <line x1="140" y1="154" x2="180" y2="154" class="arrow"/>
+  <line x1="310" y1="154" x2="350" y2="154" class="arrow"/>
+
+  <!-- re-init triggers note -->
+  <rect x="120" y="200" width="460" height="36" class="container"/>
+  <text x="350" y="218" class="label-sm">read triggers: robotN_param_update (SAVE TO XML) · profile change · mode / robot change · Hapfic toggle</text>
+</svg>
+
+<p>The GUI writes the repository file <code>fic_library/config/config.xml</code>, but the controller reads the
+<em>installed</em> copy at <code>&lt;install&gt;/fic_simulation/share/fic_simulation/config/config.xml</code>
+(both the simulation node and the hardware node use the <code>fic_simulation</code> share path). With
+<code>colcon build --symlink-install</code> the installed copy is a symlink back to the repository file, so a GUI
+save is immediately visible to the controller.</p>
+<p>Since v4.4.0 each node holds the whole tuning for the current robot and mode in memory (every joint,
+the Cartesian axes and, where needed, the postural block) and reads the file only:</p>
+<ul>
+  <li>when it needs a set it does not have &mdash; a new control mode, robot or joint count, or a Hapfic
+  toggle that changes the mode the parameters come from; until the set is read the loop sends no new
+  command;</li>
+  <li>when the tuning on disk changes &mdash; a <code>robot&lt;N&gt;_param_update</code> message (sent by
+  <strong>SAVE TO XML</strong>) or a different <code>robot&lt;N&gt;_active_profile</code>, on both nodes.
+  The controllers keep running on the old values until the new set is read, then switch on the next
+  tick.</li>
+</ul>
+<p>The read runs on a background thread, so the 1&nbsp;kHz loop never waits for it. A new joint or
+Cartesian target does not read the file: where it re-seeds the planners, they re-seed from the values
+already in memory. See <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a> for the full rules.</p>
+<div class="admonition warning"><div class="adm-title">No file watcher</div>
+<p>The controller does <strong>not</strong> watch <code>config.xml</code> for changes. An edit made outside
+the Tuning Panel (a text editor, a script that writes the file) reaches it only with the next
+<code>robot&lt;N&gt;_param_update</code>, profile change, or mode or robot change. If your workspace was
+built without <code>--symlink-install</code>, rebuild so the installed copy picks up the new file.</p></div>
+
+<h2>Manual Tuning from Terminal</h2>
+<p>If you prefer editing parameters directly without the GUI:</p>
+<pre><code># Edit the config file (repo path)
+nano ~/Ros2WS/FIC_Interface/fic_library/config/config.xml
+
+# Make the running controller read it again (sim and hardware; payload only logged)
+ros2 topic pub --once /robot1_param_update std_msgs/String "data: robot1:manual:0"
+
+# ...or restart the controller
+ros2 launch fic_simulation fic_launch.py robot_name:=Franka_FR3 num_joints:=7    # simulation
+ros2 launch fic_hardware robot_control_launch.py robot_name:=Franka_FR3 station_id:=1  # hardware</code></pre>
+<p>You can also open the raw XML in-app with the <strong>VIEW XML</strong> button, which shows an editable
+view of <code>config.xml</code> for the selected robot.</p>
+
+<h2>Related Pages</h2>
+<ul>
+  <li><a href="#control-modes" onclick="showPage('control-modes')">Control Modes &amp; FIC Algorithm</a> &mdash; what each mode does and when null-space helpers engage</li>
+  <li><a href="#config-xml" onclick="showPage('config-xml')">config.xml Reference</a> &mdash; full schema, profile fallback rules</li>
+  <li><a href="#autotuning" onclick="showPage('autotuning')">Autotuning</a> &mdash; automated gain search on top of these parameters</li>
+  <li><a href="#control-panel" onclick="showPage('control-panel')">Control Panel</a> &mdash; mode switching (which also triggers parameter reloads)</li>
+  <li><a href="#safety" onclick="showPage('safety')">Safety</a> &mdash; force limits interact with the output torque guard</li>
+</ul>

@@ -1,0 +1,62 @@
+# FIC Studio with Docker Compose. It works the same way on Windows, macOS and Linux.
+#
+#     docker compose up -d        then open http://localhost:6080
+#     docker compose down         stop it (settings and files are kept)
+#     docker compose pull         get the newest version, then `up -d` again
+#
+# fic-studio.sh / fic-studio.ps1 do the same thing, and also open the browser
+# and give the desktop a password (see below).
+# The ./FIC_Studio folder next to this file (or FIC_FOLDER) is shared with the
+# Studio. It holds recordings, datasets and your own extensions.
+#
+# Linux only: run it as your own user so files in ./FIC_Studio are yours:
+#     mkdir -p FIC_Studio
+#     FIC_UID=$(id -u) FIC_GID=$(id -g) docker compose up -d
+# (With rootless Docker or Docker Desktop for Linux, where you are root in the
+# container, use FIC_UID=0 FIC_GID=0 instead.)
+#
+# The desktop has no password unless FIC_VNC_PASSWORD is set (then open
+# http://localhost:6080/vnc.html?password=<it>). Set one on a computer that
+# other people log in to: 127.0.0.1 keeps out the network, not other users.
+
+name: fic-studio
+
+services:
+  fic-studio:
+    image: ${FIC_IMAGE:-ghcr.io/trl-sussex/fic_interface:latest}
+    container_name: fic-studio
+    hostname: fic-studio
+    command: ${FIC_MODE:-studio}        # studio | dev | desktop
+    pull_policy: missing
+
+    ports:
+      # The desktop in the browser, for this computer only (no password unless
+      # FIC_VNC_PASSWORD is set).
+      - "127.0.0.1:${FIC_PORT:-6080}:6080"
+      # The Studio's web remote (its phone page). To reach it from a phone,
+      # remove "127.0.0.1:", set FIC_WEB_REMOTE_HOSTS to this computer's LAN
+      # address and FIC_WEB_ADMIN_PASSWORD to a password: sign-in is then on,
+      # as admin with that password, and visitors cannot sign up.
+      - "127.0.0.1:${FIC_WEB_PORT:-8088}:8088"
+
+    environment:
+      FIC_URL: http://localhost:${FIC_PORT:-6080}
+      FIC_VNC_PASSWORD: ${FIC_VNC_PASSWORD:-}
+      FIC_WEB_REMOTE_PORT: ${FIC_WEB_PORT:-8088}
+      FIC_UID: ${FIC_UID:-}
+      FIC_GID: ${FIC_GID:-}
+      FIC_WEB_REMOTE_HOSTS: ${FIC_WEB_REMOTE_HOSTS:-localhost}
+      FIC_WEB_ADMIN_PASSWORD: ${FIC_WEB_ADMIN_PASSWORD:-}
+
+    volumes:
+      - home:/home/fic
+      - ${FIC_FOLDER:-./FIC_Studio}:/home/fic/FIC_Studio
+
+    # Qt, the X server and ROS 2 shared-memory transport need more than
+    # Docker's 64 MB default.
+    shm_size: 2gb
+    stop_grace_period: 20s
+
+volumes:
+  home:
+    name: fic-studio-home

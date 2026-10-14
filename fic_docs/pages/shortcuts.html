@@ -1,0 +1,168 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Shortcuts</div>
+<h1>Keyboard Shortcuts</h1>
+<p class="subtitle">Quick reference for keyboard shortcuts in FIC Control Studio.</p>
+
+<p>Shortcuts come from two places: menu-bar accelerators defined by the Full Studio window, and a small set of configurable bindings registered from your settings file (see <a href="#settings" onclick="showPage('settings')">Settings</a>). Press <kbd>Ctrl+/</kbd> (Help &rsaquo; Keyboard Shortcuts) at any time to open the same reference inside the app.</p>
+
+<h2>Global Shortcuts</h2>
+<table>
+  <tr><th>Shortcut</th><th>Action</th><th>Notes</th></tr>
+  <tr><td><kbd>Space</kbd></td><td>E-STOP &mdash; graceful stop, then kill all processes</td><td>Configurable (<code>estop</code>)</td></tr>
+  <tr><td><kbd>Ctrl+S</kbd></td><td>Save (context-aware)</td><td>Script Editor page saves the script; Settings page saves settings; elsewhere logs a warning</td></tr>
+  <tr><td><kbd>Ctrl+L</kbd></td><td>Toggle log panel</td><td>View &rsaquo; Show Log Panel</td></tr>
+  <tr><td><kbd>Ctrl+/</kbd></td><td>Keyboard shortcuts dialog</td><td>Help menu</td></tr>
+  <tr><td><kbd>Ctrl+,</kbd></td><td>Open Settings</td><td>Help menu</td></tr>
+  <tr><td><kbd>F1</kbd></td><td>Open Help panel</td><td>&nbsp;</td></tr>
+  <tr><td><kbd>Ctrl+Q</kbd></td><td>Exit</td><td>File &rsaquo; Exit</td></tr>
+</table>
+
+<div class="admonition danger"><div class="adm-title">What Space actually does</div>
+<p>The E-STOP shortcut is not just a process kill. It fans out an emergency-stop hook to every loaded extension (sequences, teach mode, scripts, teleop, …), commands control mode 0 to every active robot so the controller ramps torque down to a safe hold at the last-known joint pose, waits ~250&nbsp;ms for the ramp, and only then tears down all processes. See <a href="#estop" onclick="showPage('estop')">E-STOP</a> and <a href="#safety" onclick="showPage('safety')">Safety</a>.</p></div>
+
+<svg viewBox="0 0 700 150" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="E-STOP">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#shortcuts-arrowhead); }
+  </style>
+  <defs>
+    <marker id="shortcuts-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+  </defs>
+
+  <rect x="15" y="30" width="110" height="60" class="box box-red"/>
+  <text x="70" y="52" class="label-bold">E-STOP</text>
+  <text x="70" y="70" class="label-sm">Space &bull; gamepad B</text>
+
+  <rect x="160" y="30" width="120" height="60" class="box box-purple"/>
+  <text x="220" y="52" class="label">Halt extensions</text>
+  <text x="220" y="70" class="label-code">on_emergency_stop()</text>
+
+  <rect x="315" y="30" width="130" height="60" class="box box-green"/>
+  <text x="380" y="52" class="label">Graceful ramp</text>
+  <text x="380" y="70" class="label-sm">mode 0 + hold pose</text>
+
+  <rect x="480" y="30" width="80" height="60" class="box box-grey"/>
+  <text x="520" y="52" class="label">Wait</text>
+  <text x="520" y="70" class="label-sm">~250 ms</text>
+
+  <rect x="595" y="30" width="90" height="60" class="box box-orange"/>
+  <text x="640" y="52" class="label">Kill all</text>
+  <text x="640" y="70" class="label-sm">processes</text>
+
+  <line x1="125" y1="60" x2="160" y2="60" class="arrow"/>
+  <line x1="280" y1="60" x2="315" y2="60" class="arrow"/>
+  <line x1="445" y1="60" x2="480" y2="60" class="arrow"/>
+  <line x1="560" y1="60" x2="595" y2="60" class="arrow"/>
+
+  <text x="350" y="120" class="label-sm">E-STOP sequence: safe stop first, process teardown as backstop</text>
+</svg>
+
+<h2>Panel Navigation</h2>
+<table>
+  <tr><th>Shortcut</th><th>Panel</th></tr>
+  <tr><td><kbd>Ctrl+0</kbd></td><td>Dashboard</td></tr>
+  <tr><td><kbd>Ctrl+1</kbd></td><td>Multi-Robot</td></tr>
+  <tr><td><kbd>Ctrl+3</kbd></td><td>Tuning</td></tr>
+  <tr><td><kbd>Ctrl+4</kbd></td><td>Sequences</td></tr>
+  <tr><td><kbd>Ctrl+5</kbd></td><td>Settings</td></tr>
+</table>
+<p>There is no <kbd>Ctrl+2</kbd> binding. Other panels (Script Editor, Teach Mode, extensions) are reached from the sidebar.</p>
+
+<h2>Process Control</h2>
+<p>All process toggles live in the Simulation menu; see <a href="#processes" onclick="showPage('processes')">Processes</a> for what each process does.</p>
+<table>
+  <tr><th>Shortcut</th><th>Action</th></tr>
+  <tr><td><kbd>F5</kbd></td><td>Toggle Simulation</td></tr>
+  <tr><td><kbd>F6</kbd></td><td>Toggle FIC Controller (sim)</td></tr>
+  <tr><td><kbd>F7</kbd></td><td>Launch Sim + FIC together</td></tr>
+  <tr><td><kbd>F8</kbd></td><td>Toggle Hardware Controller</td></tr>
+  <tr><td><kbd>F9</kbd></td><td>Toggle Robot Driver</td></tr>
+  <tr><td><kbd>Ctrl+Shift+Q</kbd></td><td>Stop All Processes</td></tr>
+</table>
+
+<h2>View &amp; Window</h2>
+<table>
+  <tr><th>Shortcut</th><th>Action</th></tr>
+  <tr><td><kbd>Ctrl+T</kbd></td><td>Toggle toolbar</td></tr>
+  <tr><td><kbd>Ctrl+\</kbd></td><td>Toggle sidebar</td></tr>
+  <tr><td><kbd>Ctrl+M</kbd></td><td>Compact mode</td></tr>
+  <tr><td><kbd>Ctrl+Shift+M</kbd></td><td>Minimal mode</td></tr>
+  <tr><td><kbd>F11</kbd></td><td>Toggle fullscreen</td></tr>
+</table>
+
+<h2>Robot &amp; Tools</h2>
+<table>
+  <tr><th>Shortcut</th><th>Action</th></tr>
+  <tr><td><kbd>Ctrl+H</kbd></td><td>Move to Home</td></tr>
+  <tr><td><kbd>Ctrl+N</kbd></td><td>New script (see <a href="#script-editor" onclick="showPage('script-editor')">Script Editor</a>)</td></tr>
+  <tr><td><kbd>Ctrl+B</kbd></td><td>Compile workspace (see <a href="#build-tools" onclick="showPage('build-tools')">Build Tools</a>)</td></tr>
+</table>
+
+<h2>Sequences &amp; Scripts</h2>
+<p><kbd>Ctrl+R</kbd> (play sequence) and <kbd>Escape</kbd> (stop sequence) are registered as configurable bindings, but since the <a href="#sequences" onclick="showPage('sequences')">Sequences</a> panel became an extension in v3.0 the sequence engine lives on the extension, not the main window &mdash; so these two bindings currently do nothing. Use the PLAY / STOP buttons on the Sequences panel instead. E-STOP (<kbd>Space</kbd>) does halt a running sequence, teach-mode recording, or script through the extension emergency-stop hook.</p>
+
+<h2>Dev Console</h2>
+<p>The <a href="#dev-console" onclick="showPage('dev-console')">Dev Console</a> has no menu bar, so the F-key and Ctrl accelerators above do not exist there. It registers the same configurable bindings as the Full Studio; the ones with an effect are:</p>
+<table>
+  <tr><th>Shortcut</th><th>Action</th></tr>
+  <tr><td><kbd>Space</kbd></td><td>E-STOP (also available as the toolbar E-STOP button)</td></tr>
+  <tr><td><kbd>Ctrl+5</kbd></td><td>Settings tab</td></tr>
+</table>
+
+<h2>Value Fields</h2>
+<p>Draggable numeric fields (tuning parameters, control targets) accept keyboard input once focused or clicked:</p>
+<table>
+  <tr><th>Key</th><th>Action</th></tr>
+  <tr><td><kbd>&uarr;</kbd> / <kbd>&darr;</kbd></td><td>Step value up / down</td></tr>
+  <tr><td><kbd>Enter</kbd></td><td>Commit typed value</td></tr>
+  <tr><td><kbd>Escape</kbd></td><td>Cancel inline edit</td></tr>
+</table>
+
+<h2>Customizing Shortcuts</h2>
+<p>Open Settings &rsaquo; Shortcuts, click a field, and type the new key combo (e.g. <code>Ctrl+R</code>). Bindings are stored under <code>shortcuts:</code> in <code>~/.robot_selector_gui_settings.yaml</code> and re-registered when you save settings &mdash; no restart needed.</p>
+<table>
+  <tr><th>Config key</th><th>Default</th><th>Rebindable</th></tr>
+  <tr><td><code>estop</code></td><td>Space</td><td>Yes</td></tr>
+  <tr><td><code>play_sequence</code></td><td>Ctrl+R</td><td>Yes (currently inert, see above)</td></tr>
+  <tr><td><code>stop_sequence</code></td><td>Escape</td><td>Yes (currently inert, see above)</td></tr>
+  <tr><td><code>panel_dashboard</code></td><td>Ctrl+0</td><td>Yes</td></tr>
+  <tr><td><code>panel_control</code></td><td>Ctrl+1</td><td>Yes</td></tr>
+  <tr><td><code>panel_sequence</code></td><td>Ctrl+4</td><td>Yes</td></tr>
+  <tr><td><code>panel_settings</code></td><td>Ctrl+5</td><td>Yes</td></tr>
+  <tr><td><code>save_settings</code></td><td>Ctrl+S</td><td>No &mdash; menu bar owns it</td></tr>
+  <tr><td><code>toggle_log</code></td><td>Ctrl+L</td><td>No &mdash; menu bar owns it</td></tr>
+  <tr><td><code>panel_tuning</code></td><td>Ctrl+3</td><td>No &mdash; menu bar owns it</td></tr>
+</table>
+
+<div class="admonition warning"><div class="adm-title">Fixed accelerators</div>
+<p><code>save_settings</code>, <code>toggle_log</code>, and <code>panel_tuning</code> appear in the Settings editor but changing them has no effect: those accelerators are hard-wired to the File and View menus to avoid ambiguous double-firing. All other menu shortcuts (F5&ndash;F9, Ctrl+H, Ctrl+B, …) are likewise fixed.</p></div>
+
+<h2>Gamepad (Xbox Controller)</h2>
+<p>See <a href="#gamepad" onclick="showPage('gamepad')">Gamepad Control</a> for full details, including remapping buttons in Settings &rsaquo; Gamepad. Default mapping:</p>
+<table>
+  <tr><th>Input</th><th>Action</th></tr>
+  <tr><td>Left Stick</td><td>Joint: selected joint &bull; Cart: left/right + up/down</td></tr>
+  <tr><td>Right Stick</td><td>Joint: next joint &bull; Cart: forward/back + yaw</td></tr>
+  <tr><td>Back</td><td>Toggle Joint / Cartesian</td></tr>
+  <tr><td>Start</td><td>Cycle sub-mode (Impedance &rarr; Planner &rarr; Admittance &rarr; Admittance Haptic)</td></tr>
+  <tr><td>LB / RB</td><td>Previous / Next joint (joint mode; ignored in Cartesian)</td></tr>
+  <tr><td>LT / RT</td><td>Gripper close / open (proportional rate)</td></tr>
+  <tr><td>A</td><td>Home position</td></tr>
+  <tr><td>B</td><td>E-STOP</td></tr>
+  <tr><td>X / Y</td><td>Toggle Postural / Elbow hold</td></tr>
+  <tr><td>D-pad Up/Down</td><td>Speed preset +/&minus; (Slow / Medium / Fast)</td></tr>
+  <tr><td>D-pad Left/Right</td><td>Cycle active robot</td></tr>
+  <tr><td>Guide</td><td>Reset target pose</td></tr>
+</table>

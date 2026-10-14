@@ -1,0 +1,93 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Teleoperation</div>
+<h1>Teleoperation</h1>
+<p class="subtitle">One station's arm follows another's across the lab network. Built into the Multi-Robot page.</p>
+
+<h2>Overview</h2>
+<p>Pick a <strong>leader</strong> station and a <strong>follower</strong> station on the <a href="#multi-robot" onclick="showPage('multi-robot')">Multi-Robot</a> page and press <strong>Start teleop</strong>. The follower's arm then copies the leader's joint motion.</p>
+<ul>
+  <li>Any Studio can set up a pair. The Master station, at a lab's control PC, can pair two robots without being either of them.</li>
+  <li>Several pairs can run at once.</li>
+  <li>One leader can drive several followers. A follower has one leader at a time.</li>
+</ul>
+<p>This replaces the <em>teleop</em> extension (Studio&nbsp;&le;&nbsp;4.3), which ran one session per ROS domain. It is not compatible with that extension, or with the dev console's older teleop tab.</p>
+
+<h2>Quick start (simulation)</h2>
+<ol>
+  <li>On two PCs (or stations), start a simulation of the <strong>same robot type</strong>.</li>
+  <li>On any Studio, open <strong>Multi-Robot</strong>. Under <strong>Teleoperation</strong>, choose the leader, then the follower, then press <strong>Start teleop</strong>.</li>
+  <li>The follower accepts at once, because it is in simulation. Its card reads <em>follows Robot&nbsp;N</em>.</li>
+  <li>Move the leader, for example with its control bar. The follower copies the motion.</li>
+  <li>To end the pairing, press <strong>Stop</strong> on the session row, on any Studio. The follower holds where it is.</li>
+</ol>
+
+<h2>On hardware</h2>
+<ul>
+  <li><strong>The follower's operator must agree.</strong> When the follower is on hardware, its Studio shows the request and who sent it. Nothing moves until someone at that robot presses <strong>Accept</strong>. An unanswered request is refused after 30&nbsp;s.</li>
+  <li><strong>The leader's mode is not changed.</strong> Set the leader to a mode its operator can move it in, such as Joint Admittance.</li>
+  <li><strong>The follower is put in Joint Impedance</strong>, with the admittance planner off. When the session ends, the follower holds its position and the planner goes back to how it was.</li>
+  <li><strong>Try it in simulation first</strong>, with a low <strong>Max speed</strong>.</li>
+</ul>
+
+<h2>How the follower moves</h2>
+<p>The follower copies the leader's motion relative to where each arm stood at the start:</p>
+<ul>
+  <li>At the start, the follower stays exactly where it is. The two arms never need to be lined up first, and starting never makes the follower jump.</li>
+  <li>From then on, each follower joint moves by <strong>scale</strong> &times; the leader joint's motion, subject to these limits in order:</li>
+</ul>
+<table>
+  <tr><th>Step</th><th>Detail</th></tr>
+  <tr><td>Continuous joints</td><td>Motion is summed from small increments, so a joint crossing &plusmn;180&deg; does not look like a full turn.</td></tr>
+  <tr><td>Joint limits</td><td>Targets are clamped to the follower's <code>joint_limits_deg</code> in <code>robots_config.yaml</code>. The controller's own limits and workspace zone still apply.</td></tr>
+  <tr><td>Smoothing</td><td>An exponential filter.</td></tr>
+  <tr><td>Speed cap</td><td>No joint target moves faster than <strong>Max speed</strong> (default 35&nbsp;&deg;/s).</td></tr>
+  <tr><td>Deadband</td><td>Nothing is sent while every joint is within 0.002&nbsp;rad (0.1&deg;) of where it should be. A still leader therefore costs no traffic.</td></tr>
+</table>
+<p>This first version supports joint-space teleop between robots of the same type and joint count. The follower's Studio refuses other pairs, and gives the reason. Cartesian teleop, mapping between different robots, and force feedback are not built yet.</p>
+
+<h2>Safety</h2>
+<table>
+  <tr><th>Event</th><th>What happens</th></tr>
+  <tr><td>E-stop at the leader or the follower</td><td>The session ends, and the partner arm is E-stopped as well.</td></tr>
+  <tr><td>E-STOP ALL</td><td>Every Studio E-stops, which also ends every session.</td></tr>
+  <tr><td>Leader data pauses for more than 0.3&nbsp;s</td><td>The follower stops receiving targets and holds its last one. Its card shows <em>holding</em>.</td></tr>
+  <tr><td>No first data from the leader within 10&nbsp;s</td><td>The follower ends the session (<em>no data from leader</em>).</td></tr>
+  <tr><td>Leader silent for 5&nbsp;s</td><td>The follower ends the session and holds its position. It was 2&nbsp;s, which sat below this lab's own discovery stall: a process joining the ROS domain pauses an existing leader's stream for about 1.9&nbsp;s, so starting anything new during a session could end it with &ldquo;lost leader&rdquo;.</td></tr>
+  <tr><td>Follower silent for 3&nbsp;s</td><td>The leader stops streaming.</td></tr>
+  <tr><td>A Studio closes</td><td>Its sessions end.</td></tr>
+</table>
+<div class="admonition warning"><div class="adm-title">Over the network</div>
+<p>Teleop, and the E-stop that reaches the partner arm, travel over the lab network. Wifi adds a few milliseconds of latency, with occasional spikes. Each robot's own E-stop remains the primary stop.</p></div>
+
+<h2>ROS 2 topics</h2>
+<table>
+  <tr><th>Topic</th><th>Type</th><th>Carries</th></tr>
+  <tr><td><code>/fic/teleop/session</code></td><td><code>std_msgs/String</code> (JSON)</td><td>These messages:
+    <ul>
+      <li><code>request</code>, <code>accept</code> and <code>reject</code>, which set up a pair;</li>
+      <li><code>stop</code>, which ends one;</li>
+      <li><code>alive</code>, sent every 0.5&nbsp;s by the leader and the follower.</li>
+    </ul>
+    Each Studio acts only on messages for its own station.</td></tr>
+  <tr><td><code>/fic/teleop/leader_joints</code></td><td><code>std_msgs/Float64MultiArray</code>, sensor QoS</td><td><code>[leader station, q1, q2, &hellip;]</code> at 100&nbsp;Hz from every station that is leading (one stream however many followers). Every Studio opens this topic when it starts, so no new ROS endpoint has to be discovered when a pair starts &mdash; over wifi that took several seconds.</td></tr>
+  <tr><td><code>robotF_desired_joint_angles</code></td><td><code>std_msgs/Float32MultiArray</code></td><td>The follower's targets. Its Studio publishes them for its own arm only.</td></tr>
+  <tr><td><code>/fic/fleet/command</code></td><td><code>std_msgs/String</code> (JSON)</td><td>Carries the E-stop sent to the partner arm. See <a href="#multi-robot" onclick="showPage('multi-robot')">Multi-Robot</a>.</td></tr>
+</table>
+
+<h2>Troubleshooting</h2>
+<table>
+  <tr><th>Symptom</th><th>Check</th></tr>
+  <tr><td>The other Studio is not in the pickers</td><td>Both Studios must be on the same ROS domain and able to discover each other. See <a href="#multi-pc-setup" onclick="showPage('multi-pc-setup')">Multi-PC Lab Setup</a>.</td></tr>
+  <tr><td>Refused: <em>no joint data</em></td><td>The follower's simulation or robot is not running.</td></tr>
+  <tr><td>Refused: <em>different robots</em> or <em>joint counts differ</em></td><td>Both stations must use the same robot type.</td></tr>
+  <tr><td>Ended: <em>no data from leader</em></td><td>The leader's simulation or robot is not running, so it has no joints to stream.</td></tr>
+  <tr><td>Follower card shows <em>holding</em></td><td>The leader's data has paused. Check the network between the two PCs.</td></tr>
+  <tr><td>&ldquo;Lost leader&rdquo; the moment you start something else</td><td>Any process joining the ROS domain stalls an existing leader's stream for about 1.9&nbsp;s &mdash; launching a trajectory player, a recorder or another Studio is enough. The liveness window was raised to 5&nbsp;s to absorb it. If you still see this, something is taking even longer to discover; start it <em>before</em> the session rather than during it.</td></tr>
+  <tr><td>A command you published was ignored</td><td>Discovery here takes up to about 12&nbsp;s, and publishing into a topic nobody has subscribed to yet succeeds silently and delivers nothing. Wait for a subscriber before sending. Publishing a request repeatedly to &ldquo;make sure&rdquo; is worse: each copy is a separate request.</td></tr>
+</table>
+
+<h2>For developers</h2>
+<ul>
+  <li><code>fic_studio.teleop.session</code>: the protocol and each Studio's part in it (<code>TeleopManager</code>).</li>
+  <li><code>fic_studio.teleop.tracker</code>: the follower's maths (<code>JointFollower</code>).</li>
+</ul>
+<p>Both modules are Qt-free and are tested without a network (<code>test/test_teleop_core.py</code>).</p>

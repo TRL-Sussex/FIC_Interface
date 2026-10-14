@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+#
+# Container entrypoint (run by tini). Starts as root just long enough to:
+#
+#   1. give the `fic` user the host user's UID/GID when asked (FIC_UID and
+#      FIC_GID), so files in the shared folder belong to that user on Linux.
+#      0 is allowed: with rootless Docker or Docker Desktop for Linux the host
+#      user *is* root in the container, so that is the ID to run as;
+#   2. prepare the home folder (a volume) and the shared folder;
+#
+# then runs the desktop session as `fic` (fic-session), which starts the GUI.
+#
+# Arguments are the session mode: studio (default), dev, desktop, shell, or a
+# command to run with ROS and the workspace set up.
+
+set -eo pipefail
+
+log() { echo "[fic] $*"; }
+
+# Started with --user: no privileges to change anything, so go straight on.
+# (Only --user 1000 has the home folder; other IDs get a temporary one.)
+if [ "$(id -u)" != "0" ]; then
+    if [ -z "${HOME:-}" ] || [ "${HOME}" = "/" ] || [ ! -w "${HOME}" ]; then
+        HOME="/tmp/home-$(id -u)"
+        export HOME
+        mkdir -p "${HOME}"
+    fi
+    exec /usr/local/bin/fic-session "$@"
+fi
+
+FIC_HOME=/home/fic
+SHARED="${FIC_HOME}/FIC_Studio"
+
+# ───────────────────────────────────────────────────────────────── GPU ───
+# Devices passed in with --device /dev/dri belong to the host's render and
+# video groups. gosu sets the groups from /etc/group, so make `fic` a member
+# (before any UID change below, while no process runs as fic).
+for node in /dev/dri/renderD* /dev/dri/card*; do
+    [ -e "${node}" ] || continue
+    gid="$(stat -c %g "${node}")"
+    [ "${gid}" = "0" ] && continue
+    group="$(getent group "${gid}" | cut -d: -f1 || true)"
+    if [ -z "${group}" ]; then
+        group="gpu${gid}"
+        groupadd -g "${gid}" "${group}"
+    fi
+    usermod -a -G "${group}" fic
+done
+
+# ─────────────────────────────────────────────────────── host UID / GID ───
+want_uid="${FIC_UID:-}"
+want_gid="${FIC_GID:-}"
+remapped=0
+
+# usermod re-owns files under the user's home folder when the UID or primary
+# group changes, and the home folder contains the shared folder mounted from
+# the host. So point the home elsewhere while changing them.
+usermod_away_from_home() {
+    usermod -d /nonexistent fic
+    usermod "$@" fic
+    # usermod refuses to touch a user that has running processes, and once
+    # fic is UID 0 every root process (tini, PID 1) counts: edit the entry.
+    usermod -d "${FIC_HOME}" fic 2>/dev/null \
+        || sed -i "s#^\(fic:[^:]*:[^:]*:[^:]*:[^:]*:\)/nonexistent:#\1${FIC_HOME}:#" /etc/passwd
+}
+
+if [[ "${want_gid}" =~ ^[0-9]+$ ]] && [ "${want_gid}" != "$(id -g fic)" ]; then
+    # The primary group becomes the host's; `fic` (GID 1000) stays as a
+    # supplementary group because it owns the workspace in /opt/fic.
+    if ! getent group "${want_gid}" >/dev/null; then
+        groupadd -g "${want_gid}" fichost
+    fi
+    usermod_away_from_home -g "${want_gid}" -a -G fic
+    remapped=1
+    log "running with the host's group ID ${want_gid}"
+fi
+
+if [[ "${want_uid}" =~ ^[0-9]+$ ]] && [ "${want_uid}" != "$(id -u fic)" ]; then
+    usermod_away_from_home -o -u "${want_uid}"
+    remapped=1
+    log "running with the host's user ID ${want_uid}"
+fi
+
+FIC_GROUP="$(id -g fic)"
+
+# Re-own the home volume when anything in it belongs to other IDs (after a
+# remap, or after an earlier container ran with other IDs), never crossing
+# into anything mounted inside it: the shared folder is the user's own files
+# on the host.
+home_needs_owner() {
+    [ "${remapped}" = 1 ] || [ -n "$(find "${FIC_HOME}" -mindepth 1 -maxdepth 1 \
+        ! -path "${SHARED}" \( ! -user fic -o ! -group "${FIC_GROUP}" \) -print -quit)" ]
+}
+if home_needs_owner; then
+    prune=()
+    while IFS= read -r mountpoint; do
+        # mountinfo escapes spaces and the like as \040; -path takes a glob.
+        mountpoint="$(printf '%b' "${mountpoint}" | sed 's/[][*?\\]/\\&/g')"
+        prune+=(-path "${mountpoint}" -prune -o)
+    done < <(awk -v home="${FIC_HOME}/" 'index($5, home) == 1 { print $5 }' /proc/self/mountinfo)
+    find "${FIC_HOME}" "${prune[@]}" \( ! -user fic -o ! -group "${FIC_GROUP}" \) \
+         -exec chown -h "fic:${FIC_GROUP}" {} + 2>/dev/null || true
+fi
+
+# ─────────────────────────────────────────────────────── shared folder ───
+# Docker creates a missing bind-mount source (and the mount point in the
+# volume) owned by root. Hand such an empty folder to the user; a folder with
+# someone's files in it is left alone. Only without a user namespace: with
+# one, root here is the host user already.
+identity_ids() { awk '$1 == 0 && $2 == 0 && $3 == 4294967295 { ok = 1 } END { exit !ok }' /proc/self/uid_map; }
+if [ -d "${SHARED}" ] && [ "$(stat -c %u "${SHARED}")" = "0" ] \
+        && [ -z "$(ls -A "${SHARED}" 2>/dev/null)" ] && identity_ids; then
+    chown "fic:${FIC_GROUP}" "${SHARED}" 2>/dev/null \
+        || log "note: could not take ownership of the shared folder ${SHARED}"
+fi
+
+as_fic() { gosu fic "$@"; }
+
+as_fic mkdir -p "${SHARED}" 2>/dev/null || true
+for sub in experiments excitation_runs lemniscate_plots extensions; do
+    as_fic mkdir -p "${SHARED}/${sub}" 2>/dev/null \
+        || log "WARNING: cannot write to the shared folder (${SHARED}); recordings will fail"
+done
+
+# First run: settings that skip the setup wizard and enable the extensions
+# that work in simulation. Never overwrites the user's own settings.
+if [ ! -e "${FIC_HOME}/.robot_selector_gui_settings.yaml" ]; then
+    as_fic cp /etc/fic/robot_selector_gui_settings.yaml \
+              "${FIC_HOME}/.robot_selector_gui_settings.yaml"
+fi
+for dotfile in .bashrc .profile; do
+    if [ ! -e "${FIC_HOME}/${dotfile}" ] && [ -e "/etc/skel/${dotfile}" ]; then
+        as_fic cp "/etc/skel/${dotfile}" "${FIC_HOME}/${dotfile}"
+    fi
+done
+
+# ──────────────────────────────────────────────────── runtime directories ───
+export XDG_RUNTIME_DIR=/tmp/runtime-fic
+install -d -m 0700 -o fic -g "${FIC_GROUP}" "${XDG_RUNTIME_DIR}"
+install -d -m 0755 -o fic -g "${FIC_GROUP}" "${ROS_LOG_DIR:-/tmp/ros_log}"
+
+# Logs from a previous run of this same container.
+find /tmp -maxdepth 1 -type f -name '*.log' -delete 2>/dev/null || true
+find "${ROS_LOG_DIR:-/tmp/ros_log}" -mindepth 1 -delete 2>/dev/null || true
+
+export HOME="${FIC_HOME}" USER=fic LOGNAME=fic
+exec gosu fic /usr/local/bin/fic-session "$@"

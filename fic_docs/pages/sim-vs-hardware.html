@@ -1,0 +1,181 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">›</span> Simulation vs. Hardware</div>
+<h1>Simulation vs. Hardware</h1>
+<p class="subtitle">Why the same stack has two different control nodes, and when to reach for each — plus why one talks over ROS topics while the other talks over POSIX shared memory.</p>
+
+<svg viewBox="0 0 700 460" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="Simulation target">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#svh-arrowhead); }
+    .arrow-green { stroke: #388e3c; }
+    .arrow-orange { stroke: #f57c00; }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+  </style>
+  <defs>
+    <marker id="svh-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+    <marker id="svh-arrowhead-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#388e3c"/>
+    </marker>
+    <marker id="svh-arrowhead-orange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#f57c00"/>
+    </marker>
+  </defs>
+
+  <!-- GUI -->
+  <rect x="200" y="15" width="300" height="50" class="box box-purple"/>
+  <text x="350" y="33" class="label-bold">FIC Control Studio</text>
+  <text x="350" y="50" class="label-sm">publishes BOTH mode topics on every mode change</text>
+
+  <line x1="280" y1="65" x2="160" y2="105" class="arrow"/>
+  <line x1="420" y1="65" x2="540" y2="105" class="arrow"/>
+  <text x="145" y="86" class="label-code">robot{N}_control_mode · Int32</text>
+  <text x="558" y="86" class="label-code">robot{N}_mode_select · String</text>
+
+  <!-- Simulation column -->
+  <rect x="30" y="108" width="290" height="330" class="container"/>
+  <text x="175" y="124" class="label-title">Simulation target</text>
+
+  <rect x="60" y="140" width="230" height="54" class="box box-green"/>
+  <text x="175" y="160" class="label-bold">fic_simulation</text>
+  <text x="175" y="177" class="label-sm">1 kHz wall timer · fic_library</text>
+
+  <line x1="130" y1="194" x2="130" y2="260" class="arrow arrow-green" style="marker-end:url(#svh-arrowhead-green)"/>
+  <line x1="220" y1="260" x2="220" y2="194" class="arrow arrow-green" style="marker-end:url(#svh-arrowhead-green)"/>
+  <text x="175" y="215" class="label-code">actuators_cmds ↓</text>
+  <text x="175" y="235" class="label-code">↑ joint_states · gravity · F/T</text>
+
+  <rect x="60" y="260" width="230" height="60" class="box box-teal"/>
+  <text x="175" y="280" class="label-bold">MuJoCo (mujoco_native)</text>
+  <text x="175" y="300" class="label-sm">or Newton GPU backend (pip)</text>
+
+  <text x="175" y="345" class="label-code">topics under robot{sid}_simulation/</text>
+  <text x="175" y="368" class="label-sm">everything is a ROS 2 topic —</text>
+  <text x="175" y="383" class="label-sm">full visibility in the Topic Monitor</text>
+
+  <!-- Hardware column -->
+  <rect x="370" y="108" width="300" height="330" class="container"/>
+  <text x="520" y="124" class="label-title">Hardware target</text>
+
+  <rect x="400" y="140" width="240" height="54" class="box box-orange"/>
+  <text x="520" y="160" class="label-bold">fic_hardware</text>
+  <text x="520" y="177" class="label-sm">1 kHz wall timer · fic_library</text>
+
+  <line x1="470" y1="194" x2="470" y2="252" class="arrow arrow-orange" style="marker-end:url(#svh-arrowhead-orange)"/>
+  <line x1="570" y1="252" x2="570" y2="194" class="arrow arrow-orange" style="marker-end:url(#svh-arrowhead-orange)"/>
+  <text x="520" y="212" class="label-code">commanded_torque[i] ↓</text>
+  <text x="520" y="232" class="label-code">↑ torque · joint_positions</text>
+
+  <rect x="400" y="252" width="240" height="56" class="box box-grey"/>
+  <text x="520" y="271" class="label-code">/dev/shm/robot_feedback_memory</text>
+  <text x="520" y="291" class="label-sm">atomic floats · 16 joint slots · versioned</text>
+
+  <line x1="470" y1="308" x2="470" y2="352" class="arrow arrow-orange" style="marker-end:url(#svh-arrowhead-orange)"/>
+  <line x1="570" y1="352" x2="570" y2="308" class="arrow arrow-orange" style="marker-end:url(#svh-arrowhead-orange)"/>
+
+  <rect x="400" y="352" width="240" height="50" class="box box-red"/>
+  <text x="520" y="370" class="label-bold">Vendor driver</text>
+  <text x="520" y="388" class="label-sm">Kinova Kortex · libfranka</text>
+
+  <text x="520" y="420" class="label-sm">driver owns the real-time bus to the arm</text>
+</svg>
+
+<h2>Two nodes, one algorithm</h2>
+<p>FIC Control Studio ships two control nodes that both wrap the exact same <code>fic_library</code> controller and load the same tuning file (<code>config.xml</code> from the <code>fic_simulation</code> package share — yes, the hardware node reads it from there too):</p>
+<table>
+  <tr><th></th><th><code>fic_simulation</code></th><th><code>fic_hardware</code></th></tr>
+  <tr><td>Talks to</td><td>MuJoCo / Newton simulator (ROS 2 topics)</td><td>Vendor driver — Kinova Kortex, libfranka (POSIX shared memory)</td></tr>
+  <tr><td>Loop rate</td><td>1&nbsp;kHz (1&nbsp;ms wall timer)</td><td>1&nbsp;kHz (1&nbsp;ms wall timer)</td></tr>
+  <tr><td>Launch</td><td><code>ros2 launch fic_simulation fic_launch.py robot_name:=… num_joints:=… station_id:=N source_prefix:=robotN_simulation</code></td><td><code>ros2 launch fic_hardware robot_control_launch.py robot_name:=… station_id:=N</code></td></tr>
+  <tr><td>Joint count</td><td>From <code>number_of_joints</code> parameter / <code>robot{N}_number_of_joints</code> topic; controller pre-allocates 20 channels</td><td><code>model.nv</code> from the URDF; shared memory reserves 16 slots (<code>kMaxJoints</code>), active count published in the segment's <code>n_joints</code> field</td></tr>
+  <tr><td>Feedback</td><td>Subscribes to <code>robot{sid}_simulation/joint_states</code>, <code>…/gravity_torques</code>, <code>…/force_torque</code></td><td>Reads atomic floats (<code>torque[]</code>, <code>joint_positions[]</code>, <code>tool_wrench[6]</code>) from <code>/dev/shm/robot_feedback_memory</code></td></tr>
+  <tr><td>Commands</td><td>Publishes <code>robot{sid}_simulation/actuators_cmds</code> (plus a plain-array copy on <code>/robot{N}_fic_torque_commands</code>, useful for rosbag recording)</td><td>Writes <code>commanded_torque[i]</code> atomics into the same shared-memory segment</td></tr>
+  <tr><td>Mode topic</td><td><code>robot{N}_control_mode</code> &middot; <code>Int32</code> &middot; <code>0..8</code></td><td><code>robot{N}_mode_select</code> &middot; <code>String</code> &middot; <code>"Joint Impedance"</code> … <code>"Cartesian Admittance Haptic"</code>, <code>"Stop Controller"</code></td></tr>
+  <tr><td>Gravity torques</td><td>Prefers the simulator's (includes gripper mass), from <code>qfrc_bias</code> at zero velocity; Pinocchio <code>g(q)</code> as fallback</td><td>Pinocchio <code>g(q)</code>; suppressed when the driver compensates internally (<code>gravity_compensated</code> in <code>robots_config.yaml</code>)</td></tr>
+  <tr><td>Joint velocities</td><td>From <code>joint_states</code> (10&nbsp;Hz Butterworth filter)</td><td>Finite difference of positions at 1&nbsp;kHz (10&nbsp;Hz filter on positions)</td></tr>
+  <tr><td>Measured-torque filter</td><td>10&nbsp;Hz cutoff</td><td>200&nbsp;Hz cutoff</td></tr>
+  <tr><td>Gripper</td><td>Not wired up yet — the <code>robot{N}_gripper_width</code> callback is a stub</td><td><code>robot{N}_gripper_width</code> → <code>commanded_gripper_width</code> in shared memory; the driver servos the gripper</td></tr>
+  <tr><td>Start from GUI</td><td><strong>SIM</strong> + <strong>FIC</strong> buttons</td><td><strong>API</strong> (vendor driver) + <strong>FIC</strong> buttons</td></tr>
+</table>
+
+<div class="admonition tip"><div class="adm-title">The GUI publishes to both mode topics</div>
+<p>Because the GUI doesn't know in advance whether you'll run sim or hardware, <code>ros_node.py</code> publishes every mode change to <em>both</em> <code>robot{N}_control_mode</code> (<code>Int32</code>) and <code>robot{N}_mode_select</code> (the matching <code>String</code> name). That's why switching modes "just works" regardless of which FIC node is listening — but if you're writing a custom script, pick the topic that matches your target. The string names are listed on the <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a> page.</p></div>
+
+<div class="admonition tip"><div class="adm-title">Which simulator backend?</div>
+<p>The <strong>SIM</strong> button launches either the CPU MuJoCo simulator (<code>mujoco_native</code>, with its viewer) or the optional Newton GPU backend, depending on <a href="#settings" onclick="showPage('settings')">Settings</a> → Simulation → backend. The FIC node is identical in both cases. On Newton the <code>force_torque</code> and IMU messages are empty, and physics runs at 500&nbsp;Hz with a 200&nbsp;Hz publish rate instead of ~1&nbsp;kHz. Details on the <a href="#simulation" onclick="showPage('simulation')">Simulation</a> page.</p></div>
+
+<div class="admonition warning"><div class="adm-title">The simulator's gravity vector goes straight into the control law</div>
+<p>Note the preference in the table above: <code>fic_simulation</code> uses the simulator's published
+<code>gravity_torques</code> ahead of its own solver's, and <strong>adds it raw</strong> to the control law's
+output in the joint modes. A wrong vector there is not a cosmetic reporting problem &mdash; it is injected
+feedforward on every joint, every cycle.</p>
+<p>That is exactly what happened until Oct 2026: the C++ node computed gravity with
+<code>mj_forward</code> &rarr; <code>mj_inverse</code> &rarr; <code>qfrc_inverse</code> after zeroing
+<code>qvel</code>/<code>qacc</code>, but <code>mj_forward</code> recomputes <code>qacc</code> from
+<code>d-&gt;ctrl</code>, so the published &ldquo;gravity&rdquo; was the actuator command itself and the loop
+had unity gain. It now reads <code>qfrc_bias</code> at zero velocity, which is <code>g(q)</code> exactly.</p>
+<p><strong>The Newton backend still uses the old recipe</strong>
+(<code>mujoco_newton/simulation_node.py</code>), and has not been re-measured since. Treat Newton gravity as
+suspect until it has been.</p>
+<p><strong>A one-minute check for any backend:</strong> pick a joint whose axis is vertical (on the Kinova
+Gen3, joint&nbsp;0). Gravity exerts no moment about a vertical axis in any pose, so its entry in
+<code>gravity_torques</code> must be ~0&nbsp;Nm whatever the arm is doing. If it is not, the vector is not
+gravity.</p></div>
+
+<h2>When to use which</h2>
+<ul>
+  <li><strong>Developing a new behaviour, new script, or new tuning?</strong> Start in <em>simulation</em>. Free to crash without physical damage, full topic visibility, fast iteration.</li>
+  <li><strong>Validating contact / admittance / dynamics?</strong> Simulation is <em>approximate</em> — MuJoCo models friction and contact, but real rigidity and backlash are not captured. Once a behaviour is stable in sim, re-validate on hardware starting from a lower stiffness (<code>K0</code>) than you used in sim — see <a href="#tuning" onclick="showPage('tuning')">Tuning</a>.</li>
+  <li><strong>Teaching / recording waypoints?</strong> Hardware, via <a href="#teach-mode" onclick="showPage('teach-mode')">Teach Mode</a>. Simulation teach mode works but you lose the kinesthetic signal that makes teach mode useful.</li>
+  <li><strong>Teleoperation?</strong> Both peers should run hardware nodes when possible; sim on one side is a useful dry-run but the force feedback then comes from the simulated arm (its wrench estimated from the simulated joint torques, or the simulated F/T sensor with <code>wrench_from_api</code>), not from physical sensing. See <a href="#teleoperation" onclick="showPage('teleoperation')">Teleoperation</a>.</li>
+</ul>
+
+<h2>Why shared memory on hardware?</h2>
+<p>Two reasons:</p>
+<ol>
+  <li><strong>Latency.</strong> ROS 2 DDS serialises every message; at 1&nbsp;kHz with 7-axis torque traffic, that overhead shows up as jitter in the control loop. Atomic reads/writes against a mapped page skip the serialiser entirely.</li>
+  <li><strong>Process isolation.</strong> Vendor drivers (libfranka, Kortex) run in their own real-time processes and bring their own threading and timing constraints. A shared-memory bridge lets FIC co-exist without inheriting the driver's threading model.</li>
+</ol>
+<p>Two segments are defined in <code>fic_library/include/fic/shared_params.h</code>: <code>/dev/shm/robot_feedback_memory</code> (measured torques and positions, commanded torques, <code>tool_wrench[6]</code>, gripper width, the <code>stop_torque_mode</code> flag) and <code>/dev/shm/desired_joint_angles_memory</code>. Each reserves <strong>16 joint slots</strong> (<code>kMaxJoints</code>) — the runtime <code>n_joints</code> field says how many are active, so 7-DOF arms and future dual-arm setups share one layout. The header carries a magic (<code>"FICS"</code>) and layout version; a segment whose size doesn't match is unlinked and recreated on open, so a stale segment from an older build can't silently alias the new struct. Simulation, which isn't latency-sensitive in the same way, uses ROS topics and scales with the joint count from the URDF.</p>
+
+<div class="admonition warning"><div class="adm-title">Stale shared-memory segments</div>
+<p>If you see <code>[shared_params] … magic/version mismatch</code> or feedback that never updates, stop the FIC node and the driver, delete the segments (<code>rm /dev/shm/robot_feedback_memory /dev/shm/desired_joint_angles_memory</code>), and restart. Bumping <code>kMaxJoints</code> or changing the struct layout requires rebuilding <em>every</em> process that maps the segments — <code>fic_hardware</code> and all vendor driver bridges.</p></div>
+
+<h2>Cross-referencing the two loops</h2>
+<p>Several ROS topics exist only in simulation — on hardware the equivalent data lives in shared memory and is consumed by the vendor driver, not a ROS subscriber. If you're building a tool that should work in both environments, subscribe to the topics both nodes publish:</p>
+<table>
+  <tr><th>Topic</th><th>Published in sim</th><th>Published in hardware</th></tr>
+  <tr><td><code>robot{N}_trajectory_data</code></td><td>Yes (8 values per joint)</td><td>Yes (5 values per joint) — GUI plots work on both</td></tr>
+  <tr><td><code>robot{N}_ee_current_pose</code></td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Joint positions</td><td><code>robot{sid}_simulation/joint_states</code> (~1&nbsp;kHz from MuJoCo)</td><td><code>robot{N}_q_current</code> + <code>robot{N}_joint_velocities</code> (bridged from shared memory)</td></tr>
+  <tr><td>Force/torque</td><td><code>robot{sid}_simulation/force_torque</code> (200&nbsp;Hz sensor read)</td><td><code>robot{N}_force_torque</code> — from the driver's <code>tool_wrench[6]</code> when <code>wrench_from_api</code> is on, otherwise estimated from <code>J</code> and measured joint torques</td></tr>
+  <tr><td><code>robot{N}_jacobian</code></td><td>Yes</td><td>No — computed internally, not published</td></tr>
+  <tr><td><code>/robot{N}_fic_torque_commands</code></td><td>Yes</td><td>No &mdash; torques go straight to shared memory</td></tr>
+  <tr><td><code>robot{sid}_simulation/actuators_cmds</code></td><td>Yes</td><td>No</td></tr>
+</table>
+<p>The full topic catalogue is on the <a href="#topics" onclick="showPage('topics')">Topics</a> page; watch any of them live in the <a href="#topic-monitor" onclick="showPage('topic-monitor')">Topic Monitor</a>.</p>
+
+<h2>Switching targets safely</h2>
+<ol>
+  <li>Stop <strong>FIC</strong> (both sim and hardware variants). On hardware, sending <code>"Stop Controller"</code> first is gentler: the node ramps torques toward the gravity baseline (~200&nbsp;ms time constant) and then sets <code>stop_torque_mode</code> in shared memory so the driver exits torque mode cleanly.</li>
+  <li>Stop whichever backend is running (SIM or API).</li>
+  <li>Change the robot dropdown if needed. Both FIC nodes reload the URDF live on <code>robot{N}_selected_robot</code>, but the simulator scene and vendor driver do <em>not</em> follow — a controller model that doesn't match the running backend produces wrong Jacobians and torques, so always stop the backend first.</li>
+  <li>Start the new backend.</li>
+  <li>Start FIC for the new target.</li>
+</ol>
+<p>Note that <code>fic_hardware</code> refuses robots whose config lacks <code>is_supported: true</code> in <code>robots_config.yaml</code> — KUKA IIWA 14 and Pendulum are simulation-only. See <a href="#robot-config" onclick="showPage('robot-config')">Robot Configuration</a> for the flag and the per-robot <code>driver_command</code>, and <a href="#safety" onclick="showPage('safety')">Safety</a> / <a href="#estop" onclick="showPage('estop')">E-STOP</a> for what happens on an emergency stop.</p>
+
+<div class="admonition warning"><div class="adm-title">Don't run both FIC nodes at once</div>
+<p>If <code>fic_simulation</code> and <code>fic_hardware</code> run simultaneously with the same station ID, both will publish to <code>robot{N}_trajectory_data</code> and both will react to commanded modes and targets. The control loop won't be deterministic. Stop one before starting the other.</p></div>

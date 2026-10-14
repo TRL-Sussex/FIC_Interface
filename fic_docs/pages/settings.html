@@ -1,0 +1,290 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Settings</div>
+<h1>Settings</h1>
+<p class="subtitle">Stored in <code>~/.robot_selector_gui_settings.yaml</code> &mdash; v5.6.0</p>
+
+<h2>Accessing Settings</h2>
+<p>Open <strong>Settings</strong> from the sidebar (or press <code>Ctrl+5</code>). Settings are displayed as a
+single scrollable column of collapsible cards; every card starts expanded and can be collapsed by clicking
+its uppercase header. The title row holds a sticky <strong>SAVE SETTINGS</strong> / <strong>DISCARD</strong>
+button pair plus a <strong>? Help</strong> button that opens the Help panel.
+Clicking <strong>Save</strong> writes all changes to <code>~/.robot_selector_gui_settings.yaml</code> and applies
+them (theme, font, tolerances, shortcuts, log-viewer layout).
+Clicking <strong>Discard</strong> reverts every widget &mdash; including a live theme preview &mdash; to the snapshot
+taken when the page was opened; the YAML file is not touched.
+Cards marked <strong>&#x26A0; Restart required</strong> take effect only on the next application launch.</p>
+
+<div class="admonition tip"><div class="adm-title">Station ID is not here</div><p>Station ID is managed from the <strong>toolbar Robot selector</strong> (Robot&nbsp;1&ndash;4, or <strong>Master</strong> for a PC with no arm), not from Settings. Changing it there shows a confirmation dialog, writes <code>general.station_id</code> to the YAML and restarts the app (<code>os.execv</code>) to re-point its ROS topics to <code>robot{N}_*</code> (a Master: a number of its own, 100&ndash;999). The selector is disabled while a session is running.</p></div>
+
+<h2>Settings Lifecycle</h2>
+<p>The same YAML file is read at two different times: once by <code>entry_pro.py</code> before ROS is
+initialised (domain ID and station ID), and once by the GUI's <code>SettingsMixin</code>, which merges it
+with <code>DEFAULT_SETTINGS</code> so missing keys always get sane defaults.</p>
+
+<svg viewBox="0 0 700 310" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;" role="img" aria-label="Settings YAML">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#settings-arrowhead); }
+    .arrow-orange { stroke: #f57c00; marker-end: url(#settings-arrowhead-orange); }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+  </style>
+  <defs>
+    <marker id="settings-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+    <marker id="settings-arrowhead-orange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#f57c00"/>
+    </marker>
+  </defs>
+
+  <!-- YAML file -->
+  <rect x="20" y="110" width="185" height="66" class="box box-orange"/>
+  <text x="112" y="130" class="label-bold">Settings YAML</text>
+  <text x="112" y="147" class="label-code">~/.robot_selector_gui_</text>
+  <text x="112" y="160" class="label-code">settings.yaml</text>
+
+  <!-- entry_pro (launch) -->
+  <rect x="265" y="30" width="175" height="66" class="box box-blue"/>
+  <text x="352" y="50" class="label-bold">entry_pro.py</text>
+  <text x="352" y="66" class="label-sm">reads YAML at launch,</text>
+  <text x="352" y="79" class="label-sm">before rclpy.init()</text>
+
+  <!-- env + node -->
+  <rect x="495" y="14" width="190" height="46" class="box box-grey"/>
+  <text x="590" y="29" class="label-code">ROS_DOMAIN_ID env var</text>
+  <text x="590" y="45" class="label-sm">set only if not already exported</text>
+
+  <rect x="495" y="72" width="190" height="46" class="box box-purple"/>
+  <text x="590" y="87" class="label-code">FicStudioNode(station_id)</text>
+  <text x="590" y="103" class="label-sm">robot{N}_ topic prefix</text>
+
+  <!-- SettingsMixin -->
+  <rect x="265" y="176" width="175" height="72" class="box box-green"/>
+  <text x="352" y="194" class="label-bold">SettingsMixin</text>
+  <text x="352" y="211" class="label-sm">merges YAML with</text>
+  <text x="352" y="224" class="label-code">DEFAULT_SETTINGS</text>
+  <text x="352" y="238" class="label-sm">missing keys &rarr; defaults</text>
+
+  <!-- Settings page -->
+  <rect x="495" y="182" width="190" height="60" class="box box-teal"/>
+  <text x="590" y="200" class="label-bold">Settings page cards</text>
+  <text x="590" y="217" class="label-sm">Discard reverts to the snapshot</text>
+  <text x="590" y="230" class="label-sm">taken when the page opened</text>
+
+  <!-- arrows -->
+  <path class="arrow" d="M 205 128 L 265 78"/>
+  <path class="arrow" d="M 205 158 L 265 200"/>
+  <path class="arrow" d="M 440 50 L 495 40"/>
+  <path class="arrow" d="M 440 78 L 495 92"/>
+  <path class="arrow" d="M 440 212 L 495 212"/>
+
+  <!-- write-back -->
+  <path class="arrow arrow-orange" d="M 590 242 L 590 282 L 112 282 L 112 176"/>
+  <text x="352" y="270" class="label-sm">write-back: SAVE SETTINGS &middot; auto-save timer &middot; gamepad on-change &middot; Extensions APPLY &middot; toolbar Robot switch</text>
+</svg>
+
+<h2>Appearance</h2>
+<p>Controls the theme and the application font. They apply the moment you press <strong>Save</strong>, in the classic window and in every open web UI (no reload, no restart). Clicking a theme button only selects it until then.</p>
+<p>A theme is two independent choices &mdash; a <strong>palette</strong> (Warm or Cool)
+and a <strong>brightness</strong> (Dark or Light) &mdash; giving four themes from two short button
+groups rather than one button per theme.</p>
+<table>
+  <tr><th>Palette</th><th>Reads as</th></tr>
+  <tr><td><strong>Warm</strong></td><td>Browns and ambers. The original FIC Studio look, and still
+    the default.</td></tr>
+  <tr><td><strong>Cool</strong></td><td>Slate and blues.</td></tr>
+</table>
+<div class="admonition note"><div class="adm-title">Warning colours never change</div>
+<p>Whichever palette is chosen, <em>warning</em> stays amber and <em>danger</em> stays red &mdash;
+the <a href="#estop" onclick="showPage('estop')">emergency stop</a> is drawn with them. Cooling a stop button to
+match the theme would be a safety regression, not a preference. Body text is checked against every
+surface in all four themes to WCAG&nbsp;AA (4.5:1) by an automated test, not by eye.</p></div>
+<table>
+  <tr><th>Setting</th><th>Default</th><th>Options</th></tr>
+  <tr><td><strong>theme</strong></td><td><code>warmth_dark</code></td><td>One of <code>warmth_dark</code>, <code>warmth_light</code>, <code>cool_dark</code>, <code>cool_light</code> &mdash; written as <code>&lt;palette&gt;_&lt;brightness&gt;</code> from the two button pairs. Legacy <code>dark</code>/<code>light</code> values in old YAML files are normalized on load, and an unrecognised name falls back to <code>warmth_dark</code> rather than failing.</td></tr>
+  <tr><td><strong>font_family</strong></td><td>Consolas</td><td>Consolas, Courier New, Segoe UI, Arial, Roboto Mono</td></tr>
+  <tr><td><strong>font_size</strong></td><td>12</td><td>8&ndash;18 px</td></tr>
+</table>
+<p>Font changes call <code>QApplication.instance().setFont(QFont(family, size))</code> on Save so the new font
+is applied immediately without a restart.</p>
+
+<h2>Startup</h2>
+<p>Controls the default state when the application launches.</p>
+<table>
+  <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+  <tr><td><strong>default_robot</strong></td><td>Franka_FR3</td><td>Robot pre-selected in the toolbar on launch (dropdown lists all configured robots)</td></tr>
+  <tr><td><strong>auto_save</strong></td><td>true</td><td>Automatically save settings on a periodic timer</td></tr>
+  <tr><td><strong>auto_save_interval</strong></td><td>60 s</td><td>Auto-save interval (range: 10&ndash;600 s)</td></tr>
+  <tr><td><strong>show_log_viewer</strong></td><td>true</td><td><em>Inert since v4.2.0.</em> Logs became its own page, so there is no strip to show or hide. The key is still read and written for backward compatibility. See <a href="#log-viewer" onclick="showPage('log-viewer')">Logs</a>.</td></tr>
+  <tr><td><strong>log_viewer_height</strong></td><td>150 px</td><td><em>Inert since v4.2.0.</em> The Logs page fills its own area; nothing pins a height.</td></tr>
+</table>
+
+<h2>Network <span style="font-size:0.75em;vertical-align:middle;">&#x26A0; Restart required</span></h2>
+<p>Changing <strong>ros_domain_id</strong> requires restarting the application. The amber
+<strong>&#x26A0; Restart required</strong> pill on this card indicates that. The new domain ID takes effect
+on the next launch; <code>entry_pro.py</code> reads it from the YAML before <code>rclpy.init()</code>.</p>
+<table>
+  <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+  <tr><td><strong>ros_domain_id</strong></td><td>0</td><td>ROS 2 DDS domain ID (0&ndash;232). Both machines must match for teleoperation. Takes effect on next launch.</td></tr>
+  <tr><td><strong>partner_ip</strong></td><td>&mdash;</td><td>IP address of the teleop partner machine (for unicast DDS)</td></tr>
+  <tr><td><strong>dds_mode</strong></td><td>Multicast (Auto)</td><td><code>Multicast (Auto)</code> or <code>Unicast (Manual IP)</code>; stored as <code>multicast</code>/<code>unicast</code></td></tr>
+</table>
+<div class="admonition warning"><div class="adm-title">&#x26A0;&#xFE0F; Environment variable wins</div><p><code>entry_pro.py</code> only exports <code>ROS_DOMAIN_ID</code> from the YAML when the variable is <strong>not already set</strong> in the environment. If your <code>.bashrc</code> or launch script exports it, that value overrides the Settings page.</p></div>
+<p>The Network card also includes a <strong>Generate cyclonedds.xml</strong> button. It requires
+<strong>Partner IP</strong> to be filled in, then writes a CycloneDDS peer-discovery configuration to
+<code>~/cyclonedds.xml</code> listing your own IP and the partner IP as unicast peers. After generating,
+export it before launching ROS nodes:</p>
+<pre><code>export CYCLONEDDS_URI=file://$HOME/cyclonedds.xml</code></pre>
+<p>See <a href="#teleoperation" onclick="showPage('teleoperation')">Teleoperation</a> for the full two-machine setup.</p>
+
+<h2>Simulation</h2>
+<p>Selects which physics engine the <strong>SIM</strong> button launches. The dropdown offers
+<em>MuJoCo (CPU, stable)</em> and <em>Newton (NVIDIA Warp, GPU)</em>. See
+<a href="#simulation" onclick="showPage('simulation')">Simulation &rarr; Simulator Backends</a> for runtime details and
+known limitations.</p>
+<table>
+  <tr><th>Setting</th><th>Default</th><th>Options</th></tr>
+  <tr><td><strong>backend</strong></td><td>resolved at runtime*</td><td><code>mujoco_native</code> (CPU) or <code>newton</code> (NVIDIA Warp GPU)</td></tr>
+</table>
+<p>* The default is <code>newton</code> when both of these are true:</p>
+<ol>
+  <li>The marker file <code>~/.fic_studio_install_hints.yaml</code> exists. <code>install-deps.sh</code>
+  writes it (content <code>newton_available: true</code>) only when an NVIDIA GPU was detected via
+  <code>nvidia-smi</code> and <code>import newton</code> succeeded after the pip install.</li>
+  <li><code>import newton</code> still succeeds now (i.e. the package is still installed).</li>
+</ol>
+<p>Otherwise the default is <code>mujoco_native</code>. Once a value is saved to
+<code>~/.robot_selector_gui_settings.yaml</code>, it always wins over the auto-detected default.
+A file saved before v4.5.0 may say <code>backend: mujoco</code> (the retired C++ simulator); it loads as
+<code>mujoco_native</code>, as does any other value except <code>newton</code>.</p>
+<div class="admonition tip"><div class="adm-title">The Newton dropdown entry is greyed out if the package is not installed</div><p>The Settings card probes <code>importlib.util.find_spec('newton')</code>. If Newton was uninstalled, the entry shows <em>"Newton (not installed &mdash; run install-deps.sh)"</em> and cannot be selected.</p></div>
+<p>Switching backends does not restart anything automatically. If a simulation is already running,
+stop it (<strong>SIM</strong> off), change the setting, and start it again &mdash; the new backend will launch.</p>
+
+<h2>Playback Tolerances</h2>
+<p>Used by <a href="#sequences" onclick="showPage('sequences')">Sequences</a> and <a href="#teach-mode" onclick="showPage('teach-mode')">Teach Mode</a>
+to decide when a waypoint is "reached":</p>
+<table>
+  <tr><th>Setting</th><th>Default</th><th>Range</th><th>Description</th></tr>
+  <tr><td><strong>joint_tolerance_deg</strong></td><td>3.0&deg;</td><td>0.5&ndash;20.0&deg;</td><td>Joint angle threshold for "position reached"</td></tr>
+  <tr><td><strong>position_tolerance_mm</strong></td><td>5.0 mm</td><td>1.0&ndash;50.0 mm</td><td>End-effector distance threshold for Cartesian targets</td></tr>
+  <tr><td><strong>timeout_seconds</strong></td><td>30.0 s</td><td>5.0&ndash;120.0 s</td><td>Maximum wait time per waypoint before skipping</td></tr>
+</table>
+<p>On Save the values are converted for the sequence engine: degrees to radians and millimetres to
+metres. The YAML always stores the human-readable degree/millimetre values.</p>
+
+<h2>Shortcuts</h2>
+<p>This card lists the rebindable keyboard shortcuts as plain text fields &mdash; click a field and type
+the key combo (e.g. <code>Ctrl+R</code>). Changes apply on <strong>Save</strong>, which re-registers the
+shortcuts. Stored under the <code>shortcuts:</code> section of the YAML.</p>
+<table>
+  <tr><th>YAML key</th><th>Action</th><th>Default</th></tr>
+  <tr><td><code>estop</code></td><td>Emergency Stop</td><td><code>Space</code></td></tr>
+  <tr><td><code>play_sequence</code></td><td>Play Sequence</td><td><code>Ctrl+R</code></td></tr>
+  <tr><td><code>stop_sequence</code></td><td>Stop Sequence</td><td><code>Escape</code></td></tr>
+  <tr><td><code>save_settings</code></td><td>Save Settings</td><td><code>Ctrl+S</code> *</td></tr>
+  <tr><td><code>toggle_log</code></td><td>Toggle Log Viewer</td><td><code>Ctrl+L</code> *</td></tr>
+  <tr><td><code>panel_dashboard</code></td><td>Dashboard</td><td><code>Ctrl+0</code></td></tr>
+  <tr><td><code>panel_control</code></td><td>Multi-Robot</td><td><code>Ctrl+1</code></td></tr>
+  <tr><td><code>panel_tuning</code></td><td>Tuning Panel</td><td><code>Ctrl+3</code> *</td></tr>
+  <tr><td><code>panel_sequence</code></td><td>Sequence Panel</td><td><code>Ctrl+4</code></td></tr>
+  <tr><td><code>panel_settings</code></td><td>Settings Panel</td><td><code>Ctrl+5</code></td></tr>
+</table>
+<p>* These three accelerators are owned by the menu bar (File &#9656; Save, View &#9656; Show Log Panel,
+View &#9656; Tuning Panel) and are intentionally not re-registered by the Settings system, to avoid
+ambiguous-shortcut double firing. Fixed application keys such as <code>F1</code> (Help),
+<code>F5</code>/<code>F6</code> (start Sim/FIC), <code>F11</code> (fullscreen), <code>Ctrl+B</code>
+(Compile Workspace) and <code>Ctrl+/</code> (shortcut reference) live in the menus and are not
+rebindable here. See <a href="#shortcuts" onclick="showPage('shortcuts')">Keyboard Shortcuts</a> for the complete list.</p>
+<div class="admonition danger"><div class="adm-title">&#x1F6D1; Space is the keyboard E-STOP</div><p>Pressing the <code>estop</code> shortcut stops running sequences, scripts and teach mode, kills the controller, driver, FIC and simulator processes, stops bag recording, and publishes each active robot's last-known joint pose as a lock target. See <a href="#estop" onclick="showPage('estop')">Emergency Stop</a>.</p></div>
+
+<h2>Extensions <span style="font-size:0.75em;vertical-align:middle;">&#x26A0; Restart required</span></h2>
+<p>Lists all discovered extensions found under <code>Extensions/</code>, each with an enable checkbox.
+Unlike the other cards, this one has its own <strong>APPLY</strong> button: clicking it writes the enabled
+list to <code>extensions.enabled</code> in the YAML immediately (no page-level Save needed) and then offers
+to restart the application right away (<code>os.execv</code>). If you decline, the change takes effect on
+the next launch. If nothing changed, APPLY reports "No changes to apply".</p>
+<p>See <a href="#extensions" onclick="showPage('extensions')">Extensions</a> for the full extension catalog and authoring guide.</p>
+
+<h2>Gamepad</h2>
+<p>Configuration for Xbox-compatible gamepad input. The <code>GamepadMixin</code> reads
+<code>/dev/input/js*</code> directly via the Linux joystick protocol, scanning at 2&nbsp;Hz for hot-plug
+detection and publishing commands at 100&nbsp;Hz. See <a href="#gamepad" onclick="showPage('gamepad')">Gamepad Control</a>
+for the full control reference. The card contains five groups:</p>
+<table>
+  <tr><th>Group</th><th>Contents</th></tr>
+  <tr><td><strong>Tuning</strong></td><td><code>deadzone</code> spinbox &mdash; default 0.12, range 0.0&ndash;0.5, step 0.01. Stick deflection below this is ignored; the remainder is rescaled to full range.</td></tr>
+  <tr><td><strong>Axis Inversion</strong></td><td>Checkboxes to flip Left/Right Stick X and Y (<code>LX</code>, <code>LY</code>, <code>RX</code>, <code>RY</code>) individually. All off by default.</td></tr>
+  <tr><td><strong>Button Mapping</strong></td><td>Per-button action dropdown (Kinova-style defaults, e.g. <code>A</code>&rarr;home, <code>B</code>&rarr;e_stop, <code>Back</code>&rarr;toggle_space, <code>X</code>/<code>Y</code>&rarr;postural/elbow toggles).</td></tr>
+  <tr><td><strong>Fixed Controls</strong></td><td>Reference only, not remappable: LT/RT = variable gripper, D-pad Up/Down = speed level, D-pad Left/Right = cycle robot.</td></tr>
+  <tr><td><strong>Connected Controllers</strong></td><td>Live per-pad cards with axis readouts, held buttons, control state, and a target-robot dropdown (multi-robot stations).</td></tr>
+</table>
+<p>Gamepad changes take effect immediately and &mdash; unlike the other cards &mdash; are written to the YAML
+(<code>gamepad:</code> section) as soon as you change them; they do not wait for the page-level Save.</p>
+
+<h2>Web Remote</h2>
+<p>Serves the Studio's controls to browsers on the network &mdash; see
+<a href="#web-remote" onclick="showPage('web-remote')">Web Remote</a>. Added in v4.3.0.</p>
+<table>
+  <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+  <tr><td><strong>web_remote.enabled</strong></td><td>true</td><td><em>Serve the web remote</em>. Turning it off stops the server and takes control away from any browser.</td></tr>
+  <tr><td><strong>web_remote.port</strong></td><td>8088</td><td>First port to try; if it is taken (another Studio on this machine) the next free one up to nine above is used. <em>Apply</em> restarts the server on the new port.</td></tr>
+</table>
+<p>The card also lists the addresses to open (each labelled LAN or Tailscale), how many browsers are
+connected, who holds control with a <em>Take control back</em> button, and the other Studios found on
+the ROS network. Both settings apply at once and are written to the YAML (<code>web_remote:</code>
+section) immediately, like the gamepad card.</p>
+
+<h2>Developer</h2>
+<p>Debug toggles plus workspace build buttons. The same build actions are also available in the
+<strong>Tools menu</strong> (Compile Workspace <code>Ctrl+B</code>, Compile Package&hellip;, Clean Build) &mdash;
+see <a href="#build-tools" onclick="showPage('build-tools')">Build Tools</a>.</p>
+<table>
+  <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+  <tr><td><strong>verbose_logging</strong></td><td>false</td><td>Sets the Python root logger to DEBUG level (applied on Save)</td></tr>
+  <tr><td><strong>save_rosbag</strong></td><td>false</td><td>"Auto-save rosbag on exit" checkbox; persisted as <code>advanced.save_rosbag</code></td></tr>
+</table>
+<p>The <strong>Build</strong> row runs <code>colcon build --symlink-install</code> in an in-app build dialog:
+<em>Rebuild Workspace</em> (whole workspace), <em>Rebuild Package&hellip;</em>
+(<code>--packages-select</code> on a package chosen from <code>src/</code>), and <em>Clean Rebuild</em>
+(deletes <code>build/</code>, <code>install/</code>, <code>log/</code> after a confirmation, then rebuilds).</p>
+
+<h2>Help</h2>
+<p>The Help content previously embedded as a 14-tab section inside Settings has been moved to the
+standalone <strong>Help panel</strong>. Press <code>F1</code>, click <strong>Help</strong> in the sidebar,
+or use the <strong>? Help</strong> button in the Settings title row to open it.</p>
+
+<h2>Settings File</h2>
+<p>Settings are stored as YAML. On load the file is recursively merged with the built-in defaults, so
+missing keys are filled in for forward compatibility. A malformed file is not fatal:
+<code>entry_pro.py</code> prints a warning to stderr and falls back to defaults &mdash; fix or delete the
+file to recover your preferences. You can inspect or edit it directly:</p>
+<pre><code>nano ~/.robot_selector_gui_settings.yaml</code></pre>
+<p>Top-level sections and what writes them:</p>
+<table>
+  <tr><th>Section</th><th>Keys</th><th>Notes</th></tr>
+  <tr><td><code>general</code></td><td>default_robot, station_id, wizard_completed, auto_save, auto_save_interval, show_log_viewer, log_viewer_height</td><td><code>station_id</code> (1&ndash;4, or 0 for Master) comes from the toolbar selector; <code>wizard_completed</code> from the first-run wizard</td></tr>
+  <tr><td><code>appearance</code></td><td>theme, font_size, font_family</td><td><code>theme</code> is <code>warmth_dark</code>, <code>warmth_light</code>, <code>cool_dark</code> or <code>cool_light</code></td></tr>
+  <tr><td><code>network</code></td><td>ros_domain_id, partner_ip, dds_mode</td><td>Read before <code>rclpy.init()</code></td></tr>
+  <tr><td><code>simulation</code></td><td>backend</td><td><code>mujoco_native</code> or <code>newton</code> (a saved <code>mujoco</code> reads as <code>mujoco_native</code>)</td></tr>
+  <tr><td><code>tolerances</code></td><td>joint_tolerance_deg, position_tolerance_mm, timeout_seconds</td><td>Human-readable units; converted on apply</td></tr>
+  <tr><td><code>shortcuts</code></td><td>10 rebindable keys (table above)</td><td></td></tr>
+  <tr><td><code>extensions</code></td><td>enabled, data</td><td><code>enabled</code> is the list of extension IDs; <code>data</code> holds per-extension state</td></tr>
+  <tr><td><code>gamepad</code></td><td>deadzone, invert_axes, button_map</td><td>Written immediately on change</td></tr>
+  <tr><td><code>advanced</code></td><td>verbose_logging, save_rosbag</td><td></td></tr>
+</table>
+<p>YAML keys are stable across v3.9.x; <code>entry_pro.py</code> reads <code>network.ros_domain_id</code> and
+<code>general.station_id</code> from this file before <code>rclpy.init()</code>, so do not rename those keys.
+Because auto-save is on by default, manual edits made while the GUI is running can be overwritten within
+the auto-save interval &mdash; edit the file with the GUI closed.</p>

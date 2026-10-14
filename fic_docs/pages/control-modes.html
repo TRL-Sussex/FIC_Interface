@@ -1,0 +1,535 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">›</span> Control Modes</div>
+<h1>Control Modes & FIC Algorithm</h1>
+<p class="subtitle">Control modes 0&ndash;8 powered by the Fractal Impedance Control library (0 = stop). Available in both simulation and hardware.</p>
+
+<h2>Mode Overview</h2>
+<table>
+  <tr><th>Mode</th><th>Name</th><th>FIC Call</th><th>Damping</th></tr>
+  <tr><td>0</td><td>Stop / Idle</td><td>&mdash; (zero torques)</td><td>&mdash;</td></tr>
+  <tr><td>1</td><td>Joint Impedance</td><td><code>JC.impedance()</code></td><td><span class="mark-no" aria-label="No">✕</span> None (K0 only)</td></tr>
+  <tr><td>2</td><td>Joint Impedance With Planner</td><td><code>JC.impedanceWithPlanner()</code></td><td><span class="mark-yes" aria-label="Yes">✓</span> damping_ratio</td></tr>
+  <tr><td>3</td><td>Joint Admittance</td><td><code>JC.admittance(m=1)</code></td><td><span class="mark-yes" aria-label="Yes">✓</span> Kv</td></tr>
+  <tr><td>4</td><td>Joint Admittance Haptic</td><td><code>JC.admittance(m=2)</code></td><td><span class="mark-yes" aria-label="Yes">✓</span> Kv</td></tr>
+  <tr><td>5</td><td>Cartesian Impedance</td><td><code>RC.impedance()</code></td><td><span class="mark-no" aria-label="No">✕</span> None</td></tr>
+  <tr><td>6</td><td>Cartesian Planner</td><td><code>RC.planner()</code></td><td><span class="mark-yes" aria-label="Yes">✓</span> damping_ratio</td></tr>
+  <tr><td>7</td><td>Cartesian Admittance</td><td><code>RC.admittance(m=1)</code></td><td><span class="mark-yes" aria-label="Yes">✓</span> Kv</td></tr>
+  <tr><td>8</td><td>Cartesian Admittance Haptic</td><td><code>RC.admittance(m=2)</code></td><td><span class="mark-yes" aria-label="Yes">✓</span> Kv</td></tr>
+</table>
+<p>Gravity handling: in both controller nodes (<code>fic_simulation</code> and
+  <code>fic_hardware</code>; on hardware not when the robot's <code>gravity_compensated</code> is
+  set), Modes 1 and 2 add the model gravity torque <code>g(q)</code> on top of the FIC output (the
+  impedance law itself has no gravity term); Modes 3/4 and Hapfic add it too, and Modes 3/4 also
+  use it as the commanded effort against which the interaction torque is measured; Cartesian modes fold it in as <code>&tau; = J<sup>T</sup>w + g(q)</code>. Mode 9 (Cartesian IK +
+  joint impedance) was removed in v3.9.0 &mdash; a legacy enum entry remains in the code but the
+  mode is no longer exposed in the GUI.</p>
+
+<div class="admonition tip"><div class="adm-title">Hapfic overlay (Modes 6&ndash;8)</div>
+<p>The <strong>Hapfic</strong> checkbox (in the Null-space row) activates a hybrid control path
+  within Cartesian modes 6&ndash;8 (on 7 and 8 the host's task-space admittance first shifts
+  the goal). When enabled, the Cartesian planner generates an EE
+  trajectory, Cartesian impedance computes a task-space wrench, and the resulting joint
+  torques (via J<sup>T</sup>) feed as <em>desired effort</em> into per-joint haptic admittance
+  controllers. The admittance output modifies <code>q_target</code> and a joint impedance
+  inner loop produces the final torques. Internally this calls <code>RC.hapfic()</code>
+  instead of <code>RC.admittance()</code>. The Cartesian planner+impedance channels live at
+  a dedicated offset (16&ndash;19) to avoid channel conflicts with the joint controllers at
+  0..n<sub>j</sub>&minus;1. Both layers are tuned in Hapfic's own <code>config.xml</code> block,
+  <code>&lt;mode id="100" name="HAP-FIC"&gt;</code> (a joint layer and a Cartesian layer); a robot
+  without one runs on Mode 4's joints and Mode 6's Cartesian block. See the <a href="#hapfic" onclick="showPage('hapfic')">Hapfic page</a>
+  for the full architecture.</p></div>
+<div class="admonition tip"><div class="adm-title">6-DOF compliance (v2.5.8+)</div>
+<p>Modes 7 / 8 respond to <strong>both forces and torques</strong>. Translational pushes
+  yield via the position pass on axes 0&ndash;2 (m, with a 4 N default deadband; the internal
+  admittance offset is clamped to ±30 cm in Mode 7 / ±5 cm in Mode 8, and the resulting target
+  to a ±10 m workspace box). Rotational torques yield via a second pass on axes 3&ndash;5
+  (rad, with a 0.2 Nm default deadband and ±30° / ±5° clamp). The orientation pass composes its
+  axis-angle delta into the desired quaternion as a base-frame left-multiply, so torquing the EE
+  the same way the user pushes rotates the target the same way. Pre-v2.5.8, only the
+  translation pass ran and the orientation target passed straight through unchanged.
+  Deadbands are per-robot: <code>admittance_deadbands</code> (<code>joint_tau</code>,
+  <code>cart_force</code>, <code>cart_torque</code>) in
+  <code>fic_library/config/robots_config.yaml</code>, defaults 1.5 Nm / 4.0 N / 0.2 Nm.</p></div>
+<div class="admonition tip"><div class="adm-title">Postural null-space now runs in Modes 7 &amp; 8</div>
+<p>Earlier releases gated the <em>Null-space → Postural</em> toggle out of the Cartesian
+  admittance modes because the admittance offset fought the postural correction. That gate has
+  been removed: <code>applyJointPosturalCorrection</code> now ignores <code>CartAdmMode</code>
+  and postural runs in <strong>all</strong> Cartesian modes (5&ndash;8). If you see stale
+  &ldquo;gated out&rdquo; hints elsewhere, trust the code &mdash; see the
+  <a href="#changelog" onclick="showPage('changelog')">changelog</a> for the history.</p></div>
+
+<h2>Mode Selection</h2>
+<table>
+  <tr><th>Target</th><th>Topic</th><th>Type</th><th>Values</th></tr>
+  <tr><td>Simulation</td><td><code>robot{N}_control_mode</code></td><td>Int32</td><td>0&ndash;8 (0 = zero torques)</td></tr>
+  <tr><td>Hardware</td><td><code>robot{N}_mode_select</code></td><td>String</td><td>Exact mode name, see below</td></tr>
+</table>
+<p><code>{N}</code> is the station ID (1&ndash;4; 100&ndash;999 for a Master station) set by the <code>station_id</code> node
+  parameter &mdash; see <a href="#topics" onclick="showPage('topics')">Topics</a>. The hardware hub accepts these
+  exact strings: <code>"Joint Impedance"</code>, <code>"Joint Impedance With Planner"</code>,
+  <code>"Joint Admittance"</code>, <code>"Joint Admittance Haptic"</code>,
+  <code>"Cartesian Impedance"</code>, <code>"Cartesian Planner"</code>,
+  <code>"Cartesian Admittance"</code>, <code>"Cartesian Admittance Haptic"</code>.
+  <code>"Stop Controller"</code> or <code>"Pause Controller"</code> switch to Mode 0 with a
+  graceful torque ramp-down (see <a href="#safety" onclick="showPage('safety')">Safety</a>). Unknown strings are
+  rejected with an error log. Hardware also accepts <code>"Start"</code>, which launches the
+  vendor robot driver from <code>driver_command</code> in the
+  <a href="#robot-config" onclick="showPage('robot-config')">robot config</a>.</p>
+
+<div class="admonition note"><div class="adm-title">Legged robots run Mode 1 only</div>
+<p>A robot configured <code>robot_category: legged</code> also configures
+  <code>kinematics_solver: none</code>, so the C++ node rejects the Cartesian modes outright and the
+  GUI disables the four Cartesian mode buttons; a stale Cartesian selection falls back to Joint
+  Impedance on the robot switch. Its joint targets are published by the
+  <code>fic_locomotion</code> gait node, which also announces Mode 1 once at startup so a headless run
+  works without the GUI. See <a href="#legged-locomotion" onclick="showPage('legged-locomotion')">Legged Locomotion</a>.</p></div>
+
+<div class="admonition tip"><div class="adm-title">What happens on a mode switch</div>
+<p>Every mode change re-initialises the FIC controllers with that mode's parameters (read
+  from <code>config.xml</code> in the background the first time the node needs them for this robot
+  and mode; the loop sends no new command until they are in memory) and
+  <strong>snaps the targets to the robot's current state</strong>: joint targets to
+  <code>q_current</code>, and (for Modes 5&ndash;8) the EE target to the current EE pose. The
+  robot therefore holds position after a switch instead of jumping to a stale target. Both
+  controller nodes boot in Mode 1 until a mode message arrives.</p></div>
+
+<h2>Recommendation Guide</h2>
+<table>
+  <tr><th>Use Case</th><th>Mode</th></tr>
+  <tr><td>Learning / Testing</td><td><strong>2</strong> — smooth, forgiving (note: the controllers boot in Mode 1; switch to 2 first)</td></tr>
+  <tr><td>Precision Positioning</td><td><strong>5 or 6</strong> — Cartesian space</td></tr>
+  <tr><td>Contact / Assembly</td><td><strong>3 or 7</strong> — admittance, yields to forces</td></tr>
+  <tr><td>Teleoperation</td><td><strong>4 or 8</strong> — haptic force feedback; see <a href="#teleoperation" onclick="showPage('teleoperation')">Teleoperation</a></td></tr>
+  <tr><td>High-Bandwidth Tracking</td><td><strong>1</strong> — fastest response, careful tuning needed</td></tr>
+</table>
+
+<hr>
+<h2>FIC Algorithm Internals</h2>
+<p>The <code>FIC&lt;T&gt;</code> template class (in <code>fic_library/include/fic/FIC.cpp</code>) implements three nested component types per degree of freedom:</p>
+
+<h3>Controller</h3>
+<p>Pure position-error feedback using a <strong>nonlinear saturation mapping</strong>. Maps position error through configurable breakpoints (<code>x_b</code>) and force limits (<code>E_max</code>) with multiple saturation stages, producing a stiffness-scaled torque output.</p>
+<table class="param-table">
+  <tr><th>Parameter</th><th>Description</th></tr>
+  <tr><td>K0</td><td>Linear stiffness gain (separate values for negative / positive error)</td></tr>
+  <tr><td>x_b</td><td>Error breakpoints for saturation stages (<code>error_max</code> in XML)</td></tr>
+  <tr><td>E_max</td><td>Force limit per saturation stage (<code>force_max</code> in XML)</td></tr>
+  <tr><td>S_Start</td><td>Saturation ratios — fraction of each breakpoint where the tanh blend begins (clamped to 0.4&ndash;0.9)</td></tr>
+  <tr><td>n_</td><td>Number of saturation stages</td></tr>
+</table>
+<p>Within each stage the profile is a linear region (<code>K0 &times; error</code> up to
+  <code>S_Start &times; x_b</code>) followed by a smooth <code>tanh</code> blend up to the stage's
+  force limit at <code>x_b</code>; beyond the outermost breakpoint the output is flat at the last
+  <code>E_max</code> entry.</p>
+
+<h4>Divergence / convergence &mdash; the fractal attractor</h4>
+<p>The controller is <em>state-dependent</em>: it behaves differently depending on whether the
+  error is growing or shrinking (compared per time step):</p>
+<ul>
+  <li><strong>Divergence</strong> (|error| increasing): output follows the nonlinear profile
+    above; the controller records the largest error and its effort as
+    (<code>error_max</code>, <code>effort_max</code>).</li>
+  <li><strong>Convergence</strong> (|error| decreasing): output switches to a <em>linear</em>
+    spring anchored at the midpoint of the excursion:
+    <code>effort = K_conv &times; (error &minus; error_max/2)</code> with
+    <code>K_conv = |effort_max| / max(|error_max/2|, 1e-5)</code>. The force crosses zero at
+    half the peak error, releasing the stored energy symmetrically. If the error crosses zero
+    or starts growing again, <code>error_max</code> re-anchors.</li>
+</ul>
+<p>This hysteresis is what makes FIC stable without velocity feedback: each
+  divergence/convergence cycle returns the energy injected on the way out, so the closed loop is
+  passive by construction.</p>
+
+<svg viewBox="0 0 700 340" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="FIC force-vs-error profile">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-left { text-anchor: start; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#cmodes-arrowhead); }
+    .line { stroke: #bbb; stroke-width: 1; stroke-dasharray: 4,3; }
+  </style>
+  <defs>
+    <marker id="cmodes-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+  </defs>
+  <text x="350" y="18" class="label-title">FIC force-vs-error profile</text>
+
+  <!-- axes -->
+  <line x1="40" y1="180" x2="672" y2="180" class="arrow"/>
+  <line x1="355" y1="322" x2="355" y2="32" class="arrow"/>
+  <text x="662" y="196" class="label-sm">error</text>
+  <text x="384" y="40" class="label-sm">effort</text>
+
+  <!-- breakpoint guides (positive side) -->
+  <line x1="510" y1="180" x2="510" y2="100" class="line"/>
+  <line x1="600" y1="180" x2="600" y2="62" class="line"/>
+  <line x1="355" y1="100" x2="510" y2="100" class="line"/>
+  <line x1="355" y1="62" x2="600" y2="62" class="line"/>
+  <text x="510" y="194" class="label-code">x_b[0]</text>
+  <text x="600" y="194" class="label-code">x_b[1]</text>
+  <text x="322" y="100" class="label-code">E_max[0]</text>
+  <text x="322" y="62" class="label-code">E_max[1]</text>
+
+  <!-- divergence profile: linear -> tanh sat 1 -> tanh sat 2 -> flat (symmetric) -->
+  <path d="M 355 180 L 470 118 C 490 108, 496 101, 510 100 L 528 99 C 556 96, 566 70, 600 62 L 668 60"
+        fill="none" stroke="#1976d2" stroke-width="2.5"/>
+  <path d="M 355 180 L 240 242 C 220 252, 214 259, 200 260 L 182 261 C 154 264, 144 290, 110 298 L 42 300"
+        fill="none" stroke="#1976d2" stroke-width="2.5"/>
+  <text x="452" y="112" class="label-sm" style="fill:#1976d2">K0 linear</text>
+  <text x="638" y="46" class="label-sm" style="fill:#1976d2">saturated</text>
+
+  <!-- convergence line: anchored at (error_max, effort_max)=(630,61), zero at error_max/2 (x≈492) -->
+  <circle cx="630" cy="61" r="4" fill="#f57c00"/>
+  <line x1="630" y1="61" x2="450" y2="216" stroke="#f57c00" stroke-width="2" stroke-dasharray="7,4"/>
+  <circle cx="492" cy="180" r="3.5" fill="none" stroke="#f57c00" stroke-width="2"/>
+  <text x="632" y="44" class="label-sm" style="fill:#f57c00">(error_max, effort_max)</text>
+  <text x="474" y="236" class="label-sm" style="fill:#f57c00">zero force at error_max / 2</text>
+
+  <!-- legend -->
+  <line x1="60" y1="52" x2="92" y2="52" stroke="#1976d2" stroke-width="2.5"/>
+  <text x="98" y="52" class="label-sm label-left">divergence (|error| growing): follows profile</text>
+  <line x1="60" y1="70" x2="92" y2="70" stroke="#f57c00" stroke-width="2" stroke-dasharray="7,4"/>
+  <text x="98" y="70" class="label-sm label-left">convergence (|error| shrinking): linear K_conv return</text>
+</svg>
+
+<div class="admonition danger"><div class="adm-title">No velocity damping in the Controller</div>
+<p>The Controller class is purely position-based. <code>damping_ratio</code> only exists in the Planner (Modes 2, 6). <code>Kv_</code> only exists in AdmittanceController (Modes 3, 4, 7, 8). If Mode 1 oscillates, the <strong>only lever is to reduce K0</strong> (the convergence phase dissipates energy, but K0 sets how much gets injected).</p>
+<p>Separately &mdash; and <em>outside</em> the FIC library &mdash; the simulation node subtracts an output
+  damping term <code>kd &times; qdot</code> from the final torque, with
+  <code>kd = per-joint torque limit / max_joint_vel</code> from the robot's
+  <code>safety_zones</code>. It is fed from the raw feedback velocity through a dedicated
+  <strong>first-order</strong> 20 Hz lag: a first-order lag can never exceed 90&deg; of phase, so it can
+  attenuate a damper but never invert it, whereas the 10 Hz second-order state filter reaches 159&deg;
+  at a lightly-loaded joint's resonance and would pump energy in instead of removing it.</p></div>
+
+<h3>Planner</h3>
+<p>Trajectory generator producing smooth position references via an acceleration-limited
+  second-order model. Each step it computes an acceleration from the position error (with the
+  same divergence/convergence hysteresis as the Controller), subtracts a velocity damping term
+  <code>2&middot;&zeta;&middot;&omega;<sub>n</sub>&middot;v</code>, then Euler-integrates
+  acceleration &rarr; velocity &rarr; position. The natural frequency
+  <code>&omega;<sub>n</sub></code> and the velocity/acceleration caps are re-derived from
+  <code>velDesired</code> and the distance to the goal whenever the target moves, so short moves
+  stay gentle and long moves reach full speed. Wrapping behaviour and joint limits are sourced
+  from the <a href="#robot-config" onclick="showPage('robot-config')">robot config</a>, not from per-mode tuning.</p>
+<table class="param-table">
+  <tr><th>Parameter</th><th>Description</th></tr>
+  <tr><td>stiffness</td><td>Initial internal stiffness; recomputed as &omega;<sub>n</sub>&sup2; whenever the target moves</td></tr>
+  <tr><td>velDesired</td><td>Target velocity (rad/s or m/s) — the main speed knob</td></tr>
+  <tr><td>accMax</td><td>Maximum acceleration ceiling</td></tr>
+  <tr><td>dampingRatio</td><td>&zeta; in the damping term 2&middot;&zeta;&middot;&omega;<sub>n</sub>&middot;v; typical config value 0.005 — larger = more overshoot suppression</td></tr>
+  <tr><td>frequency</td><td>Loaded from XML but not used by the planning math — &omega;<sub>n</sub> is derived dynamically from velDesired / distance-to-goal</td></tr>
+</table>
+<div class="admonition warning"><div class="adm-title">Planner degrades to pass-through at low rates</div>
+<p>If the step time exceeds 5 ms (<code>dt &gt; 0.005</code>), <code>plan()</code> skips the
+  smooth integration and snaps the planned position straight to the desired target. The
+  controller loop runs at 1 kHz, so this only bites if you call the library yourself at a lower
+  rate — expect no trajectory shaping there.</p></div>
+<div class="admonition tip"><div class="adm-title">Continuity &amp; limits come from the URDF, not the mode</div>
+<p>Whether a joint is treated as continuous (shortest-arc wrap across ±π) is derived at robot-load time by <strong>parsing the URDF directly</strong> with tinyxml2 (<code>fic::deriveJointContinuityFromUrdf</code>). A joint is continuous iff its <code>&lt;limit&gt;</code> element omits both <code>lower</code> and <code>upper</code> attributes, or if <code>type="continuous"</code>. Clamp limits for bounded joints come from Pinocchio's <code>lowerPositionLimit</code>/<code>upperPositionLimit</code>; continuous joints use ±π as a placeholder (irrelevant, since they're never clamped). This correctly handles multi-turn bounded joints (e.g. ±720°) as non-continuous. <code>ficControl::setJointContinuous()</code> and <code>setJointLimits()</code> install these once per robot in <code>loadRobotModel()</code>, so <strong>all control modes</strong> — including Cartesian modes that skip <code>initJointPlanner</code> — see the correct values.</p></div>
+
+<h3>AdmittanceController</h3>
+<p>Integrates applied force over time for compliant motion:</p>
+<pre><code>acceleration = invM × (effort − Kv × velocity)</code></pre>
+<p>Euler integration of acceleration → velocity → position, all clamped to limits. When the
+  integrated pose saturates against a bound, the velocity component driving <em>into</em> that
+  bound is zeroed (anti-windup), so the offset settles at the wall and releases without
+  snap-back.</p>
+<table class="param-table">
+  <tr><th>Parameter</th><th>Description</th></tr>
+  <tr><td>InvM</td><td>Inverse virtual mass (higher = more responsive to forces)</td></tr>
+  <tr><td>Kv</td><td>Velocity damping (prevents runaway)</td></tr>
+  <tr><td>dFlow</td><td>Acceleration limits [min, max]</td></tr>
+  <tr><td>Flow</td><td>Velocity limits [min, max]</td></tr>
+  <tr><td>Pose</td><td>Position offset limits [min, max] — at init these are overridden to the Controller's <code>x_b</code> breakpoints; the Cartesian admittance modes then re-clamp them per mode (±30 cm / ±5 cm, ±30° / ±5°)</td></tr>
+</table>
+<p><strong>M1 vs M2:</strong> both are driven by the interaction effort alone (commanded minus
+  measured, outside the deadband): with nothing pushing, the offset does not move. In
+  push-and-stay (m=1) the offset accumulates up to the joint limits (&plusmn;30&nbsp;cm /
+  &plusmn;30&deg; in task space), so the robot stays where you push it. In haptic mode (m=2) the
+  offset is bounded to the joint law's outer breakpoint (&plusmn;5&nbsp;cm / &plusmn;5&deg; in task
+  space): within it the robot yields and stays, and pushed beyond it the FIC law resists and
+  returns it to the bound on release.</p>
+<p><strong>Desired wrench (modes 7/8, and Hapfic on them):</strong> the task-space admittance is
+  driven by the desired minus the measured wrench, outside the deadbands, so it moves the goal
+  until the measured wrench equals the desired one, within the mode's bound. The desired wrench
+  is zero when the controller starts, which is the plain compliant behaviour above. Set it with
+  the <strong>Wrench&hellip;</strong> button in the Cart options, the <em>Desired wrench</em> row
+  of the web interface's Cart panel, <code>robot.mode.desired_wrench(force, torque)</code> in the
+  <a href="#script-editor" onclick="showPage('script-editor')">Script Editor</a>, or the
+  <code>robot{N}_desired_wrench</code> topic (<code>geometry_msgs/Wrench</code>, [N, N&middot;m], in
+  the frame and sign of the measured wrench). The topic is not latched, so a controller that
+  restarts begins at zero again. In free space a non-zero desired wrench moves the goal to the
+  bound, since nothing pushes back.</p>
+
+<h2>Control Wrapper — fic_control.h</h2>
+<p>The <code>ficControl&lt;T&gt;</code> class wraps <code>FIC&lt;T&gt;</code> and exposes two sub-modules:</p>
+
+<h3>JC — Joint Controller (Modes 1–4)</h3>
+<table>
+  <tr><th>Method</th><th>Mode</th><th>Description</th></tr>
+  <tr><td><code>JC.impedance(i, ...)</code></td><td>1</td><td>Pure FIC stiffness</td></tr>
+  <tr><td><code>JC.impedanceWithPlanner(i, ...)</code></td><td>2</td><td>FIC + trajectory planner</td></tr>
+  <tr><td><code>JC.admittance(i, ..., m)</code></td><td>3/4</td><td>Admittance (m=1 push-and-stay up to the joint limits, m=2 haptic: stays where released within &plusmn;x<sub>b,n</sub>)</td></tr>
+</table>
+<p>The admittance target normally routes through the joint planner before the impedance inner
+  loop. On hardware this is switchable at runtime via the <em>Admittance Planner</em> checkbox
+  (<code>Bool</code> on <code>robot{N}_admittance_planner_enable</code>, default on); the
+  simulation node currently always uses the planner path.</p>
+
+<h3>RC — Robot/Cartesian Controller (Modes 5–8)</h3>
+<table>
+  <tr><th>Method</th><th>Mode</th><th>Description</th></tr>
+  <tr><td><code>RC.impedance(...)</code></td><td>5</td><td>Task-space impedance via Jacobian transpose; orientation error is controlled as a scalar angle &theta; on channel 3 and projected back along the quaternion error axis</td></tr>
+  <tr><td><code>RC.planner(...)</code></td><td>6</td><td>Task-space with trajectory planning (plans XYZ; orientation target passes through to the impedance stage)</td></tr>
+  <tr><td><code>RC.admittance(..., m)</code></td><td>7/8</td><td>Task-space admittance &mdash; 6-DOF since v2.5.8 (translation + orientation; torques about EE x/y/z compose into the desired quaternion as a base-frame rotation delta). Driven by <code>setDesiredWrench()</code> minus the measured wrench; the desired wrench is zero by default.</td></tr>
+  <tr><td><code>RC.hapfic(...)</code></td><td>6/7/8 + Hapfic</td><td>Hybrid: Cartesian planner &rarr; impedance wrench &rarr; J<sup>T</sup> joint torques &rarr; per-joint haptic admittance inner loop. Activated by the Hapfic checkbox.</td></tr>
+</table>
+
+<h2>FIC Channel Map</h2>
+<p>Every FIC component (controller / planner / admittance) is indexed by a <em>channel</em>.
+  Joint modes use one channel per joint; Cartesian modes repurpose the low channels for EE axes
+  and stack the helpers above them:</p>
+
+<svg viewBox="0 0 700 265" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="FIC channel allocation (7-DOF arm shown)">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-left { text-anchor: start; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+  </style>
+  <text x="350" y="18" class="label-title">FIC channel allocation (7-DOF arm shown)</text>
+
+  <!-- Joint modes row -->
+  <text x="30" y="80" class="label-bold label-left">Joint modes 1–4</text>
+  <!-- cells: x = 148 + ch*26, w=24 -->
+  <rect x="148" y="66" width="180" height="28" class="box box-green"/>
+  <text x="238" y="80" class="label">joints 0 … n_j−1</text>
+  <rect x="332" y="66" width="338" height="28" class="box box-grey"/>
+  <text x="501" y="80" class="label-sm">unused</text>
+
+  <!-- Cartesian modes row -->
+  <text x="30" y="135" class="label-bold label-left">Cartesian 5–8</text>
+  <rect x="148" y="121" width="76" height="28" class="box box-blue"/>
+  <text x="186" y="135" class="label">X Y Z</text>
+  <rect x="228" y="121" width="24" height="28" class="box box-blue"/>
+  <text x="240" y="135" class="label">θ</text>
+  <rect x="256" y="121" width="50" height="28" class="box box-blue" style="fill:#f0f7fd"/>
+  <text x="281" y="135" class="label-sm">rot adm</text>
+  <rect x="310" y="121" width="76" height="28" class="box box-orange"/>
+  <text x="348" y="135" class="label">elbow</text>
+  <rect x="390" y="121" width="180" height="28" class="box box-purple"/>
+  <text x="480" y="135" class="label">postural 9 … 9+n_j−1</text>
+  <rect x="574" y="121" width="96" height="28" class="box box-teal"/>
+  <text x="622" y="135" class="label">hapfic</text>
+
+  <!-- index labels -->
+  <text x="152" y="160" class="label-code label-left">0</text>
+  <text x="224" y="160" class="label-code">2</text>
+  <text x="240" y="160" class="label-code">3</text>
+  <text x="268" y="160" class="label-code">4</text>
+  <text x="296" y="160" class="label-code">5</text>
+  <text x="318" y="160" class="label-code">6</text>
+  <text x="380" y="160" class="label-code">8</text>
+  <text x="398" y="160" class="label-code">9</text>
+  <text x="560" y="160" class="label-code">15</text>
+  <text x="582" y="160" class="label-code">16</text>
+  <text x="664" y="160" class="label-code">19</text>
+
+  <!-- notes -->
+  <text x="30" y="192" class="label-sm label-left">0–2: EE translation (controller + planner + admittance) · 3: orientation θ FIC controller</text>
+  <text x="30" y="210" class="label-sm label-left">3–5: rotational admittance (Modes 7/8) · 6–8: elbow null-space (translation only)</text>
+  <text x="30" y="228" class="label-sm label-left">9+: postural per-joint controllers · 16–18: hapfic Cartesian planner+controller · 19: hapfic orientation θ</text>
+  <text x="30" y="246" class="label-sm label-left">Offsets in code: postural.controller_offset_ = 9, hapfic_cart_planner_offset_ = 16 (fic_control.h)</text>
+</svg>
+
+<h2>Null-Space Helpers (Cartesian modes only)</h2>
+<p>A 7-DOF arm running a 6-DOF Cartesian task has one redundant degree of freedom. The EE
+  controller leaves that redundancy unconstrained &mdash; the arm can &ldquo;swim&rdquo; around a fixed
+  EE pose. Two optional helpers on <code>ficControl</code> add secondary tasks in the null-space
+  of the primary EE Jacobian, so the redundant motion is shaped without disturbing the EE.</p>
+
+<h3>Postural (<code>ficControl::postural.apply()</code>)</h3>
+<p>Per-joint position controllers pushing each <code>q_current[i]</code> toward
+  <code>q_target_ik_[i]</code> (the joint configuration the iterative IK solver produced for
+  the current EE target). Uses its own FIC channels (offset <code>9</code> onward, past the
+  Cartesian <code>[0..5]</code> and elbow <code>[6..8]</code> channels) so it doesn't fight the
+  primary task.</p>
+<ul>
+  <li><strong>Why you'd use it:</strong> on a 7-DOF arm, Cartesian Impedance/Planner
+    (Modes&nbsp;5/6) leaves the elbow swingable &mdash; gravity or contact can drift it to an
+    awkward configuration. Postural pulls the whole arm toward the IK-preferred pose, so the
+    elbow stays where IK put it.</li>
+  <li><strong>When it runs:</strong> all Cartesian modes, <strong>5&ndash;8</strong>.
+    (Earlier releases gated it out of 7/8; <code>applyJointPosturalCorrection</code> now
+    ignores <code>CartAdmMode</code>.) Joint modes (1&ndash;4) have no redundancy.</li>
+  <li><strong>How to enable:</strong> tick <em>Null-space → Postural</em> in the Control panel.
+    Publishes <code>Bool</code> on <code>robot{N}_postural_enable</code>.</li>
+  <li><strong>Tuning:</strong> each robot has one <code>&lt;postural&gt;</code> block in
+    <code>config.xml</code> (a sibling of the <code>&lt;mode&gt;</code> blocks, with its own
+    <code>&lt;controller&gt;</code> stiffness / <code>error_max</code> / <code>force_max</code>
+    and <code>&lt;planner&gt;</code> sub-blocks). Keep stiffness well below the primary
+    Cartesian task so the secondary stays secondary.</li>
+</ul>
+
+<h3>Elbow (<code>ficControl::applyElbowControl()</code>)</h3>
+<p>Holds the elbow link at a snapshot of its current Cartesian position. Computes a 3D
+  position error on the elbow frame, maps to force via three FIC channels (offset
+  <code>6..8</code>), converts to torque with <code>J_elbow.topRows(3).transpose()</code>, then
+  <strong>projects into the null-space</strong> of the primary EE Jacobian via
+  <code>N = I − J_EE<sup>+</sup> J_EE</code> (damped pseudo-inverse, &lambda; = 0.01) so the
+  resulting torque cannot disturb the EE pose.</p>
+<ul>
+  <li><strong>Why you'd use it:</strong> precise elbow placement matters around obstacles,
+    cables, or an operator's head. Postural anchors the whole arm; Elbow anchors just the elbow
+    link and leaves the rest of the null-space free to flow.</li>
+  <li><strong>When it runs:</strong> Modes <strong>5&ndash;8</strong> (all Cartesian modes).
+    Independent of <code>CartAdmMode</code>.</li>
+  <li><strong>How to enable:</strong> tick <em>Null-space → Elbow</em> in the Control panel.
+    Publishes <code>Bool</code> on <code>robot{N}_elbow_enable</code>. On enable,
+    <code>elbowEnableCallback</code> captures the <em>current</em> elbow pose as the target &mdash; pose
+    the arm how you want the elbow before ticking the box. The target stays frozen while the
+    toggle is on, even across new EE commands; IK refreshes the stored target only while the
+    toggle is off.</li>
+  <li><strong>Tuning:</strong> the elbow helper reuses the Cartesian translational
+    (<code>pos_axes</code>) parameters from the mode's <code>&lt;cartesian&gt;</code> block.
+    Some robots have an <code>&lt;elbow&gt;</code> block in <code>config.xml</code> &mdash; it is
+    currently <em>not read</em> by the C++ parameter loader, so editing it has no effect.</li>
+  <li><strong>Which link is the elbow:</strong> the <code>elbow_frame_name</code> key in
+    <code>robots_config.yaml</code> (see <a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a>).</li>
+</ul>
+
+<h3>Hapfic (<code>ficControl::RC.hapfic()</code>)</h3>
+<p>A hybrid overlay for Cartesian modes (6&ndash;8) that routes the Cartesian
+  control output through per-joint haptic admittance before producing final torques.
+  Instead of the normal Cartesian planner/admittance path, Hapfic uses its own Cartesian
+  planner to generate a smooth EE trajectory, computes a Cartesian impedance wrench,
+  converts it to joint torques via
+  <code>J<sup>T</sup> &times; wrench + gravity</code>, then feeds those torques as
+  <code>&tau;<sub>des</sub></code> into <code>handleJointAdmitanceControl(i, ..., &tau;<sub>des</sub>[i],
+  &tau;<sub>meas</sub>[i], 2)</code> per joint. Its deadband has hysteresis: a joint starts
+  yielding when its gap <code>&tau;<sub>des</sub> &minus; &tau;<sub>meas</sub></code> reaches the
+  deadband <code>b</code> (<code>joint_tau</code>) and keeps yielding until the gap is below
+  <code>b/4</code>, so a held contact ends within <code>b/4</code> of the desired torque. Each
+  joint's IK set-point is first limited to within <code>max(x<sub>b,n</sub>, 0.1&nbsp;rad)</code>
+  of the measured joint, and the admittance offset is added to it
+  (<code>q_adm = sat(limit(q_ik) + &delta;)</code>); a joint impedance inner loop produces the
+  final torques.</p>
+<ul>
+  <li><strong>Why you'd use it:</strong> compliant teleop with Cartesian trajectory planning.
+    The EE follows a planned Cartesian path while the joints remain force-responsive through
+    the haptic admittance layer &mdash; combining the precision of Cartesian planning with the
+    compliance of joint-space haptic admittance.</li>
+  <li><strong>When it runs:</strong> Modes <strong>6</strong>, <strong>7</strong>, and <strong>8</strong>
+    (Cartesian Planner &amp; Cartesian Admittance), when the Hapfic checkbox is ticked. When disabled,
+    the normal <code>RC.planner()</code> (mode 6) or <code>RC.admittance()</code> (modes 7/8)
+    path runs as before.</li>
+  <li><strong>Host mode:</strong> the dispatcher forwards the outer <code>CartAdmMode</code>
+    (0 for Mode 6, 1/2 for Modes 7/8). On Modes 7 and 8 the host's task-space admittance (M1
+    push-and-stay within &plusmn;30&nbsp;cm / &plusmn;30&deg;, M2 within &plusmn;5&nbsp;cm /
+    &plusmn;5&deg;), driven by the estimated external wrench, shifts Hapfic's Cartesian goal and,
+    to first order (<code>J<sup>#</sup>&Delta;x</code>), its IK set-point; on Mode 6 the goal is
+    used as commanded. The per-joint inner loop always runs in <em>haptic</em> mode
+    (<code>m=2</code>).</li>
+  <li><strong>How to enable:</strong> tick <em>Null-space &rarr; Hapfic</em> in the Control panel.
+    Publishes <code>Bool</code> on <code>robot{N}_hapfic_enable</code>. Toggling re-initialises
+    the controllers (both layers from the HAP-FIC block, see Tuning below); a repeated message
+    with the value already set is ignored.</li>
+  <li><strong>Channel allocation:</strong> joint controllers occupy channels 0..n<sub>j</sub>&minus;1
+    (same as Modes 1&ndash;4). The Cartesian planner + impedance for the hapfic path lives at
+    a dedicated offset (channels 16&ndash;18 for translation, 19 for orientation &theta;) to
+    avoid collisions with the joint channels.</li>
+  <li><strong>Tuning:</strong> Hapfic has its own XML block, <code>&lt;mode id="100" name="HAP-FIC"&gt;</code>:
+    its <code>&lt;joint&gt;</code> elements tune the joint layer and its <code>&lt;cartesian&gt;</code>
+    element the Cartesian layer (<code>fic::tuningKeyFor</code>). A robot without the block falls back
+    to the Mode 4 joints and the Mode 6 Cartesian block. Full details on the <a href="#hapfic" onclick="showPage('hapfic')">Hapfic page</a>.</li>
+</ul>
+
+<div class="admonition tip"><div class="adm-title">Postural vs. Elbow — which to use</div>
+  <p><strong>Postural</strong> = &ldquo;arm follows IK-preferred config&rdquo;. Most users want this on by
+    default in Cartesian modes.</p>
+  <p><strong>Elbow</strong> = &ldquo;elbow stays here, rest of the arm is free&rdquo;. Use on top of a
+    Cartesian task when you need deterministic elbow placement without over-constraining the
+    joints.</p>
+  <p>They compose &mdash; you can enable both. Postural's softer whole-arm pull plus Elbow's
+    sharper link-level hold tends to feel stable without locking up the null-space.</p>
+</div>
+
+<h2>Parameter Loading</h2>
+<p>FIC parameters are loaded from <code>fic_library/config/config.xml</code> via <code>fic_param_loader.hpp</code> (C++) or <code>xml_manager.py</code> (Python/GUI). Parameters are per robot, per mode, per <em>profile</em> (the <code>profile</code> attribute on each <code>&lt;mode&gt;</code> block; the active profile is selected on <code>robot{N}_active_profile</code> — see <a href="#tuning" onclick="showPage('tuning')">Tuning</a>).</p>
+<table>
+  <tr><th>Struct</th><th>Fields</th><th>Used By</th></tr>
+  <tr><td><code>ScalarParams</code></td><td>stiffness, diff_effort_max</td><td>Controller</td></tr>
+  <tr><td><code>ListParams</code></td><td>error_max, force_max, saturation_ratios, n_saturations, asymmetric, n_neg_sat</td><td>Controller</td></tr>
+  <tr><td><code>PlannerParams</code></td><td>stiffness, vel_desired, acc_max, damping_ratio, frequency</td><td>Planner</td></tr>
+  <tr><td><code>AdmittanceParams</code></td><td>InvM, damping, dFlow, Flow, Pose</td><td>AdmittanceController</td></tr>
+  <tr><td><code>CartesianAxisParams</code></td><td>All of the above per Cartesian axis (X/Y/Z/Q)</td><td>RC</td></tr>
+</table>
+<p>All loading is <strong>fail-safe</strong>: missing XML tags retain defaults. No exceptions on missing tags.</p>
+<div class="admonition warning"><div class="adm-title">Controllers read the <em>installed</em> copy</div>
+<p>At runtime the C++ nodes read <code>config.xml</code> from the package share directory
+  (e.g. <code>&lt;install&gt;/fic_simulation/share/fic_simulation/config/config.xml</code>),
+  which CMake installs from <code>fic_library/config/</code> at build time. If you hand-edit the
+  source file, rebuild (or use a symlink install) so the controller sees the change — or edit
+  through the GUI's <a href="#config-xml" onclick="showPage('config-xml')">config editor</a>, which manages this for
+  you.</p></div>
+<div class="admonition note"><div class="adm-title">When the nodes read config.xml (v4.4.0)</div>
+<p>Both nodes read the whole tuning for the current robot and mode (every joint, the Cartesian
+  axes and, in Modes 5&ndash;8, the postural block) into one in-memory set
+  (<code>fic::TuningSet</code>), on a background thread. They read it again only when what the
+  set is for changes &mdash; robot, joint count, mode, or a Hapfic toggle that changes the mode the
+  parameters come from &mdash; or when the tuning on disk changes (<code>robot{N}_param_update</code>,
+  sent on every SAVE TO XML, or a new <code>robot{N}_active_profile</code>). On a save or profile
+  change the controllers keep the old set until the new one is ready and switch on the next tick.
+  A new target only re-seeds the controllers from the set in memory; it never reads the file. The
+  Postural/Elbow toggles trigger neither. See <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a>.</p></div>
+
+<h2>Signal Filtering</h2>
+<p>Joint feedback passes through <strong>second-order Butterworth low-pass filters</strong> (<code>butterworth_filter.hpp</code>, bilinear-transform coefficients, Direct Form II Transposed):</p>
+<pre><code>ButterworthFilter filter(cutoff_hz, sample_rate_hz, initial_value);
+double filtered = filter.filter(raw_value);</code></pre>
+<p>The simulation node filters joint position, velocity, and effort at a <strong>10 Hz cutoff</strong>
+  before they reach the control law. The <code>initial_value</code> seeds the filter history to avoid
+  startup transients.</p>
+<p>The <strong>sample rate is measured, not assumed</strong>. These filters are stepped once per
+  <code>joint_states</code> message, not by the 1 kHz control timer, and the bilinear transform derives
+  its coefficients from the <em>declared</em> rate &mdash; so the previous hard-coded 1 kHz was realising
+  the 10 Hz design cutoff at 1.4&ndash;1.7 Hz. The node now measures the feedback interval over a
+  50-sample warm-up window, takes the median, guards it (plausible range plus a periodicity test), and
+  rebuilds the filter banks once, seeded for a bumpless transfer. If a rate cannot be established it
+  falls back to 1000 Hz &mdash; the historical behaviour &mdash; with a <code>WARN</code> naming the
+  reason.</p>
+
+<h2>Related Pages</h2>
+<ul>
+  <li><a href="#tuning" onclick="showPage('tuning')">Tuning</a> — per-mode parameter reference and profiles</li>
+  <li><a href="#hapfic" onclick="showPage('hapfic')">Hapfic</a> — the hybrid overlay in depth</li>
+  <li><a href="#control-panel" onclick="showPage('control-panel')">Control Panel</a> — where modes and null-space toggles live in the GUI</li>
+  <li><a href="#safety" onclick="showPage('safety')">Safety</a> — torque guard, zones, E-STOP ramp</li>
+  <li><a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Simulation vs Hardware</a> — behavioural differences per mode</li>
+</ul>
+
+<div class="doc-footer">
+  <p>Published work behind the FIC control law: <a href="#references" onclick="showPage('references')">References</a></p>
+</div>

@@ -1,0 +1,183 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> <a href="#contact-localization" onclick="showPage('contact-localization')">Contact Localization</a><span class="bc-sep">&rsaquo;</span> Adding a Robot</div>
+<h1>Contact Localization &mdash; Adding a Robot</h1>
+<p class="subtitle">What a robot must actually provide before contact localization can work on it, in the order you should check. Every gate below has a command that answers it in seconds, so you can find out in ten minutes whether an arm is a candidate rather than discovering it three days into a port.</p>
+
+<div class="admonition warning">
+  <div class="adm-title">Work through the gates in order</div>
+  <p>They are ordered by how expensive they are to discover late. Gate&nbsp;0 is a property of the mechanism and cannot be fixed by any amount of work; Gate&nbsp;1 is a missing file you can author. Do not start writing config for an arm that fails Gate&nbsp;0.</p>
+</div>
+
+<h2>Gate 0 &mdash; Does the method apply at all?</h2>
+<p>Three properties are load-bearing. If the arm lacks any of them, stop here.</p>
+
+<table>
+  <thead><tr><th>Requirement</th><th>Why</th><th>If it fails</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>A serial kinematic chain</strong></td>
+      <td>The whole method rests on &ldquo;a contact on link&nbsp;<em>k</em> loads only joints 1&hellip;<em>k</em>&rdquo;. That is a property of a serial chain. In a closed-loop or parallel mechanism, force paths close through the structure and the triangular pattern simply does not exist.</td>
+      <td><span class="tag tag-red">Fatal.</span> No estimator fixes it. <code>CSPM</code> in this repo is exactly this case.</td>
+    </tr>
+    <tr>
+      <td><strong>Genuine per-joint torque sensing</strong></td>
+      <td>You need what the joint <em>measured</em>, not what the controller <em>commanded</em>, and not a motor-current estimate. Commanded torque contains no contact information at all; current-based estimates are dominated by friction.</td>
+      <td><span class="tag tag-red">Fatal.</span> <code>CSPM</code>'s bridge writes the firmware's commanded <code>t_in</code>, which is useless here.</td>
+    </tr>
+    <tr>
+      <td><strong>A URDF with real inertial data</strong></td>
+      <td>The residual is <code>tau_meas &minus; g(q)</code>. Without inertias, Pinocchio returns <code>g(q) &asymp; 0</code> and the &ldquo;residual&rdquo; is just the raw torque, gravity and all.</td>
+      <td><span class="tag tag-yellow">Fixable</span> &mdash; but you must author or obtain a proper URDF. <code>Franka_FR3</code> fails here today.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Check it</h3>
+<pre><code># 1. Inertial blocks present? Anything less than one per moving link is a fail.
+grep -c '&lt;inertial&gt;' fic_ws/src/menagerie/model/&lt;ROBOT&gt;/URDF/&lt;ROBOT&gt;.urdf
+
+# 2. Is gravity actually non-degenerate? Should be several N.m at a bent pose, not ~0.
+source /opt/homebrew/Caskroom/miniforge/base/etc/profile.d/conda.sh &amp;&amp; conda activate fic_ros
+python3 -c "
+import pinocchio as pin, numpy as np
+m = pin.buildModelFromUrdf('&lt;path to urdf&gt;'); d = m.createData()
+q = pin.neutral(m); q[:] = 0.5
+print('total mass', round(sum(i.mass for i in m.inertias), 3), 'kg')
+print('||g(q)||  ', round(np.linalg.norm(pin.computeGeneralizedGravity(m, d, q)), 3), 'N.m')
+"</code></pre>
+<p>A total mass near zero, or <code>&#8214;g(q)&#8214;</code> under about 1&nbsp;N&middot;m on a metre-scale arm, means the URDF has no usable inertias.</p>
+
+<h2>Gate 1 &mdash; Files that must exist</h2>
+<table>
+  <thead><tr><th>File</th><th>Requirement</th></tr></thead>
+  <tbody>
+    <tr><td><code>menagerie/model/&lt;ROBOT&gt;/URDF/&lt;ROBOT&gt;.urdf</code></td><td>Real inertials. Joint names must match the config's <code>joint_names</code> exactly.</td></tr>
+    <tr><td><code>menagerie/model/&lt;ROBOT&gt;/xml/scene.xml</code></td><td>An MJCF whose <strong>body names match the URDF link names</strong>. This is what lets a link index map to a MuJoCo body with one lookup and no translation table.</td></tr>
+    <tr><td>Mesh assets</td><td>Each link body needs at least one mesh geom with vertices and normals, for surface contact candidates. Primitive-only bodies give no surface to sample.</td></tr>
+  </tbody>
+</table>
+
+<div class="admonition note">
+  <div class="adm-title">The name-matching requirement is the one people miss</div>
+  <p>The URDF and the MJCF are separate files maintained by different upstreams, and nothing enforces that their names agree. On the Kinova they happen to match exactly (<code>Shoulder_Link</code>, <code>ForeArm_Link</code>, &hellip;), which is why the port was cheap. Check before you assume:</p>
+  <pre><code>python3 -c "
+import mujoco, pinocchio as pin
+mj = mujoco.MjModel.from_xml_path('&lt;scene.xml&gt;')
+mjnames = {mujoco.mj_id2name(mj, mujoco.mjtObj.mjOBJ_BODY, i) for i in range(mj.nbody)}
+m = pin.buildModelFromUrdf('&lt;urdf&gt;')
+urdf = {f.name for f in m.frames if f.type == pin.FrameType.BODY}
+print('in URDF but not MJCF:', sorted(urdf - mjnames))
+"</code></pre>
+</div>
+
+<div class="admonition warning">
+  <div class="adm-title">Also check that mesh normals are indexed the same way as vertices</div>
+  <p>The estimator pairs <code>mesh_normal[i]</code> with <code>mesh_vert[i]</code> to get the outward normal at each candidate surface point, and that normal decides which push directions are physically possible (<code>F&middot;n &le; 0</code>). MuJoCo indexes normals <em>separately</em> from vertices in general &mdash; <code>mesh_facenormal</code> need not equal <code>mesh_face</code>. On the Kinova meshes the two arrays happen to be elementwise identical, so the pairing is valid; on a different robot it may not be, and the failure is silent: the push constraint quietly starts rejecting the right contacts and accepting the wrong ones.</p>
+  <pre><code>python3 -c "
+import numpy as np, mujoco
+m = mujoco.MjModel.from_xml_path('&lt;scene.xml&gt;')
+b = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, '&lt;a link body name&gt;')
+g = m.body_geomadr[b]; d = m.geom_dataid[g]
+fa, fn = m.mesh_faceadr[d], m.mesh_facenum[d]
+same = np.array_equal(m.mesh_facenormal[fa:fa+fn], m.mesh_face[fa:fa+fn])
+print('normal indexing matches vertex indexing:', same)
+print('vertnum', m.mesh_vertnum[d], 'normalnum', m.mesh_normalnum[d])
+"</code></pre>
+  <p>If that prints <code>False</code>, <code>geometry.py</code> must look normals up through <code>mesh_facenormal</code> rather than by vertex index. Verify the result either way: compute each face's geometric normal from its winding and check it agrees with the stored normals &mdash; the Kinova's <code>ForeArm_Link</code> gives a mean dot product of <strong>+0.92</strong> with about 92% agreement, the rest being ordinary smooth shading at sharp edges. A mean dot near zero means the pairing is wrong.</p>
+</div>
+
+<h2>Gate 2 &mdash; Config keys</h2>
+<p>In <code>fic_studio/fic_studio_robots.yaml</code> (authoritative &mdash; <em>Deploy</em> regenerates <code>fic_library/config/robots_config.yaml</code> from it). See <a href="#robot-config" onclick="showPage('robot-config')">Robot Config &amp; Models</a>.</p>
+<table>
+  <thead><tr><th>Key</th><th>Why it matters here</th></tr></thead>
+  <tbody>
+    <tr><td><code>num_joints</code>, <code>joint_names</code></td><td>Joint order is load-bearing and must match the URDF. The estimator maps by <strong>name</strong>, never by position &mdash; but a mismatch still means it cannot find the joint at all.</td></tr>
+    <tr><td><code>urdf_path</code>, <code>mujoco_xml_path</code></td><td>Both must point at files that exist. <code>IIWA_14</code> declares a <code>.urdf</code> that is not on disk.</td></tr>
+    <tr><td><code>torque_sign</code></td><td><strong>Applied by <code>fic_hardware</code> before publishing.</strong> Never apply it a second time in Python &mdash; that silently inverts every residual.</td></tr>
+    <tr><td><code>gravity_compensated</code></td><td>If the driver already removes gravity (as libfranka's <code>tau_ext_hat_filtered</code> does), <code>g(q)</code> must <em>not</em> be subtracted again. Get this wrong and a full gravity vector appears as phantom contact.</td></tr>
+    <tr><td><code>joint_torque_limits.max</code></td><td>Used for safety clamping and to interpret per-link thresholds. Kinova's are <code>[39, 39, 39, 39, 9, 9, 9]</code> N&middot;m &mdash; note the distal joints are far weaker.</td></tr>
+  </tbody>
+</table>
+
+<h2>Gate 3 &mdash; The driver must publish measured torque</h2>
+<p>The vendor driver writes into the shared-memory segment; <code>fic_hardware</code> reads it, applies <code>torque_sign</code>, filters it, and republishes on <code>{rid}_joint_torques</code>. Confirm the driver is writing a <em>measurement</em>:</p>
+<pre><code># With the arm running and stationary, then again while you push a link:
+ros2 topic hz   /robot1_joint_torques
+ros2 topic echo /robot1_joint_torques --once</code></pre>
+<p>Values must change when you push the arm and settle when you let go. If they track your <em>commands</em> instead of your <em>hands</em>, the driver is publishing commanded torque and this arm fails Gate&nbsp;0.</p>
+
+<div class="admonition danger">
+  <div class="adm-title">Do not use <code>host.joint_effort_for()</code></div>
+  <p>It is documented as &ldquo;measured joint efforts&rdquo; but returns block 4 of <code>trajectory_data</code>, which is the FIC controller's <strong>commanded</strong> control effort. Use <code>joint_torque_for()</code>, which reads the real topic.</p>
+</div>
+
+<h2>Gate 4 &mdash; Characterise before you trust it</h2>
+<p>Two measurements are mandatory for a new arm. Neither is optional, and both belong in the run's <code>meta.json</code>.</p>
+<ol>
+  <li><strong>The noise floor, per joint.</strong> Hold a pose in Mode&nbsp;1 with nobody touching the arm, calibrate, and record &sigma; per joint. Repeat across about ten poses spanning the workspace. Thresholds are <code>6&sigma;</code>; if that lands above the controller's own <code>admittance_deadbands.joint_tau</code>, the per-pose bias is not buying you anything and you should say so rather than tuning until the demo looks good.</li>
+  <li><strong>The per-link detectability table.</strong> Different arms have wildly different moment arms. On the Kinova, the shoulder needs 69&nbsp;N to be detected half the time &mdash; effectively never, by hand &mdash; while the wrist needs 3&nbsp;N. You must know which links are usable on <em>your</em> arm before demonstrating it, or a correct &ldquo;nothing detected&rdquo; will look like a bug.</li>
+</ol>
+
+<h3>Generate the detectability table</h3>
+<pre><code>python3 - &lt;&lt;'PY'
+import numpy as np, mujoco, pinocchio as pin, sys
+sys.path.insert(0, 'fic_ws/src/fic_contact')
+from fic_contact.residual import ArmModel
+URDF, MJCF = '&lt;urdf&gt;', '&lt;scene.xml&gt;'
+JOINTS = ['&lt;joint names in order&gt;']
+FLOOR  = 1.2          # N.m, your measured 6-sigma threshold
+m  = ArmModel(URDF, JOINTS)
+mj = mujoco.MjModel.from_xml_path(MJCF)
+def surface(name, n=60):
+    b = mujoco.mj_name2id(mj, mujoco.mjtObj.mjOBJ_BODY, name)
+    g = mj.body_geomadr[b]; d = mj.geom_dataid[g]
+    v = mj.mesh_vert[mj.mesh_vertadr[d]:mj.mesh_vertadr[d] + mj.mesh_vertnum[d]]
+    R = np.zeros(9); mujoco.mju_quat2Mat(R, mj.geom_quat[g])
+    return (mj.geom_pos[g] + v @ R.reshape(3, 3).T)[::max(1, len(v) // n)][:n]
+def skew(r): return np.array([[0,-r[2],r[1]],[r[2],0,-r[0]],[-r[1],r[0],0]])
+rng = np.random.default_rng(0)
+for k, name in enumerate(m.link_names, 1):
+    pts, need = surface(name), []
+    for _ in range(150):
+        q = rng.uniform(-2, 2, m.n); J = m.link_jacobians(q)[k]
+        for r in pts[rng.integers(0, len(pts), 10)]:
+            Jp = J[:3] - skew(r) @ J[3:]
+            d = rng.normal(size=(10, 3)); d /= np.linalg.norm(d, axis=1, keepdims=True)
+            need.extend(FLOOR / np.maximum(np.abs((Jp.T @ d.T).T).max(axis=1), 1e-9))
+    need = np.array(need)
+    print(f'{name:&lt;24}{np.percentile(need,50):6.1f} N (50%)  {np.percentile(need,90):7.1f} N (90%)')
+PY</code></pre>
+<p>Anything needing more than about 30&nbsp;N at the 50% mark is not usable by hand. Put the resulting table in the docs for that robot, the way the Kinova's is on the <a href="#contact-localization" onclick="showPage('contact-localization')">Contact Localization</a> page.</p>
+
+<h2>Gate 5 &mdash; Verification ladder</h2>
+<p>In this order. Do not skip upward.</p>
+<ol>
+  <li><code>{rid}_joint_torques</code> appears, updates at rate, and moves when you push the arm.</li>
+  <li>Sign and gravity conventions confirmed at three poses: stationary and untouched, <code>tau_meas &minus; g(q)</code> is small on every joint. If a joint shows a residual the size of its own gravity term, <code>gravity_compensated</code> or <code>torque_sign</code> is wrong.</li>
+  <li>Noise floor measured per joint, across the workspace.</li>
+  <li>Detectability table generated; usable links identified.</li>
+  <li>Twin mirrors the arm's pose with the estimator disabled.</li>
+  <li>Push each usable link in turn; the right body lights up.</li>
+  <li>Full recorded run against a written contact-safety procedure.</li>
+</ol>
+
+<div class="admonition danger">
+  <div class="adm-title">A human deliberately touching a live arm needs its own procedure</div>
+  <p>The existing <a href="#safety" onclick="showPage('safety')">hardware verification protocol</a> requires the workspace to be <em>clear of people</em> and treats unexpected motion toward a person as an abort criterion. Deliberate contact is outside it. Write a procedure for the new arm before Gate&nbsp;5 step 6, covering Mode&nbsp;1 enforcement, enabled safety zones, reduced torque limits, and a two-person rule with a second person at the E-stop.</p>
+</div>
+
+<h2>Summary checklist</h2>
+<table>
+  <thead><tr><th>&nbsp;</th><th>Gate</th><th>Answered by</th></tr></thead>
+  <tbody>
+    <tr><td><span class="tag tag-red">0</span></td><td>Serial chain, real torque sensors, URDF with inertials</td><td>Mechanism datasheet; <code>grep -c '&lt;inertial&gt;'</code>; the <code>&#8214;g(q)&#8214;</code> check</td></tr>
+    <tr><td><span class="tag tag-yellow">1</span></td><td>URDF + MJCF exist, link names agree, meshes present</td><td>The name-comparison snippet above</td></tr>
+    <tr><td><span class="tag tag-yellow">2</span></td><td>Config keys correct, especially <code>torque_sign</code> and <code>gravity_compensated</code></td><td><code>fic_studio_robots.yaml</code> review</td></tr>
+    <tr><td><span class="tag tag-blue">3</span></td><td>Driver publishes measured torque</td><td><code>ros2 topic echo</code> while pushing</td></tr>
+    <tr><td><span class="tag tag-blue">4</span></td><td>Noise floor and detectability measured</td><td>Calibration + the table script</td></tr>
+    <tr><td><span class="tag tag-green">5</span></td><td>Verification ladder passed</td><td>The seven steps above</td></tr>
+  </tbody>
+</table>
+
+<div class="doc-footer">
+  <p>See also: <a href="#contact-localization" onclick="showPage('contact-localization')">Contact Localization</a> &middot; <a href="#references" onclick="showPage('references')">References</a> &middot; <a href="#robot-config" onclick="showPage('robot-config')">Robot Config &amp; Models</a> &middot; <a href="#first-motion" onclick="showPage('first-motion')">First Motion Checklist</a> &middot; <a href="#safety" onclick="showPage('safety')">Safety System</a> &middot; <a href="#topics" onclick="showPage('topics')">ROS 2 Topics</a></p>
+</div>

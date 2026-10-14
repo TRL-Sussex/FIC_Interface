@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+#
+# fic: start FIC Studio programs with ROS 2 and the workspace set up.
+# Used by the desktop's taskbar and right-click menu, and handy in any
+# terminal inside the container.
+#
+#   fic studio         FIC Control Studio
+#   fic dev            FIC Dev Console
+#   fic docs           The FIC documentation
+#   fic terminal       A terminal window with everything set up
+#   fic files          The file manager, opened on the shared folder
+#   fic shell          A shell in this terminal with everything set up
+#   fic topics         List the live ROS 2 topics
+#   fic selftest       Check that the GUI and every simulator work
+#   fic state ...      Save, restore or reset robot configs (see fic-state)
+#   fic <command...>   Run any command with everything set up
+
+set -eo pipefail
+
+# Run as the Studio's user, never as root (`docker exec` defaults to root).
+# (Once only: in root-ID mode fic itself is UID 0. gosu also sets HOME.)
+if [ "$(id -u)" = "0" ] && id fic >/dev/null 2>&1 && [ -z "${FIC_AS_ROOT:-}${FIC_REEXEC:-}" ]; then
+    FIC_REEXEC=1 exec gosu fic "$0" "$@"
+fi
+
+# shellcheck disable=SC1091
+source /etc/fic/env.sh
+
+# The controllers find robots_config.yaml and the URDFs relative to the
+# working directory, and programs the Studio starts inherit it.
+cd "${FIC_ROOT}/fic_ws"
+
+cmd="${1:-studio}"
+[ $# -gt 0 ] && shift
+
+case "${cmd}" in
+    studio)   exec ros2 run fic_studio fic_studio_pro "$@" ;;
+    dev)      exec ros2 run fic_studio fic_dev "$@" ;;
+    docs)     exec fic-browser "${FIC_ROOT}/fic_docs/index.html" ;;
+    terminal) exec xterm -title "Terminal" -e bash -l ;;
+    files)    exec pcmanfm "${HOME}/FIC_Studio" ;;
+    shell)    exec bash -l "$@" ;;
+    topics)   exec ros2 topic list ;;
+    selftest) exec fic-selftest "$@" ;;
+    state)    exec fic-state "$@" ;;
+    -h|--help|help) sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//' ;;
+    *)        exec "${cmd}" "$@" ;;
+esac

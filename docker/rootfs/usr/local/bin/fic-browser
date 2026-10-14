@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#
+# fic-browser URL: open URL in the container's browser window.
+#
+# This is $BROWSER. Python's webbrowser module waits for $BROWSER to exit,
+# which would freeze the Studio while the page is open, so the window is
+# started in its own session and this script returns at once.
+
+# Run as the Studio's user, never as root (`docker exec` defaults to root).
+if [ "$(id -u)" = "0" ] && id fic >/dev/null 2>&1 && [ -z "${FIC_AS_ROOT:-}${FIC_REEXEC:-}" ]; then
+    FIC_REEXEC=1 exec gosu fic "$0" "$@"
+fi
+
+log="${XDG_RUNTIME_DIR:-/tmp}/fic-browser.log"
+{ setsid -f python3 /usr/local/lib/fic/fic_browser.py "$@" >>"${log}" 2>&1; } 2>/dev/null \
+    || setsid -f python3 /usr/local/lib/fic/fic_browser.py "$@" >/dev/null 2>&1
+exit 0

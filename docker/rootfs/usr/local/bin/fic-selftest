@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+#
+# fic-selftest: check that FIC Studio works in this container.
+#
+#   fic-selftest            everything (about two minutes)
+#   fic-selftest --quick    libraries, Studio and extension imports only
+#
+# Starts a private virtual display (:99) when none is reachable, so it also
+# runs headless, e.g. in CI:  docker run --rm <image> fic-selftest
+# Uses station IDs 8 and 9, so it does not disturb a Studio on station 1.
+# Exit status: 0 when every check passes.
+
+set -uo pipefail
+
+# Run as the Studio's user, never as root (`docker exec` defaults to root).
+# (Once only: in root-ID mode fic itself is UID 0. gosu also sets HOME.)
+if [ "$(id -u)" = "0" ] && id fic >/dev/null 2>&1 && [ -z "${FIC_AS_ROOT:-}${FIC_REEXEC:-}" ]; then
+    FIC_REEXEC=1 exec gosu fic "$0" "$@"
+fi
+
+QUICK=0
+[ "${1:-}" = "--quick" ] && QUICK=1
+
+# shellcheck disable=SC1091
+source /etc/fic/env.sh
+cd "${FIC_ROOT}/fic_ws" || exit 1
+
+WORK="$(mktemp -d /tmp/fic-selftest.XXXXXX)"
+PASSED=0
+FAILED=0
+FAILED_NAMES=()
+PGIDS=()
+
+green() { printf '\033[32m%s\033[0m' "$*"; }
+red()   { printf '\033[31m%s\033[0m' "$*"; }
+
+pass() { PASSED=$((PASSED + 1)); printf '  %s  %s\n' "$(green PASS)" "$1"; }
+fail() {
+    FAILED=$((FAILED + 1)); FAILED_NAMES+=("$1")
+    printf '  %s  %s\n' "$(red FAIL)" "$1"
+    [ -n "${2:-}" ] && [ -f "$2" ] && tail -n 25 "$2" | sed 's/^/        | /'
+}
+
+# check NAME COMMAND...: run a command, pass on exit status 0.
+check() {
+    local name="$1"; shift
+    local log
+    log="${WORK}/$(echo "${name}" | tr -c 'A-Za-z0-9' '_').log"
+    if "$@" >"${log}" 2>&1; then pass "${name}"; else fail "${name}" "${log}"; fi
+}
+
+# spawn LOG COMMAND...: start a command in its own process group.
+spawn() {
+    local log="$1"; shift
+    setsid "$@" >"${log}" 2>&1 &
+    PGIDS+=("$!")
+}
+
+cleanup() {
+    local pgid
+    for pgid in "${PGIDS[@]}"; do kill -TERM -- "-${pgid}" 2>/dev/null || true; done
+    sleep 1
+    for pgid in "${PGIDS[@]}"; do kill -KILL -- "-${pgid}" 2>/dev/null || true; done
+    rm -rf "${WORK}"
+}
+trap cleanup EXIT
+
+# wait_topic TOPIC TYPE SECONDS: pass once one message arrives.
+wait_topic() {
+    timeout "$3" ros2 topic echo --once "$1" "$2" >/dev/null 2>&1
+}
+
+echo "FIC Studio self-test ($(uname -m), ROS 2 ${ROS_DISTRO})"
+
+# ───────────────────────────────────────────────────────────── display ───
+if ! xdpyinfo >/dev/null 2>&1; then
+    export DISPLAY=:99
+    spawn "${WORK}/xvnc.log" Xtigervnc :99 -geometry 1600x1000 -depth 24 \
+        -SecurityTypes None -localhost -rfbport 5999 -nolisten tcp
+    for _ in $(seq 1 100); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.1; done
+    export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe
+fi
+export QT_XCB_GL_INTEGRATION=none
+
+echo "Display and libraries"
+check "X display ${DISPLAY}" xdpyinfo
+check "OpenGL (glxinfo)" bash -c "glxinfo -B | grep -E 'OpenGL (renderer|version)'"
+check "Python libraries" python3 -c "
+import PyQt5.QtWidgets, PyQt5.QtWebEngineWidgets, numpy, scipy, matplotlib, yaml
+import mujoco, pinocchio, ikpy, rclpy, fic_api
+from communication.msg import ActuatorCmds, ContactEstimate
+assert numpy.__version__.startswith('1.'), numpy.__version__
+print('mujoco', mujoco.__version__, 'numpy', numpy.__version__, 'pinocchio', pinocchio.__version__)"
+check "MuJoCo simulator installed (mujoco_native)" bash -c \
+    "[ -x \"\$(ros2 pkg prefix mujoco_native)/lib/mujoco_native/simulation\" ]"
+check "Workspace writable by the fic group" bash -c \
+    "! find \"\${FIC_ROOT}\" -xdev -type d ! -name __pycache__ ! -perm -g=w -print | grep -q ."
+check "Folders open in the file manager" bash -c \
+    "[ \"\$(xdg-mime query filetype \"\${HOME}\")\" = inode/directory ] && [ \"\$(xdg-mime query default inode/directory)\" = pcmanfm.desktop ]"
+check "Documentation is served over HTTP" env QT_QPA_PLATFORM=offscreen python3 -c "
+import os, sys, urllib.request
+sys.path.insert(0, '/usr/local/lib/fic')
+import fic_browser
+url = fic_browser.to_url(os.path.join(os.environ['FIC_ROOT'], 'fic_docs', 'index.html')).toString()
+assert url.startswith('http://127.0.0.1:'), url
+page = url.rsplit('/', 1)[0] + '/pages/home.html'
+assert urllib.request.urlopen(page, timeout=5).status == 200, page
+print(url)"
+
+echo "FIC Studio"
+check "Studio modules" env QT_QPA_PLATFORM=offscreen python3 -c "
+import fic_studio.main_window_pro, fic_studio.main_window_dev, fic_studio.robot_import.importer"
+check "Every extension imports" env QT_QPA_PLATFORM=offscreen python3 -c "
+import importlib, json, os, sys
+root = os.path.join(os.environ['FIC_ROOT'], 'Extensions')
+sys.path.insert(0, root)            # what the Studio's extension loader does
+bad = []
+for name in sorted(os.listdir(root)):
+    manifest = os.path.join(root, name, 'manifest.json')
+    if not os.path.isfile(manifest):
+        continue
+    entry = json.load(open(manifest)).get('entry_module') or name + '.extension'
+    try:
+        importlib.import_module(entry)
+        print('ok', name)
+    except Exception as exc:
+        bad.append(name); print('FAILED', name, type(exc).__name__, exc)
+sys.exit(1 if bad else 0)"
+
+if [ "${QUICK}" = 1 ]; then
+    echo; echo "${PASSED} passed, ${FAILED} failed"; [ "${FAILED}" = 0 ]; exit
+fi
+
+# ─────────────────────────────────────────────────────────── simulation ───
+echo "Simulation"
+
+# The CPU simulator (the Studio's default) with the FIC controller.
+spawn "${WORK}/sim_arm.log" ros2 launch mujoco_native simulation_launch.py \
+    robot_name:=KinovaGen3_7DOF station_id:=9 headless:=true
+if wait_topic /robot9_simulation/joint_states sensor_msgs/msg/JointState 40; then
+    pass "MuJoCo simulator (Kinova Gen3)"
+else
+    fail "MuJoCo simulator (Kinova Gen3)" "${WORK}/sim_arm.log"
+fi
+spawn "${WORK}/fic.log" ros2 launch fic_simulation fic_launch.py \
+    robot_name:=KinovaGen3_7DOF num_joints:=7 station_id:=9 \
+    source_prefix:=robot9_simulation
+if wait_topic /robot9_simulation/actuators_cmds communication/msg/ActuatorCmds 40; then
+    pass "FIC controller drives the simulator"
+else
+    fail "FIC controller drives the simulator" "${WORK}/fic.log"
+fi
+
+# A floating-base robot on the same simulator, with the gait controller, in
+# trees that carry the Spot model. Otherwise a fixed-base arm, so the window
+# check below still has a simulator window to find.
+if [ -d "${FIC_ROOT}/fic_ws/src/menagerie/model/Spot" ]; then
+    spawn "${WORK}/sim_native.log" ros2 launch mujoco_native simulation_launch.py \
+        robot_name:=Spot station_id:=8
+    if wait_topic /robot8_simulation/joint_states sensor_msgs/msg/JointState 60; then
+        pass "MuJoCo native simulator (Spot)"
+    else
+        fail "MuJoCo native simulator (Spot)" "${WORK}/sim_native.log"
+    fi
+    spawn "${WORK}/loco.log" ros2 launch fic_locomotion locomotion_launch.py \
+        robot_name:=Spot station_id:=8
+    loco_pgid="${PGIDS[-1]}"
+    sleep 8
+    # Alive, registered, and not crashed. (It may log one start-up error while
+    # the simulator's odometry is not flowing yet; that is not a failure.)
+    loco_up=0
+    for _ in 1 2 3; do
+        nodes="$(timeout 30 ros2 node list 2>/dev/null || true)"
+        if grep -q locomotion <<< "${nodes}"; then loco_up=1; break; fi
+        sleep 3
+    done
+    if kill -0 -- "-${loco_pgid}" 2>/dev/null && [ "${loco_up}" = 1 ] \
+            && ! grep -qiE 'Traceback|process has died' "${WORK}/loco.log"; then
+        pass "Locomotion controller (Spot)"
+    else
+        fail "Locomotion controller (Spot)" "${WORK}/loco.log"
+    fi
+else
+    spawn "${WORK}/sim_native.log" ros2 launch mujoco_native simulation_launch.py \
+        robot_name:=Franka_FR3 station_id:=8
+    if wait_topic /robot8_simulation/joint_states sensor_msgs/msg/JointState 60; then
+        pass "MuJoCo native simulator (Franka FR3)"
+    else
+        fail "MuJoCo native simulator (Franka FR3)" "${WORK}/sim_native.log"
+    fi
+    echo "  skip  Spot and the locomotion controller (no Spot model in this tree)"
+fi
+
+check "Simulator windows open" bash -c \
+    "xdotool search --onlyvisible --name 'MuJoCo' >/dev/null || xdotool search --onlyvisible --name 'simulate' >/dev/null"
+
+# ─────────────────────────────────────────────────────────────── the GUI ───
+echo "Windows"
+spawn "${WORK}/studio.log" ros2 run fic_studio fic_studio_pro
+if timeout 90 bash -c "until xdotool search --onlyvisible --name '^FIC Control Studio' >/dev/null 2>&1; do sleep 1; done"; then
+    if grep -q '\[extensions\] failed' "${WORK}/studio.log"; then
+        fail "Studio loads all enabled extensions" "${WORK}/studio.log"
+    else
+        pass "FIC Control Studio window"
+    fi
+else
+    fail "FIC Control Studio window" "${WORK}/studio.log"
+fi
+
+spawn "${WORK}/browser.log" python3 /usr/local/lib/fic/fic_browser.py \
+    "${FIC_ROOT}/fic_docs/index.html"
+if timeout 60 bash -c "until xdotool search --onlyvisible --name 'Documentation — FIC Browser' >/dev/null 2>&1; do sleep 1; done" \
+        && ! grep -q 'Fetch API cannot load' "${WORK}/browser.log"; then
+    pass "Documentation browser window"
+else
+    fail "Documentation browser window" "${WORK}/browser.log"
+fi
+
+echo
+if [ "${FAILED}" = 0 ]; then
+    echo "$(green "All ${PASSED} checks passed.")"
+else
+    echo "$(red "${FAILED} of $((PASSED + FAILED)) checks failed:") ${FAILED_NAMES[*]}"
+fi
+[ "${FAILED}" = 0 ]

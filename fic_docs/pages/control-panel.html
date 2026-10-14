@@ -1,0 +1,110 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Control Bar</div>
+<h1>Control Bar</h1>
+<p class="subtitle">The robot-driving surface, docked to the bottom of every page.</p>
+
+<h2>Overview</h2>
+<p>As of <strong>v4.2.0</strong> Robot Control is no longer a page. Driving the robot happens on a bar docked along the bottom of the window, present on the <a href="#dashboard" onclick="showPage('dashboard')">Dashboard</a>, Tuning, Settings and every extension page alike. It follows the KINOVA Kortex Web App's robot control panel: a persistent strip of buttons that slide a panel up from beneath, where clicking the same button again clears the panel.</p>
+<p>The eight <a href="#control-modes" onclick="showPage('control-modes')">control modes</a> collapse into two menus. Multi-station work moved to the <a href="#multi-robot" onclick="showPage('multi-robot')">Multi-Robot</a> page.</p>
+
+<pre><code>│ ▲ Joint │ ▲ Cart │ ▲ Gripper │ ⌂ Home │ ◈ Contact │ ◉ Snapshot │ ▲ Quick Actions │ ──── │ ● Joint Impedance · SIM · 998 Hz │ -- │</code></pre>
+<p>The viewer launch toggle that used to sit here as <code>◈ Contact Twin</code> moved to the top
+toolbar (renamed <strong>&#9654; VIEW</strong>, beside <strong>&#9654; PLT</strong>) and is now
+hardware-only &mdash; see <a href="#processes" onclick="showPage('processes')">Process
+Management</a> and <a href="#contact-localization" onclick="showPage('contact-localization')">Contact
+Localization</a>. The Contact readout to its right is likewise hardware-only now (below).</p>
+
+<h2>Buttons</h2>
+<table>
+  <tr><th>Button</th><th>Behaviour</th></tr>
+  <tr><td><strong>▲ Joint</strong></td><td>Opens the joint menu. Owns modes 1&ndash;4, the Admittance-planner option, and a config selector.</td></tr>
+  <tr><td><strong>▲ Cart</strong></td><td>Opens the Cartesian menu. Owns modes 5&ndash;8, the Postural / Elbow / <a href="#hapfic" onclick="showPage('hapfic')">Hapfic</a> options, and a config selector. Disabled entirely for legged robots, which configure <code>kinematics_solver: none</code> and cannot run Cartesian modes.</td></tr>
+  <tr><td><strong>▲ Gripper</strong></td><td>Gripper width. Hidden for robots whose config sets <code>has_gripper: false</code>.</td></tr>
+  <tr><td><strong>⌂ Home</strong></td><td>Fires immediately, no panel. See <em>Home</em> below.</td></tr>
+  <tr><td><strong>◈ Contact</strong></td><td><strong>Calibrate</strong> (calls <code>{rid}/contact/calibrate</code>) and a <strong>Ground truth</strong> combo (none plus the seven link names, set on the contact node's <code>link_truth</code> parameter) for a recorded run. The viewer launch toggle itself lives in the top toolbar now, not this panel &mdash; see the note above.</td></tr>
+  <tr><td><strong>◉ Snapshot</strong></td><td>Captures the live joint, Cartesian or gripper pose as a waypoint on the selected sequence.</td></tr>
+  <tr><td><strong>▲ Quick Actions</strong></td><td>Play, stop or loop a saved <a href="#sequences" onclick="showPage('sequences')">sequence</a>.</td></tr>
+  <tr><td><strong>Status readout</strong></td><td>Right-aligned, always visible. See <em>Live indicator</em> below.</td></tr>
+  <tr><td><strong>Contact readout</strong></td><td>Right-aligned, beside the status readout, visible only while the control target is Hardware. See <em>Live indicator</em> below.</td></tr>
+</table>
+<p>Target (Simulation / Hardware / VR), the robot selector and <a href="#estop" onclick="showPage('estop')">E-STOP</a> stay in the top toolbar and are not duplicated here.</p>
+
+<h2>The mode menus</h2>
+<p>Mode, Options and Config sit on one line, with the control surface beneath:</p>
+<pre><code>Mode [Impedance][Planner][Admittance][Adm. Haptic] │ Options [☐ Admittance planner] │ Config [default ▾]
+───────────────────────────────────────────────────────────────────────────────────────────────────
+J1  0.0      °  ▇▇▇▇▏      J2  15.0     °  ▇▇▇▇▏
+J3 −180.0    °  ▇▇▏        J4 −129.8    °  ▇▇▇▏</code></pre>
+
+<h3>Each menu owns its own modifiers</h3>
+<p>The joint menu permanently carries the Admittance planner; the Cartesian menu permanently carries Postural, Elbow and Hapfic. Previously one shared row was shown or hidden per mode. Because a menu now owns only the modifiers that apply to its kind, <strong>a modifier can no longer be visible for a mode it does not apply to</strong> &mdash; that class of bug is structurally impossible rather than prevented by a visibility pass.</p>
+
+<h3>Pressing a menu commits to its base mode</h3>
+<p>Opening <strong>Cart</strong> while a joint mode is running selects Cartesian Impedance, so the controls beneath are live immediately rather than commanding the other space. A menu already holding the active mode is left alone &mdash; re-opening <strong>Joint</strong> during Joint Admittance does not drop you back to Impedance.</p>
+
+<h3>One shared control surface</h3>
+<p>The joint rows and the Cartesian pose fields are a <em>single</em> surface shown under both menus, not a copy per menu. <code>_rc_joint_fields</code> and <code>_rc_pose_fields</code> are singular state that <code>_rc_publish_joints</code> reads; two surfaces would mean two sets of fields and ambiguous publishing.</p>
+
+<h3>Cartesian layout</h3>
+<p>Position runs down the left column and orientation down the right, so the two halves of a pose read as two things rather than one seven-item list:</p>
+<table>
+  <tr><th>Left</th><th>Right</th></tr>
+  <tr><td>X, Y, Z (metres)</td><td>axis X, axis Y, axis Z, angle (degrees)</td></tr>
+</table>
+<p>Orientation is entered as axis-angle. Configuration stores it as a quaternion, so values are converted and pushed into the canonical hemisphere (angle &le; 180&deg;) on the way in.</p>
+
+<h2>Home</h2>
+<p>Home is <strong>mode-aware</strong>, and never changes which mode you are in:</p>
+<table>
+  <tr><th>Active mode</th><th>What Home commands</th></tr>
+  <tr><td>Any joint mode (1&ndash;4)</td><td><code>q_home_deg</code> from the robot config, written into the joint targets and published.</td></tr>
+  <tr><td>Any Cartesian mode (5&ndash;8)</td><td><code>default_ee_target</code> from the robot config &mdash; position and orientation &mdash; published as a pose. <strong>Stays in Cartesian.</strong></td></tr>
+</table>
+<div class="admonition tip"><div class="adm-title">Why it matters</div>
+<p>Before v4.2.0 a Cartesian Home fell through to publishing <em>joint</em> angles at a robot running Cartesian control &mdash; commanding it in a different space from the one it was running in. If a robot's config has no <code>default_ee_target</code>, Cartesian Home logs a warning and does nothing rather than commanding a fabricated pose.</p></div>
+<p>If a sequence is playing, Home asks before firing rather than contending with the playback loop for the same publisher.</p>
+
+<h2>Quick Actions and Snapshot</h2>
+<p>Both are backed by the <a href="#sequences" onclick="showPage('sequences')">sequences</a> extension through a small public API &mdash; <code>list_sequences()</code>, <code>waypoint_count(name)</code>, <code>play(name, loop)</code>, <code>stop()</code>, <code>capture(kind, into)</code>. The bar does not reimplement playback: that is a state machine (play index, hold timers, arrival checks) and there must be exactly one of it.</p>
+<p>With the extension disabled or missing, both buttons disable themselves with a tooltip explaining why, rather than half-working off <code>~/robot_sequences.yaml</code> as a second source of truth. E-STOP already fans out to every extension's <code>on_emergency_stop</code>, so the panic button stops playback with no extra wiring.</p>
+
+<h2>Live indicator</h2>
+<p>The right-hand readout reports the active mode, the target, and the health of the joint-state stream:</p>
+<table>
+  <tr><th>Readout</th><th>Meaning</th></tr>
+  <tr><td><code>&#9679; Joint Impedance &middot; SIM &middot; 998 Hz</code> (green)</td><td>Telemetry arriving within the last 500&nbsp;ms.</td></tr>
+  <tr><td><code>&#9679; &hellip; &middot; stale 780 ms</code> (amber)</td><td>Last message older than 500&nbsp;ms.</td></tr>
+  <tr><td><code>&#9679; &hellip; &middot; offline</code> (grey)</td><td>No joint telemetry has arrived at all.</td></tr>
+  <tr><td><code>&#9654; &hellip;</code> (teal)</td><td>A sequence is playing.</td></tr>
+</table>
+<p>It ticks at 5&nbsp;Hz on its own timer. Both this and the Dashboard header read one helper, <code>JointStateMixin.telemetry_health()</code>, so the two cannot report different things about the same stream.</p>
+
+<p>A second readout beside it shows the active robot's <code>{rid}_contact_estimate</code>, on the same 5&nbsp;Hz tick, visible only while the control target is Hardware (the same gate the toolbar's <strong>&#9654; VIEW</strong> button follows &mdash; see <a href="#processes" onclick="showPage('processes')">Process Management</a>). It has four states &mdash; <code>--</code> (no message has arrived), <code>UNCAL</code> (gated off, no statement possible), <code>no contact</code> (a genuine zero reading) and a link name with confidence, e.g. <code>ForeArm 87%</code> &mdash; which must never collapse into one another. Full detail, including the v2 fit's force/point marker in the twin, on <a href="#contact-localization" onclick="showPage('contact-localization')">Contact Localization</a>.</p>
+
+<h2>Target mapping</h2>
+<table>
+  <tr><th>Target</th><th>Bar behaviour</th></tr>
+  <tr><td><strong>Simulation</strong></td><td>Menus live, commanding locally.</td></tr>
+  <tr><td><strong>Hardware</strong></td><td>Menus live, commanding locally.</td></tr>
+  <tr><td><strong>VR</strong></td><td>Joint, Cart, Gripper, Home and the control surface all disable with a tooltip. The headset is driving; local commanding would fight it.</td></tr>
+</table>
+
+<h2>Panel mechanics</h2>
+<ul>
+  <li>At most one panel open at a time; clicking the active button closes it; <code>Esc</code> closes.</li>
+  <li>The panel is sized by its own layout &mdash; <strong>no scroll area and no pinned height</strong>, so nothing is ever clipped or hidden behind a scrollbar.</li>
+  <li>Opening a panel grows the bar and shortens the page rather than covering it. This is a deliberate divergence from Kinova, whose panel overlays the page: on a dense telemetry Dashboard an overlay hides the readings you are commanding against.</li>
+  <li><code>Ctrl+Shift+B</code> hides or shows the bar (<code>Ctrl+B</code> is Compile).</li>
+</ul>
+
+<h2>Migration from the Robot Control page</h2>
+<table>
+  <tr><th>Was</th><th>Now</th></tr>
+  <tr><td>Eight mode tabs</td><td>Two menus of four</td></tr>
+  <tr><td>Shared modifier row, shown/hidden per mode</td><td>Each menu owns its own</td></tr>
+  <tr><td>Config dropdown on the page</td><td>One per menu, kept in sync</td></tr>
+  <tr><td>Gripper group on the page</td><td><strong>▲ Gripper</strong> panel</td></tr>
+  <tr><td>Home / Reset action bar</td><td><strong>⌂ Home</strong>; Reset dropped from the bar</td></tr>
+  <tr><td>&#65291; Add Robot cards</td><td><a href="#multi-robot" onclick="showPage('multi-robot')">Multi-Robot</a> page</td></tr>
+  <tr><td>Target toggle on the page</td><td>Top toolbar (unchanged)</td></tr>
+</table>
+<p><code>show_robot_control_panel()</code> survives as a shim that opens the Joint menu, so Settings, the first-launch wizard and the <a href="#dev-console" onclick="showPage('dev-console')">Dev Console</a> keep working. The Dev Console's own layout is unchanged &mdash; this redesign is <code>fic_studio_pro</code> only.</p>

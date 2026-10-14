@@ -1,0 +1,105 @@
+<!--
+  Robot-only MuJoCo model template for FIC Interface.
+
+  This file defines ONLY the robot: defaults, meshes, bodies, joints,
+  actuators, and sensors. Scene elements (floor, skybox, lighting) belong
+  in scene.xml which <include>s this file.
+
+  IMPORTANT — checklist before your robot will work:
+    1. Every actuated joint needs a <motor> in <actuator> with a name
+       matching the pattern "torq_jN" (or any name — FIC maps by order).
+    2. Joint names here MUST match the joint_names list in robots_config.yaml.
+    3. Add a force/torque sensor site on the end-effector link.
+    4. Collision geoms need contype="1" conaffinity="1" to interact with
+       the floor and other objects. Use contype="0" for visual-only geoms.
+    5. Add <contact><exclude> pairs for adjacent links to prevent jitter.
+    6. Use integrator="implicitfast" for stability (Euler can oscillate).
+    7. Mesh files go in the assets/ subdirectory; set meshdir="assets"
+       in <compiler> to keep paths short.
+-->
+<mujoco model="MyRobot">
+
+  <compiler angle="radian" meshdir="assets"/>
+
+  <option timestep="0.001" integrator="implicitfast">
+    <flag contact="enable" energy="enable"/>
+  </option>
+
+  <default>
+    <default class="robot">
+      <joint armature="0.01" damping="30.0"/>
+      <default class="visual">
+        <geom type="mesh" group="2" contype="0" conaffinity="0"/>
+      </default>
+      <default class="collision">
+        <geom type="mesh" group="3" contype="1" conaffinity="1"/>
+      </default>
+    </default>
+  </default>
+
+  <asset>
+    <!-- Visual meshes — .obj for rendering detail -->
+    <!-- <mesh file="link0.obj"/> -->
+    <!-- <mesh file="link1.obj"/> -->
+
+    <!-- Collision meshes — .stl for physics (lower poly is fine) -->
+    <!-- <mesh name="link0_coll" file="link0.stl"/> -->
+    <!-- <mesh name="link1_coll" file="link1.stl"/> -->
+  </asset>
+
+  <sensor>
+    <force name="force_sensor" site="force_torque_site"/>
+    <torque name="torque_sensor" site="force_torque_site"/>
+  </sensor>
+
+  <worldbody>
+    <body name="base_link" pos="0 0 0" childclass="robot">
+      <!-- Link 0 (fixed base) -->
+      <!-- <geom mesh="link0" class="visual"/> -->
+      <!-- <geom mesh="link0_coll" class="collision"/> -->
+
+      <body name="link1" pos="0 0 0.15">
+        <inertial pos="0 0 0.05" mass="2.0" diaginertia="0.01 0.01 0.005"/>
+        <joint name="joint1" axis="0 0 1"/>
+        <!-- <geom mesh="link1" class="visual"/> -->
+        <!-- <geom mesh="link1_coll" class="collision"/> -->
+
+        <body name="link2" pos="0 0 0.2">
+          <inertial pos="0 0 0.05" mass="1.5" diaginertia="0.008 0.008 0.004"/>
+          <joint name="joint2" axis="0 0 1"/>
+
+          <!-- ... continue body chain for each link ... -->
+
+          <body name="ee_link" pos="0 0 0.1">
+            <inertial pos="0 0 0" mass="0.5" diaginertia="0.001 0.001 0.001"/>
+            <site name="force_torque_site" pos="0 0 0" size="0.01" rgba="1 0 0 1"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <!-- Exclude adjacent link pairs to prevent contact jitter at joints -->
+  <contact>
+    <exclude body1="base_link" body2="link1"/>
+    <exclude body1="link1" body2="link2"/>
+    <!-- ... one exclude per adjacent pair ... -->
+  </contact>
+
+  <actuator>
+    <!-- One motor per actuated joint. Order must match joint_names in robots_config.yaml.
+         forcerange = max torque the real motor can deliver.
+         ctrlrange  = control input bounds (FIC sends torque commands). -->
+    <motor name="torq_j1" joint="joint1" ctrlrange="-87 87"
+           forcelimited="true" forcerange="-87 87" ctrllimited="true"/>
+    <motor name="torq_j2" joint="joint2" ctrlrange="-87 87"
+           forcelimited="true" forcerange="-87 87" ctrllimited="true"/>
+    <!-- ... one motor per joint ... -->
+  </actuator>
+
+  <keyframe>
+    <!-- Home pose (radians). Ctrl values should match qpos for torque-controlled robots. -->
+    <key name="home" qpos="0 0" ctrl="0 0"/>
+  </keyframe>
+
+</mujoco>

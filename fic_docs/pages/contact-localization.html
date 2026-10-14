@@ -1,0 +1,797 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Contact Localization</div>
+<h1>Contact Localization</h1>
+<p class="subtitle">Work out <strong>which link</strong> of the arm a person just pushed, using nothing but the joint torque sensors, and light that link up on a MuJoCo twin mirroring the real robot. No skin, no camera, no force/torque sensor &mdash; only proprioception.</p>
+
+<div class="admonition warning">
+  <div class="adm-title">Status: in development</div>
+  <p>The estimator and its tests are being written now. <strong>Nothing on this page has been run against a real Kinova Gen3 yet.</strong> Every number below is either measured from the shipped URDF and MJCF models, or read directly out of the source. Hardware figures will replace the model figures once the arm has been touched in anger. Read this page as a design record, not as a validated result.</p>
+</div>
+
+<h2>The idea</h2>
+<p>A contact on link <em>k</em> can only load the joints <em>proximal</em> to it. The contact Jacobian has zero columns for every joint further down the chain, so the external torque is structurally zero on joints <em>k</em>+1 &hellip; 7. That makes the contacted link the <strong>most distal joint carrying significant torque</strong> &mdash; a support-pattern readout, not an optimisation.</p>
+
+<p>This triangular structure is not an approximation. It was verified on the shipped Kinova model at a bent pose:</p>
+
+<table>
+  <thead>
+    <tr><th>Link</th><th>Joints with non-zero Jacobian columns</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>Shoulder_Link</code></td><td>1</td></tr>
+    <tr><td><code>HalfArm1_Link</code></td><td>1, 2</td></tr>
+    <tr><td><code>HalfArm2_Link</code></td><td>1, 2, 3</td></tr>
+    <tr><td><code>ForeArm_Link</code></td><td>1, 2, 3, 4</td></tr>
+    <tr><td><code>SphericalWrist1_Link</code></td><td>1 &hellip; 5</td></tr>
+    <tr><td><code>SphericalWrist2_Link</code></td><td>1 &hellip; 6</td></tr>
+    <tr><td><code>Bracelet_Link</code></td><td>1 &hellip; 7</td></tr>
+  </tbody>
+</table>
+
+<h2>Why pushes only</h2>
+<p>Restricting to pushes buys a real constraint. A push is unilateral &mdash; the force must point <em>into</em> the surface, so <code>F&middot;n &le; 0</code> for the outward normal <code>n</code>. That inequality rejects candidate contacts which fit the torque numbers but would require <em>pulling</em> on the arm, and it turns the per-hypothesis fit into a constrained least squares with a closed form. No QP solver is needed.</p>
+
+<h2>v2: a force and a point, not just a link</h2>
+<p>v1 (above) only ever names <strong>which link</strong> was pushed. v2 goes further: for a
+<code>k</code>-joint contact it solves <code>tau_ext = J_p(q)<sup>T</sup>F</code> for the contact
+force <code>F</code> at a candidate surface point <code>p</code>, subject to the same push
+constraint, and reports the best-fitting point/force pair as an estimate of <strong>where</strong>
+and <strong>which way</strong> the push is coming from &mdash; not just which link lit up.</p>
+
+<h3><code>solve_push_force</code>: the per-point fit</h3>
+<p>For one candidate point, <code>hypotheses.solve_push_force(jac_point, tau_ext, normal)</code>
+solves <code>min ||tau_ext &minus; J<sub>p</sub><sup>T</sup>F||</code> subject to
+<code>F&middot;n &le; 0</code>. With a single inequality the optimum is either the unconstrained
+least-squares solution &mdash; kept as-is when it already satisfies the constraint &mdash; or lies
+exactly on the boundary <code>F&middot;n = 0</code>. On that boundary, writing <code>F = B y</code>
+for an orthonormal basis <code>B</code> of the tangent plane reduces the constrained problem back
+to an ordinary unconstrained least squares in <code>y</code>. Both branches are closed-form; no
+iterative solver runs per candidate.</p>
+
+<h3><code>fit_contact</code>: sweeping every link's surface</h3>
+<p><code>hypotheses.fit_contact(tau_ext, link_jacobians, candidates, f_max=200.0)</code> runs
+<code>solve_push_force</code> at every decimated candidate point returned by
+<code>geometry.load_candidates</code>, across every link, and keeps the single
+lowest-residual hypothesis whose fitted force magnitude is under <code>f_max</code> newtons. It
+returns <code>None</code> outright when <code>tau_ext</code> itself is indistinguishable from
+zero &mdash; a quiet residual must never be fitted to a phantom contact. Each candidate's own
+body-origin Jacobian is shifted to that point first
+(<code>J<sub>p</sub> = J<sub>lin</sub> &minus; skew(r)&middot;J<sub>ang</sub></code>, from
+<code>v<sub>p</sub> = v<sub>o</sub> + &omega;&times;r</code>).</p>
+
+<div class="admonition warning">
+  <div class="adm-title">The point is an estimate on a line, not a unique location &mdash; see Limits, item 5</div>
+  <p>With <em>n</em> torque sensors, a contact's location is only determined up to the force's
+<strong>line of action</strong>: every point along that line produces an identical
+<code>tau_ext</code>. <code>fit_contact</code> only ever searches the decimated candidate points
+it was given, so its answer is the best-fitting candidate on (or near) that line &mdash; not proof
+that the contact happened at that exact millimetre. Read the marker the twin draws (below) the
+same way: a plausible point on the line of action, not a certainty. See Limits &mdash; item 5,
+below &mdash; for the full statement and why no better estimator removes this.</p>
+</div>
+
+<h3>Wiring it in: the cheap gate first</h3>
+<p><code>fit_contact</code> sweeps every link &times; roughly 200 candidates each by default; doing
+that on every quiet 100&nbsp;Hz tick would waste the budget for nothing. <code>ContactNode</code>
+therefore always runs the cheap v1 estimate (<code>support_link</code>, plus the admittance
+cross-check in modes 3/4) first, and only calls <code>fit_contact</code> once that has already
+reported a contact (<code>link &gt; 0</code>). A new <code>estimator</code> parameter selects the
+behaviour: <code>'v2'</code> (the default) runs this gated fit and populates
+<code>ContactEstimate.force</code>, <code>.point</code> and <code>.residual_norm</code>;
+<code>'v1'</code> keeps the pre-existing link-only behaviour and leaves those three fields at
+their empty default. When the fit succeeds, <code>fit_contact</code>'s own link can override the
+cheap gate's link number &mdash; that is the whole point of the more expensive search: a
+push-constrained sweep over real geometry can name a link the coarse support-pattern heuristic
+alone got wrong.</p>
+
+<div class="admonition note">
+  <div class="adm-title">Frame: force and point are both converted into the robot BASE frame</div>
+  <p><code>fit_contact</code>'s <code>force</code> comes out already expressed in the same
+<code>LOCAL_WORLD_ALIGNED</code> axes <code>ArmModel.link_jacobians</code> uses; since this arm has
+a fixed base, those axes already <em>are</em> the base frame, so the force needs no further
+rotation. Its <code>point</code>, however, is in the contacted link's own BODY frame (as stored by
+<code>geometry.load_candidates</code>) and is carried explicitly into the base frame by
+<code>ContactNode._fit_v2</code>, using that link's current pose from the new
+<code>ArmModel.link_poses(q)</code> method: <code>point_base = R&middot;point_body +
+position</code>. A frame mistake here is silent &mdash; nothing raises, the marker just appears in
+the wrong place &mdash; which is exactly why the conversion is explicit and documented rather than
+left implicit.</p>
+</div>
+
+<p>Sweeping every candidate is also not free at <code>geometry.load_candidates</code>'s own
+default of 200 points per link (about 1,400 candidates total on the Kinova): measured on this
+development machine, <code>fit_contact</code> took roughly 32&nbsp;ms per call at that density
+&mdash; over three times the 10&nbsp;ms/tick budget at 100&nbsp;Hz, and <code>fit_contact</code>
+runs on <em>every</em> tick a contact is reported, i.e. for as long as a human keeps pushing, not
+just once. <code>ContactNode</code> therefore declares its own <code>n_per_link</code> parameter,
+defaulted to <strong>20</strong> (measured at roughly 3&nbsp;ms/call, leaving headroom for the
+rest of the tick), and logs the reduction from <code>load_candidates</code>'s 200-point default at
+startup &mdash; a silent cap would read as full 200-point coverage when it is not.</p>
+
+<h3>Temporal hysteresis: the <code>LinkDebouncer</code></h3>
+<p>A hand resting on a link persists for hundreds of samples at 100&nbsp;Hz; threshold noise does
+not. <code>hypotheses.LinkDebouncer(enter_frames=5, exit_frames=15)</code> requires
+<code>enter_frames</code> consecutive ticks agreeing on a new link before it is <strong>reported</strong>,
+and &mdash; once reported &mdash; <code>exit_frames</code> consecutive ticks reading &ldquo;no
+contact&rdquo; before that report is cleared. Entry is deliberately faster than exit: getting the
+highlight on quickly matters more than getting it off quickly, and a brief dropout mid-push (one
+noisy tick reading below threshold) must not make the highlight flicker off and back on. <code>ContactNode</code>
+holds one instance (<code>self._debounce</code>) and feeds it the tick's final link estimate
+(v1's, or v2's when the <code>estimator</code> parameter refines it) right before that value is
+published as <code>ContactEstimate.link_index</code> &mdash; so <code>fit_contact</code> itself
+still runs on the raw, undebounced estimate every tick; only what gets <em>published and
+highlighted</em> waits on hysteresis.</p>
+<p>The pre-debounce value is never discarded: it is recorded as <code>link_est_raw</code>
+alongside the debounced <code>link_est</code> (see <code>data.csv</code> columns, below), because
+the whole point of measuring a false-positive rate is to see what the estimator actually produced
+before any filter smoothed it over. A debouncer that only ever gets asked about its own filtered
+output cannot tell you how often it is masking a wrong instantaneous answer.</p>
+
+<h2>The signal chain</h2>
+<pre><code>fic_hardware  (C++, 1 kHz)
+    reads torque from /dev/shm, applies torque_sign, Butterworth-filters it
+    &rarr; publishes {rid}_joint_torques          &lt;- NEW
+    &rarr; publishes {rid}_admittance_offset      &lt;- NEW, modes 3/4 only
+
+fic_contact/contact_node.py  (Python, node "contact_localization_{sid}", 100 Hz)
+    subscribes {rid}_joint_torques, {rid}_q_current, {rid}_control_mode,
+               {rid}_joint_velocities, {rid}_admittance_offset
+    tau_ext = tau_meas - g(q) - b            at rest (modes 1, 5); g(q) from Pinocchio
+            = tau_meas - (C(q,dq).dq+g(q)) - b   moving (modes 2, 6); b measured per pose
+    k = most distal joint above its own threshold                      (v1, always runs)
+    if estimator == 'v2' and k > 0: fit_contact(tau_ext, jacs, cands)  &lt;- NEW, gated on v1
+        -&gt; may override k; also yields force/point (base frame)/residual_norm
+    &rarr; publishes {rid}_contact_estimate
+    service {rid}/contact/calibrate (std_srvs/Trigger) starts a bias capture
+    service {rid}/contact/record (std_srvs/Trigger) toggles run recording
+        &rarr; experiments/contact/&lt;date&gt;_&lt;time&gt;_&lt;robot&gt;/{data.csv, meta.json}
+    parameter link_truth (set via the standard set_parameters service)  &lt;- NEW
+        &rarr; ContactNode.set_link_truth(), read back into data.csv's link_truth column
+
+fic_contact/twin.py  (mjpython)
+    d.qpos &larr; {rid}_q_current, then mj_forward (never mj_step)
+    model.geom_rgba[geom_of[k]] = hot
+    user_scn: sphere @ point + arrow along -force  &lt;- NEW, v2 only, point/force non-empty
+</code></pre>
+<p>The node runs continuously alongside <code>fic_hardware</code> &mdash; it does not wait for
+the twin viewer to be open, so contact events are estimated and recordable whenever the
+hardware stack is up.</p>
+
+<h2>The ContactEstimate message</h2>
+<p>The contact estimator publishes <code>{rid}_contact_estimate</code> (100 Hz) with type
+<code>communication/msg/ContactEstimate</code>. The message carries the link location,
+confidence, and detailed physics of each estimate:</p>
+
+<table>
+  <thead>
+    <tr><th>Field</th><th>Type</th><th>Meaning</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>header</code></td><td>std_msgs/Header</td><td>Timestamp and frame id.</td></tr>
+    <tr><td><code>link_index</code></td><td>int32</td><td>Contacted link id: 1..n for links 1–n
+(proximal to distal), 0 = no contact detected, &#x2d;1 = not
+calibrated.</td></tr>
+    <tr><td><code>link_name</code></td><td>string</td><td>MuJoCo body name for the link, or
+<code>""</code> when <code>link_index &le; 0</code>.</td></tr>
+    <tr><td><code>confidence</code></td><td>float64</td><td>0..1. Margin of the deciding joint
+above threshold plus quietness of joints distal to it, then derated for joint speed and for
+calibration pose drift when the arm is moving &mdash; see &ldquo;Control mode&rdquo;,
+below.</td></tr>
+    <tr><td><code>tau_ext</code></td><td>float64[]</td><td>External joint torque (Nm) in robot
+joint order.</td></tr>
+    <tr><td><code>force</code></td><td>float64[]</td><td>Estimated contact force (N), v2 only
+(empty in v1).</td></tr>
+    <tr><td><code>point</code></td><td>float64[]</td><td>Estimated contact point (m) in
+robot base frame, v2 only (empty in v1).</td></tr>
+    <tr><td><code>residual_norm</code></td><td>float64</td><td>Fit residual (Nm), v2 only.</td></tr>
+    <tr><td><code>calibrated</code></td><td>bool</td><td>Whether calibration is fresh
+(stale = pose has moved).</td></tr>
+  </tbody>
+</table>
+
+<div class="admonition note">
+  <div class="adm-title">The link_index regimes</div>
+  <p><code>link_index</code> has three distinct meanings: <strong>1..n</strong> is the
+1-based link number (proximal to distal); <strong>0</strong> means a real
+measurement of no contact (calibrated, mode 1, threshold not met);
+<strong>&minus;1</strong> means the estimator is making no claim (calibration stale,
+mode ≠ 1, or a residual contained NaN/inf). This distinction is
+critical: corrupt or unavailable data must never read as "nothing is
+touching the arm". Unpopulated messages default to <strong>&minus;1</strong>, so they
+correctly claim no statement rather than a spurious measurement.</p>
+</div>
+
+<div class="admonition note">
+  <div class="adm-title">Why a new topic was needed</div>
+  <p>Before this work, the Studio could not see the arm's measured joint torque at all. <code>fic_hardware</code> read it at 1 kHz and threw it away. It reached ROS only as block 7 of <code>{rid}_trajectory_data</code>, and only in joint-admittance modes 3 and 4 &mdash; identically zero in every other mode. Worse, <code>host.joint_effort_for()</code> is documented as &ldquo;measured joint efforts&rdquo; but actually returns block 4, the FIC controller's <strong>commanded</strong> control effort. Use <code>joint_torque_for()</code> for the real measurement.</p>
+</div>
+
+<h2>Calibration</h2>
+<p>The model torque is gravity only, <code>g(q)</code>, when the arm is at rest (modes 1, 5)
+&mdash; valid because a push against a stationary arm is quasi-static, so there is no Coriolis
+term. While the arm moves under a planner (modes 2, 6) the model term switches instead to the
+velocity-aware <code>C(q,dq)&middot;dq + g(q)</code> (Pinocchio's <code>nonLinearEffects</code>,
+one call folding the Coriolis/centrifugal term together with gravity), so that motion is not
+mistaken for contact. Neither form ever includes the inertial term <code>M(q)&middot;ddq</code>:
+no measured joint acceleration exists anywhere in this project to feed it. What is left over, in
+either case, is absorbed by a <strong>per-pose bias</strong>: hold the pose, average
+<code>tau_meas</code> minus the model term for about a second with nobody touching the arm, and
+store the mean plus the per-joint standard deviation. Detection thresholds are then
+<code>6&sigma;</code>, floored at 1&nbsp;mN&middot;m so a noiseless calibration cannot produce a
+zero threshold.</p>
+<p>That per-pose bias is the whole trick. It cancels model error and stiction at that
+configuration together, which is what lets the estimator work below the controller's own
+hand-tuned 2.0&nbsp;N&middot;m <code>admittance_deadbands.joint_tau</code>. The calibration goes
+<strong>stale</strong> when the arm leaves the pose, and a stale calibration is reported rather
+than silently used &mdash; see &ldquo;Control mode&rdquo;, below, for how modes 2 and 6 relax
+that check, and what it costs.</p>
+<p>Calibration is triggered by calling the <code>{rid}/contact/calibrate</code> service
+(<code>std_srvs/Trigger</code>) while the arm is held still and nobody is touching it. The
+node accumulates joint torque for <code>calibration_seconds</code> (default 1&nbsp;s, i.e.
+100 ticks at 100&nbsp;Hz) before deriving the bias, noise and per-joint thresholds; no
+contact estimate is published while a capture is in progress. The call fails immediately
+(<code>success: false</code>) if no joint feedback has arrived yet.</p>
+
+<h2>Recording a run</h2>
+<p>Calling the <code>{rid}/contact/record</code> service (<code>std_srvs/Trigger</code>)
+<strong>toggles</strong> recording: the first call opens a run folder and starts buffering one
+row per tick; the second call flushes it to disk and clears the buffer. Nothing is written to
+disk until the second call, so a run of any practical length costs memory, not open-file
+overhead. Recording has no calibration prerequisite of its own &mdash; it buffers whatever the
+node is doing, blocked ticks included &mdash; but a run with no calibration will simply show
+every tick blocked with <code>calibration stale</code>/<code>not calibrated</code> and every
+per-estimate column empty, which is itself a useful (if boring) recording.</p>
+
+<p>Each run is its own folder:</p>
+<pre><code>experiments/contact/&lt;YYYYMMDD&gt;_&lt;HHMMSS&gt;_&lt;robot&gt;/
+    data.csv
+    meta.json</code></pre>
+<p>rooted under the node's <code>workspace</code> parameter (the same root
+<code>urdf_path</code>/<code>mujoco_xml_path</code> are resolved against), so it lands next to
+<code>fic_ws/src</code> rather than wherever the process happened to be launched from.</p>
+
+<h3>data.csv columns</h3>
+<p>One row per tick (100&nbsp;Hz) that the node processed while recording was on, for an
+<em>N</em>-joint arm (7 on the Kinova):</p>
+<table>
+  <thead>
+    <tr><th>Column(s)</th><th>Unit</th><th>Meaning</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>t</code></td><td>s</td><td>ROS clock time the sample was taken, from
+<code>node.get_clock().now()</code>.</td></tr>
+    <tr><td><code>q1&hellip;qN</code></td><td>rad</td><td>Measured joint configuration,
+<code>{rid}_q_current</code>, robot joint order.</td></tr>
+    <tr><td><code>tau_meas1&hellip;N</code></td><td>N&middot;m</td><td>Measured joint torque,
+<code>{rid}_joint_torques</code>, after <code>fic_hardware</code>'s own
+<code>torque_sign</code> and filtering.</td></tr>
+    <tr><td><code>tau_ext1&hellip;N</code></td><td>N&middot;m</td><td>The residual
+(<code>ResidualEstimator.residual()</code>) for <strong>this tick only</strong> &mdash; absent
+whenever the tick was blocked (see below), never carried over from an earlier tick.</td></tr>
+    <tr><td><code>link_est</code></td><td>&#x2d;1 / 0 / 1&hellip;N</td><td>The link estimate the
+node published this tick. Same three regimes as <code>ContactEstimate.link_index</code>.</td></tr>
+    <tr><td><code>confidence</code></td><td>0&hellip;1</td><td>As published, after motion and
+pose-drift derating (see &ldquo;Control mode&rdquo;, above).</td></tr>
+    <tr><td><code>link_truth</code></td><td>&#x2d;1 / 0 / 1&hellip;N</td><td>Operator-declared
+ground truth for this run, set from outside via <code>ContactNode.set_link_truth()</code> &mdash;
+the Studio's Ground truth combo drives this over the node's <code>link_truth</code> ROS parameter
+(see &ldquo;The ground-truth combo&rdquo;, below). Absent by default, <strong>never defaulted to
+0</strong>: an undeclared truth must never read as &ldquo;the operator says no contact&rdquo;.</td></tr>
+    <tr><td><code>dq1&hellip;dqN</code></td><td>rad/s</td><td>Measured joint velocity,
+<code>{rid}_joint_velocities</code> &mdash; the same signal that decides whether the residual
+used the gravity-only or velocity-aware model term this tick.</td></tr>
+    <tr><td><code>adm_offset1&hellip;N</code></td><td>rad</td><td>
+<code>{rid}_admittance_offset</code>, only ever present while a joint-admittance mode (3, 4) is
+both active <em>and</em> publishing &mdash; entirely absent for every impedance or Cartesian
+run, which is exactly what <code>missing_channels</code> in <code>meta.json</code> will
+say.</td></tr>
+    <tr><td><code>link_est_raw</code></td><td>&#x2d;1 / 0 / 1&hellip;N</td><td>The estimate
+before the <code>LinkDebouncer</code>'s hysteresis (see &ldquo;Temporal hysteresis&rdquo;,
+above) &mdash; differs from <code>link_est</code> during an entry or exit window, so the
+false-positive rate can be measured with or without the filter's help.</td></tr>
+    <tr><td><code>mode</code></td><td>1&hellip;8</td><td>The control mode active on this tick
+&mdash; recorded even on a blocked tick, so a gap in <code>link_est</code> can be explained by
+the mode that caused it.</td></tr>
+  </tbody>
+</table>
+
+<div class="admonition warning">
+  <div class="adm-title">Absence is not zero</div>
+  <p>A channel with no sample on a given tick is written as an <strong>empty CSV cell</strong>
+and named in <code>meta.json</code>'s <code>missing_channels</code> list if it never produced a
+single sample across the whole run &mdash; never as a fabricated <code>0</code>. A zero is a
+real measurement in this project (zero torque, zero admittance offset, a genuine &ldquo;no
+contact&rdquo; verdict), so writing one where nothing was actually measured would be
+indistinguishable from that real reading. This governs every optional column above:
+<code>tau_ext</code>/<code>link_est</code>/<code>confidence</code>/<code>link_est_raw</code> on
+a blocked tick, <code>adm_offset</code> outside joint admittance, and <code>link_truth</code>
+until the operator declares one. <code>fic_contact/recorder.py</code>'s <code>Recorder</code>
+enforces this mechanically &mdash; a key simply absent from the row dict it is given stays
+absent all the way to disk &mdash; and its own test suite (<code>test/test_recorder.py</code>)
+pins the behaviour, so it cannot silently regress.</p>
+</div>
+
+<h3>meta.json</h3>
+<p>Written once, when recording stops, so it can only describe a finished run:</p>
+<table>
+  <thead>
+    <tr><th>Key</th><th>Contents</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>robot</code></td><td>The <code>robot_name</code> parameter value.</td></tr>
+    <tr><td><code>joint_names</code></td><td>The robot config's joint order, matching
+<code>q1&hellip;qN</code>.</td></tr>
+    <tr><td><code>link_names</code></td><td><code>ArmModel.link_names</code> &mdash; what
+<code>link_est</code>/<code>link_truth</code>'s 1..N actually name, proximal to distal.</td></tr>
+    <tr><td><code>control_modes_seen</code></td><td>Every distinct <code>{rid}_control_mode</code>
+value observed during the run, sorted &mdash; including on blocked ticks.</td></tr>
+    <tr><td><code>sample_rate_hz</code></td><td>The node's tick rate, <code>100.0</code>.</td></tr>
+    <tr><td><code>calibration</code></td><td><code>Calibration.as_dict()</code> &mdash; bias,
+sigma, thresholds, <code>q_ref</code> and sample count &mdash; or <code>null</code> if recording
+started before a calibration was ever captured.</td></tr>
+    <tr><td><code>joint_torque_limits</code></td><td>The robot config's
+<code>joint_torque_limits</code> block (<code>min</code>/<code>max</code> per joint,
+N&middot;m), for context on how close a run's <code>tau_meas</code> ran to the hardware
+limit.</td></tr>
+    <tr><td><code>estimator_params</code></td><td><code>estimator</code> (<code>'v1'</code> or
+<code>'v2'</code>) and <code>n_per_link</code> (the v2 fit's candidates-per-link, default 20 --
+see &ldquo;Wiring it in: the cheap gate first&rdquo;, above) alongside <code>sigma_k</code>,
+<code>min_threshold_nm</code> and <code>pose_tolerance_rad</code> &mdash; the constants that
+turned this run's calibration into its detection thresholds.</td></tr>
+    <tr><td><code>units</code></td><td>The unit of every physical column above, spelled out so a
+CSV opened without this page still says what it means.</td></tr>
+    <tr><td><code>missing_channels</code></td><td>Written by <code>Recorder</code> itself &mdash;
+every column that never received one real sample across the whole run.</td></tr>
+    <tr><td><code>samples</code></td><td>Row count, written by <code>Recorder</code> itself.</td></tr>
+  </tbody>
+</table>
+
+<h2>Limits &mdash; read this before demonstrating it</h2>
+<p>These are properties of the sensor set, not defects, and no better estimator can remove them.</p>
+
+<h3>1. Two links are structurally invisible</h3>
+<ul>
+  <li><code>Base_Link</code> is bolted to the world, so a push on it loads no joint at all. Seven detectable classes, not eight.</li>
+  <li><code>Bracelet_Link</code> and the gripper are one class &mdash; anything distal to joint 7 excites all seven joints identically.</li>
+</ul>
+
+<h3>2. The proximal links need implausible force</h3>
+<p>A push is sensed only through its moment arm about the joints proximal to it, and the proximal links sit close to their own joint axes. Measured over 150 random poses &times; real MJCF surface points &times; random push directions, against a 1.2&nbsp;N&middot;m detection floor:</p>
+
+<table>
+  <thead>
+    <tr><th>Link</th><th>Force detected 50% of the time</th><th>&hellip;90% of the time</th><th>Practical verdict</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>Shoulder_Link</code></td><td>69 N</td><td>426 N</td><td><span class="tag tag-red">not by hand</span></td></tr>
+    <tr><td><code>HalfArm1_Link</code></td><td>24 N</td><td>66 N</td><td><span class="tag tag-yellow">marginal</span></td></tr>
+    <tr><td><code>HalfArm2_Link</code></td><td>9.6 N</td><td>30 N</td><td><span class="tag tag-green">firm push</span></td></tr>
+    <tr><td><code>ForeArm_Link</code></td><td>4.3 N</td><td>9.7 N</td><td><span class="tag tag-green">comfortable</span></td></tr>
+    <tr><td><code>SphericalWrist1_Link</code></td><td>3.6 N</td><td>7.2 N</td><td><span class="tag tag-green">comfortable</span></td></tr>
+    <tr><td><code>SphericalWrist2_Link</code></td><td>3.2 N</td><td>5.6 N</td><td><span class="tag tag-green">comfortable</span></td></tr>
+    <tr><td><code>Bracelet_Link</code></td><td>3.0 N</td><td>5.5 N</td><td><span class="tag tag-green">comfortable</span></td></tr>
+  </tbody>
+</table>
+
+<p>So the honest claim is <strong>five links comfortably, <code>HalfArm1</code> marginally, and <code>Shoulder</code> not at all</strong>. For a demonstration, push the forearm or the wrist. Pushing the shoulder will look broken when it is in fact behaving correctly.</p>
+
+<h3>3. Whole geometric families of pushes are invisible, at any force</h3>
+<p>The torque a contact exerts about joint <em>i</em> is <code>axis&#8320; &middot; (r &times; F)</code>, where <code>r</code> is the lever arm from the joint axis out to the contact point. That vanishes in three separate ways, and all three happen on this arm:</p>
+<ul>
+  <li><strong><code>r = 0</code></strong> &mdash; the contact lies <em>on</em> the joint axis. Nothing is sensed, in any direction.</li>
+  <li><strong><code>F</code> parallel to the axis</strong> &mdash; the push runs along the axis.</li>
+  <li><strong><code>r</code> parallel to the axis</strong> &mdash; the lever arm runs <em>along</em> the axis instead of radially out from it.</li>
+</ul>
+<p><code>Shoulder_Link</code> at <code>q = [0, 0.5, 0, 1.5, 0, 1.0, 0]</code> shows all three. Its body origin sits exactly on joint 1's axis, so its entire linear Jacobian is zero and a 20&nbsp;N push there gives <code>tau = [0, 0, 0, 0, 0, 0, 0]</code> &mdash; exactly zero on all seven joints, for <em>any</em> force direction. Moving out to the real surface only partly helps: joint 1's axis is <code>Z</code>, so a 6&nbsp;cm offset along <code>X</code> yields just 1.2&nbsp;N&middot;m from a 20&nbsp;N push, while the same offset along <code>Y</code> or <code>Z</code> yields exactly zero.</p>
+<p>Over random poses, real surface points and random directions at 20&nbsp;N against a 1.2&nbsp;N&middot;m floor, the invisible fraction is <strong>100% on <code>Shoulder_Link</code>, 54% on <code>HalfArm1_Link</code>, 16% on <code>HalfArm2_Link</code>, and under 3% from <code>ForeArm_Link</code> outward</strong>.</p>
+<p>This is the joint-torque-only singularity the literature warns about &mdash; distinct contacts producing identical sensor readings. See <a href="#references" onclick="showPage('references')">References</a>.</p>
+
+<h3>4. Single contact is assumed</h3>
+<p>Two hands on the arm at once will produce a plausible-looking single answer that is wrong. Multi-contact separation is what a base force/torque sensor buys you, and this arm does not have one.</p>
+
+<h3>5. v2's point is one estimate on a line, not a unique location</h3>
+<div class="admonition warning">
+  <div class="adm-title">Read this before trusting the marker</div>
+  <p>With <em>n</em> torque sensors, a contact force is only observable up to its
+<strong>moment</strong> about each joint &mdash; and every point along the force's line of action
+produces the <em>exact same</em> moment, hence the exact same <code>tau_ext</code>. No amount of
+additional fitting recovers information the sensors structurally never captured: v2's
+<code>fit_contact</code> can only ever pick the best-fitting point among the decimated candidates
+it was given, which is a plausible point <em>on</em> that line &mdash; not proof the contact
+happened there rather than 2&nbsp;cm further along the same line, on a neighbouring link's
+surface, or anywhere else the line passes through solid geometry. Treat the twin's marker sphere
+the way you would treat <code>confidence</code> on a v1 link estimate: informative, not certain.
+This is not a bug to be fixed by a better solver &mdash; it is the same joint-torque-only
+observability limit as items 2 and 3 above, applied to position instead of to link identity.</p>
+</div>
+
+<h2>Simulated accuracy vs. noise</h2>
+<p>The tables above are noise-free: real surface points and directions, but a clean
+<code>tau_ext</code>. <code>fic_contact/sim_validation.py</code> adds the missing dimension &mdash;
+injected Gaussian torque noise &mdash; so a single measured hardware noise floor <code>sigma</code>
+turns into a per-link accuracy prediction instead of a number with no context.</p>
+
+<pre><code>cd fic_ws/src/fic_contact
+python3 -m fic_contact.sim_validation --trials 200 --out /tmp/accuracy_vs_noise.csv</code></pre>
+
+<p>Method, per noise level &times; per link &times; <code>--trials</code> repeats: a random pose,
+a random point drawn from that link's <strong>full mesh vertex set</strong> &mdash; every stored
+vertex, not <code>load_candidates</code>' decimated search set &mdash; and a random push direction
+with <code>F&middot;n &lt; 0</code>. This matters more than it looks: pushing exactly at a
+candidate <code>fit_contact</code> already searches is a best case that never happens on a real
+hand, and scoring only that case would inflate v2's reported accuracy. The same
+<code>(pose, point, direction)</code> scenarios are reused across every noise level for a given
+link, so only the injected noise changes the outcome from one row to the next.</p>
+
+<p>Output is <code>accuracy_vs_noise.csv</code> (<code>sigma_nm, estimator, link, trials,
+correct</code>) plus a small summary figure saved next to it. <strong>To read the CSV against a
+measured hardware noise floor:</strong> find the row whose <code>sigma_nm</code> is closest to
+your measured <code>sigma</code>, and <code>correct / trials</code> for each link at that row is
+the expected accuracy at that noise level &mdash; not a pretty curve, a lookup.</p>
+
+<div class="admonition note">
+  <div class="adm-title">Measured at 60 trials/link, 200 candidates/link, a fixed 20&nbsp;N push</div>
+  <p>The push force is deliberately <strong>not</strong> scaled up per link. At sigma = 0 (no
+injected noise), v2 reproduces the earlier off-candidate baseline (Limits, item&nbsp;2's force
+tables were measured separately, at the detection floor rather than classification accuracy) to
+within one or two trials of 60 &mdash; the same run-to-run sensitivity already documented for this
+measurement:</p>
+<table>
+  <thead><tr><th>Link</th><th>v1 (sigma=0)</th><th>v2 (sigma=0)</th></tr></thead>
+  <tbody>
+    <tr><td><code>Shoulder_Link</code></td><td>0.0%</td><td>100.0%<sup>*</sup></td></tr>
+    <tr><td><code>HalfArm1_Link</code></td><td>20.0%</td><td>100.0%<sup>*</sup></td></tr>
+    <tr><td><code>HalfArm2_Link</code></td><td>21.7%</td><td>100.0%</td></tr>
+    <tr><td><code>ForeArm_Link</code></td><td>28.3%</td><td>98.3%</td></tr>
+    <tr><td><code>SphericalWrist1_Link</code></td><td>11.7%</td><td>95.0%</td></tr>
+    <tr><td><code>SphericalWrist2_Link</code></td><td>6.7%</td><td>96.7%</td></tr>
+    <tr><td><code>Bracelet_Link</code></td><td>8.3%</td><td>98.3%</td></tr>
+  </tbody>
+</table>
+<p><sup>*</sup> <code>fit_contact</code> has no detection floor of its own (it only refuses a
+residual under <code>1e-6</code>), so its 100% on the two proximal links is not a real capability
+&mdash; in <code>ContactNode</code>, v2 only ever runs once v1's own threshold has already fired,
+and item&nbsp;2 above shows that firing essentially never happens there at a human-plausible
+force. Read those two cells as "v2 fits whatever it is given," not as evidence the proximal links
+are usable.</p>
+</div>
+
+<p><strong>v1's low sigma=0 numbers on links 3&ndash;7 are a real finding, not noise-free
+perfection failing to reproduce.</strong> <code>support_link</code> reports the most distal joint
+whose <em>own</em> torque clears threshold. A point sampled from the full mesh near a link's own
+proximal attachment has a small lever arm about <em>that link's own driving joint</em> while
+still producing a large, above-threshold torque on the joints further up the chain (a longer
+accumulated offset) &mdash; so v1 under-reports distality on exactly the points a real hand is
+just as likely to land on as any candidate. <code>fit_contact</code>'s full seven-dimensional
+least-squares fit is not fooled by this, because it matches the whole torque pattern rather than
+checking one threshold crossing at a time; verified independently against a finite-difference
+Jacobian. This is the same "v1 fails near a joint axis" limitation already pinned by
+<code>test_v1_fails_when_the_force_line_passes_near_a_joint_axis</code>, showing up far more often
+under unbiased random sampling than in that test's hand-chosen vector.</p>
+
+<p>As sigma rises, both estimators degrade on links 3&ndash;7, and v2 stays ahead of v1 at every
+level there &mdash; by 5 to 22 percentage points at sigma = 1.2&nbsp;N&middot;m, this plan's own
+working detection-threshold figure. On <code>Shoulder_Link</code>/<code>HalfArm1_Link</code> both
+sit within noise of 0% throughout the sweep; where v1 shows a few points more than v2 there, it is
+v1's laxer single-joint criterion occasionally firing by chance on a signal too weak for v2's
+stricter geometric fit to accept &mdash; not a genuine edge, and consistent with item&nbsp;2's
+force-needed tables. Full numbers: <code>accuracy_vs_noise.csv</code> and the figure beside it.</p>
+
+<h2>Which robots this works on</h2>
+<p>Three things have to be true at once: a <strong>serial</strong> kinematic chain (so &ldquo;link <em>k</em> loads only joints 1&hellip;<em>k</em>&rdquo; holds), a URDF with <strong>real inertials</strong> (so <code>g(q)</code> means something), and <strong>genuine per-joint torque sensing</strong> on the hardware. Checked against every robot currently in this repo:</p>
+
+<table>
+  <thead>
+    <tr><th>Robot</th><th>Status</th><th>Why</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>KinovaGen3_7DOF</code></td><td><span class="tag tag-green">works</span></td><td>Real per-joint torque sensing on the hardware, and its URDF carries 9 <code>&lt;inertial&gt;</code> blocks.</td></tr>
+    <tr><td><code>Franka_FR3</code></td><td><span class="tag tag-red">blocked</span></td><td>Its URDF has zero <code>&lt;inertial&gt;</code> blocks, so <code>g(q)</code> is identically zero and any residual built on it would be meaningless. See <code>ArmModel.gravity_is_degenerate()</code>.</td></tr>
+    <tr><td><code>IIWA_14</code></td><td><span class="tag tag-red">blocked</span></td><td>The robot config declares <code>urdf_path: menagerie/model/IIWA_14/URDF/IIWA_14.urdf</code>, but that file does not exist &mdash; only <code>.xacro</code> sources ship in this repo.</td></tr>
+  </tbody>
+</table>
+
+<h2>Control mode</h2>
+<p>The node publishes in all <strong>eight</strong> control modes. <code>{rid}_control_mode</code>
+carries a 1-indexed mode number, 1&ndash;8:</p>
+
+<table>
+  <thead>
+    <tr><th>Mode</th><th>Name</th><th>Arm behaviour</th><th>Contact localization</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>Joint Impedance</td><td>impedance, stationary</td><td><span class="tag tag-green">supported</span></td></tr>
+    <tr><td>2</td><td>Joint Impedance With Planner</td><td>impedance, moving</td><td><span class="tag tag-green">supported</span></td></tr>
+    <tr><td>3</td><td>Joint Admittance</td><td>admittance, yields</td><td><span class="tag tag-green">supported</span> &mdash; two observables</td></tr>
+    <tr><td>4</td><td>Joint Admittance Haptic</td><td>admittance, yields</td><td><span class="tag tag-green">supported</span> &mdash; two observables</td></tr>
+    <tr><td>5</td><td>Cartesian Impedance</td><td>impedance, stationary</td><td><span class="tag tag-green">supported</span></td></tr>
+    <tr><td>6</td><td>Cartesian Planner</td><td>impedance, moving</td><td><span class="tag tag-green">supported</span></td></tr>
+    <tr><td>7</td><td>Cartesian Admittance</td><td>admittance, yields</td><td><span class="tag tag-yellow">supported, weaker</span> &mdash; residual only</td></tr>
+    <tr><td>8</td><td>Cartesian Admittance Haptic</td><td>admittance, yields</td><td><span class="tag tag-yellow">supported, weaker</span> &mdash; residual only</td></tr>
+  </tbody>
+</table>
+
+<h3>Admittance: which joint is yielding</h3>
+<p>Admittance control is exactly the case &ldquo;which link got pushed&rdquo; needs to answer
+for a human leaning on the arm &mdash; the arm is designed to give way, and the question is
+<em>where</em>. Modes 3 and 4 (joint admittance) publish a second, independent observable on
+<code>{rid}_admittance_offset</code>, so the node now computes <strong>two</strong> per-joint
+signals and cross-checks them:</p>
+<ul>
+  <li><strong>Torque residual</strong> (the same <code>tau_ext = tau_meas - g(q) - b</code> the
+impedance modes use, via <code>ResidualEstimator.residual()</code>.)</li>
+  <li><strong>Admittance offset</strong> &mdash; <code>{rid}_admittance_offset</code>, N
+<code>float64</code>s in radians, published only while an admittance mode (3 or 4) is active.
+This is <code>fic::ficControl::humanOffset(i)</code> read straight off the controller: the same
+<code>offest</code> accumulator <code>handleJointAdmitanceControl</code>
+(<code>fic_control.h</code>) integrates the human's push into every control tick, exposed
+verbatim rather than reconstructed. Fed through <code>hypotheses.support_link</code> exactly
+like the residual is, via <code>fic_contact.admittance.admitting_link</code> (see
+<code>fic_contact/admittance.py</code>), because the same triangular argument applies: a
+contact on link <em>k</em> can only push joints 1&hellip;<em>k</em> away from their target, so
+the most distal joint <em>displaced</em> names the link just as well as the most distal joint
+<em>loaded</em> does.</li>
+</ul>
+<p>When the two agree on a link, that cross-check is reported as high confidence; when they
+disagree, <code>confidence</code> is derated rather than silently picking a side &mdash; see
+<code>fic_contact.admittance.combine_link_estimates</code>.</p>
+
+<div class="admonition note">
+  <div class="adm-title">Why the offset can see a push the residual missed &mdash; and why not by magic</div>
+  <p>The controller's own admittance integrator is gated by a hard 2.0&nbsp;N&middot;m
+<code>admittance_deadbands.joint_tau</code> deadband (on the Kinova): a push that never clears
+2.0&nbsp;N&middot;m on <em>any</em> control tick produces exactly zero offset, full stop &mdash; the
+offset is not immune to that floor, it sits behind the same one. What it adds over one fresh
+residual sample is <strong>memory</strong>: admittance mode 1 (Push-and-Stay) accumulates the
+offset as a running integral, so once a push clears the deadband on even a single tick, the
+resulting nudge persists, where an instantaneous residual reading forgets it the very next tick.
+&ldquo;Integrates over time&rdquo; means <em>retains</em> a push it once saw, not <em>detects</em>
+pushes below its own floor.</p>
+</div>
+
+<div class="admonition note">
+  <div class="adm-title">Why <code>{rid}_admittance_offset</code> replaced the <code>{rid}_trajectory_data</code> blocks</div>
+  <p>Contact localization originally derived this observable as
+<code>q_target_adm - q_target</code> from blocks 5 and 3 of <code>{rid}_trajectory_data</code>.
+That turned out to be wrong: in modes 3/4, <code>handleJointAdmitanceControl</code> never writes
+the pre-push target to block 3 at all &mdash; block 3 there is the trajectory planner's own copy
+of the <em>already admittance-adjusted</em> target (block 5), smoothed or clamped. So the
+block-5-minus-block-3 difference was the planner's own tracking <strong>lag</strong>, not the
+human's push &mdash; large while a joint's target is actively moving, decaying toward zero the
+moment the push holds steady, even though the human is still leaning on the arm.
+<code>{rid}_admittance_offset</code> is the fix: it is the controller's own integrated human
+offset (<code>fic::ficControl::humanOffset()</code>, the <code>offest</code> accumulator
+itself), published directly instead of reconstructed from two downstream copies of the target.
+<code>fic_contact/admittance.py</code>'s <code>parse_trajectory_blocks</code> and
+<code>admitting_joints</code> still exist &mdash; and are still correct &mdash; for anyone
+parsing a raw <code>trajectory_data</code> recording offline, and its module docstring keeps the
+full trace, but <code>contact_node.py</code>'s live decision path no longer calls them.</p>
+</div>
+
+<div class="admonition note">
+  <div class="adm-title">Cartesian admittance (7, 8) is weaker, on purpose</div>
+  <p>Cartesian admittance never routes through <code>handleJointAdmitanceControl</code>, so
+<code>fic::ficControl::humanOffset()</code> is never populated in modes 7/8 and neither
+<code>fic_hardware</code> nor <code>fic_simulation</code> publishes
+<code>{rid}_admittance_offset</code> in them (see each publisher's own mode gate). There is no
+per-joint offset to read, so modes 7 and 8 fall back to the torque residual alone: a real,
+working, single-observable estimate, just without the cross-check that makes modes 3/4
+stronger.</p>
+</div>
+
+<div class="admonition note">
+  <div class="adm-title">Blocks 6/7 are not used for the torque observable</div>
+  <p><code>fic_hardware.cpp</code> calls the admittance controller with the measured torque
+negated (<code>current_effort_ = -joint_torques_[i]</code>), so block 6 minus block 7 works out
+to <code>g(q) + tau_meas</code> &mdash; a sum, not a zero-mean residual. Reusing it would risk
+biasing or inverting the link decision, so the node computes the torque observable the same way
+in every mode: independently, via <code>ResidualEstimator.residual()</code> against
+<code>{rid}_joint_torques</code>/<code>{rid}_q_current</code>.</p>
+</div>
+
+<p>Accuracy is best at rest &mdash; modes 1 and 5, where the model term is gravity only,
+<code>g(q)</code>, exactly as it was calibrated. Every other mode moves the arm &mdash; under a
+planner (2, 6) or under admittance (3, 4, 7, 8) &mdash; so the model term switches to the
+velocity-aware <code>C(q,dq)&middot;dq + g(q)</code> instead, computed from
+<code>{rid}_joint_velocities</code>. Neither term ever includes the inertial term
+<code>M(q)&middot;ddq</code>: no measured joint acceleration exists anywhere in this project to
+feed it, so a moving-mode estimate is always missing a term a stationary one is not. That gap,
+together with the wider calibration pose tolerance a moving mode needs (below), is made visible
+rather than hidden: <code>confidence</code> &mdash; for both observables, before they are
+combined &mdash; is derated for joint speed and for calibration pose drift, so a moving-mode
+estimate is never reported at the same confidence a fresh, stationary one would earn.</p>
+
+<p>The mode check is one of four gates the node runs every tick, in order, before it will
+publish anything but <code>link_index = -1</code>:</p>
+<table>
+  <thead>
+    <tr><th>Gate</th><th>Refuses when&hellip;</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>joint feedback</td><td>no <code>{rid}_joint_torques</code> or <code>{rid}_q_current</code> sample has arrived yet.</td></tr>
+    <tr><td>control mode</td><td>the last <code>{rid}_control_mode</code> value is not one of 1&ndash;8.</td></tr>
+    <tr><td>calibration</td><td>no bias has been captured via <code>{rid}/contact/calibrate</code>.</td></tr>
+    <tr><td>pose drift</td><td>the arm has moved more than <code>pose_tolerance</code> from the calibration pose &mdash; the bias is stale. In every moving mode (2, 6, 3, 4, 7, 8) this tolerance is deliberately relaxed (<code>ContactNode.MOVING_POSE_TOLERANCE</code>), since the arm leaves the calibration pose almost immediately once it starts moving; the resulting staleness is carried instead in a derated <code>confidence</code>, not hidden.</td></tr>
+  </tbody>
+</table>
+<p>This logic lives in <code>ContactGate</code>, a small ROS-free class in
+<code>fic_contact/gate.py</code> so it can be unit-tested without a graph; <code>contact_node.py</code>
+only wires its inputs and reads <code>blocked_reason()</code> once per tick. A bare
+<code>ContactGate()</code> still refuses all four admittance modes by default &mdash;
+<code>contact_node.py</code> explicitly passes the wider <code>ContactNode.ALLOWED_MODES</code>
+(all eight) to opt in.</p>
+
+<h2>The twin viewer</h2>
+<p><code>fic_contact/twin.py</code> opens a MuJoCo window that mirrors the real arm's measured
+pose and lights up whichever link <code>{rid}_contact_estimate</code> currently names. It
+subscribes to <code>{rid}_q_current</code> and <code>{rid}_contact_estimate</code>; it publishes
+nothing.</p>
+
+<div class="admonition warning">
+  <div class="adm-title">A display, not a simulation</div>
+  <p>Every tick the twin writes the measured joint angles straight into <code>d.qpos</code> and
+calls <code>mujoco.mj_forward</code> &mdash; it never calls <code>mj_step</code>. Stepping physics
+would fight the mirror: the simulated arm would fall under gravity while the twin is trying to
+hold it at the real arm's pose. <code>mj_forward</code> only recomputes kinematics and derived
+quantities for the pose just written in; it runs no integrator.</p>
+</div>
+
+<p>Launch it with the installed <code>twin</code> entry point:</p>
+<pre><code># macOS -- mujoco.viewer.launch_passive requires mjpython on the main thread
+mjpython $(ros2 pkg prefix fic_contact)/lib/fic_contact/twin --xml &lt;scene.xml&gt; --robot-id robot1
+
+# Linux -- plain python works
+python3 $(ros2 pkg prefix fic_contact)/lib/fic_contact/twin --xml &lt;scene.xml&gt; --robot-id robot1
+</code></pre>
+<p><code>--joints</code> and <code>--links</code> default to the Kinova Gen3 7-DOF set
+(<code>Actuator1</code>&hellip;<code>7</code> and the seven link names in the table above) but can
+be overridden for a different serial arm, in keeping with the rest of this package being
+robot-agnostic. Both are always resolved by <strong>name</strong>
+(<code>mj_name2id</code> + <code>jnt_qposadr</code>/<code>body_geomadr</code>), never by position
+&mdash; the Kinova scene has <code>nq</code> = 13 (seven arm joints plus six Robotiq gripper
+joints), so indexing <code>qpos</code> positionally would silently read the wrong slots.</p>
+
+<div class="admonition note">
+  <div class="adm-title">Highlighting follows the link_index regimes</div>
+  <p>The twin highlights a link only when <code>link_index &ge; 1</code>. <code>0</code> (a real
+measurement of no contact) and <code>-1</code> (no statement possible) both leave every link its
+normal colour &mdash; the geom-id lookup used to choose which link to paint simply has no entry
+for either value, so no special case is needed to keep them unhighlighted.</p>
+</div>
+
+<h3>The v2 contact marker: a point and a push direction</h3>
+<p>Lighting up a whole link answers <em>which</em> link was pushed; it says nothing about
+<em>where</em> on that link, or which way the push is coming from. When the <code>estimator</code>
+parameter is <code>'v2'</code> and <code>ContactEstimate.point</code> is non-empty, the twin draws
+two extra geoms into MuJoCo's <code>viewer.user_scn</code> &mdash; a scratch scene the passive
+viewer merges into the render on <code>sync()</code>, kept entirely separate from the model's own
+geoms so drawing into it can never disturb the arm itself:</p>
+<ul>
+  <li>A small yellow <strong>sphere</strong> (<code>mjGEOM_SPHERE</code>, 1.5&nbsp;cm radius) at
+<code>ContactEstimate.point</code>, the fitted contact location in the base frame.</li>
+  <li>A cyan <strong>arrow</strong> (<code>mjGEOM_ARROW</code>, via <code>mjv_connector</code>)
+running from a point offset behind the contact &mdash; along the reverse of the push &mdash; up
+to the marker itself, so the arrowhead lands exactly on the contact point. Its length is a
+<strong>fixed 8&nbsp;cm on screen</strong>, not a Newton-to-metre scale: a scale picked for a
+light touch would send a hard push's arrow off the arm, and one picked for a hard push would make
+a light touch invisible. The arrow shows only the push <strong>direction</strong>; never read its
+length as the push's strength.</li>
+</ul>
+<p>Both geoms are drawn by <code>twin._draw_contact_marker(scn, link, point, force)</code>, which
+resets <code>scn.ngeom = 0</code> every frame before drawing (so a marker from an earlier tick with
+a fit never lingers on a tick with none) and draws nothing at all unless <code>link &ge; 1</code>
+<em>and</em> <code>point</code> is present &mdash; exactly the same v1/v2 and no-contact/no-statement
+guards the link highlighting already follows.</p>
+
+<div class="admonition warning">
+  <div class="adm-title">The marker is an estimate on a line, not a certainty</div>
+  <p>See Limits, item 5, above, before reading anything into the marker's exact position:
+with <em>n</em> torque sensors a contact's location is only determined up to the force's line of
+action, so the sphere sits on <em>a</em> plausible point on that line &mdash; picked because it
+also lies on the searched surface geometry &mdash; not on a uniquely determined contact point.</p>
+</div>
+
+<h3>Launching the viewer from the Studio</h3>
+<p>The top toolbar's <strong>&#9654;&nbsp;VIEW</strong> button, next to
+<strong>&#9654;&nbsp;PLT</strong>, starts and stops <code>fic_contact/twin.py</code> as a managed
+subprocess &mdash; no terminal, no manually copying the robot's <code>mujoco_xml_path</code>. It
+used to be a <code>&#9674;&nbsp;Contact Twin</code> action inside the control bar; it moved to the
+toolbar and was renamed <strong>Viewer</strong> so the label reads as what it launches, and is now
+visible only while the Studio's control target is <strong>Hardware</strong> &mdash; mirroring the
+real arm only makes sense while driving the real arm.
+<code>main_window_pro._refresh_toolbar_launch</code> re-applies that visibility on every target
+change, the same hook that already keeps the Simulation/Hardware/VR launch cluster in sync.
+Clicking it while stopped launches the viewer for the active robot (<code>mjpython</code> on
+macOS, plain <code>python3</code> on Linux, per-run log under
+<code>/tmp/fic_contact_twin_&lt;timestamp&gt;.log</code>), and the button itself flips to
+<strong>&#9632;&nbsp;VIEW</strong> while running, matching every other process toggle in that bar;
+clicking it again terminates the process, falling back to <code>pkill -9 -f
+fic_contact.twin</code> if it does not exit within 3&nbsp;seconds. A robot whose config has no
+<code>mujoco_xml_path</code> logs a warning instead of launching &mdash; there is nothing to
+render. Closing the Studio (or a crash) reclaims the viewer the same way it reclaims the simulator
+and controller processes.</p>
+<p>The <strong>&#9674;&nbsp;Contact</strong> panel &mdash; still in the control bar, unmoved &mdash;
+holds a <strong>Calibrate</strong> button, which calls the active robot's
+<code>{rid}/contact/calibrate</code> service (hold the arm still and clear of contact first), and
+a <strong>Ground truth</strong> combo listing <code>none</code> plus the seven link names. Its
+live readout beside the mode/rate indicator (below) follows the same hardware-only visibility rule
+as the Viewer button.</p>
+
+<h3>The ground-truth combo: how it reaches the node</h3>
+<p>Selecting an entry in the Ground truth combo sets the active robot's contact node's
+<code>link_truth</code> ROS parameter, via that node's own standard <code>set_parameters</code>
+service &mdash; never by the Studio reaching into a <code>ContactNode</code> Python object
+directly, which was never actually possible once the GUI and the node are separate processes.
+<code>ContactNode</code> declares <code>link_truth</code> (default <code>'none'</code>) and
+registers an <code>add_on_set_parameters_callback</code> that resolves a link name to the
+corresponding <code>ArmModel.link_names</code> index and calls <code>set_link_truth()</code>;
+<code>'none'</code> clears the declared truth back to <em>no ground truth declared</em>, kept
+distinct from the operator declaring <em>no contact</em> (link <code>0</code>, which the combo
+never offers) &mdash; the same distinction <code>set_link_truth</code>'s own docstring insists on.
+Once a link truth is declared this way, a recorded run's <code>data.csv</code> finally gets a
+populated <code>link_truth</code> column instead of an empty one &mdash; the entire point of
+recording it in the first place.</p>
+
+<h3>The control bar's live link readout</h3>
+<p>A readout beside the mode/rate indicator shows the active robot's
+<code>{rid}_contact_estimate</code> at 5&nbsp;Hz, visible only while the control target is
+Hardware &mdash; the same gate the toolbar's Viewer button follows, applied in
+<code>ControlBarMixin._cb_apply_availability</code> rather than
+<code>_refresh_toolbar_launch</code> since the readout itself never left the control bar. It
+renders <strong>four</strong> visually distinct states &mdash; the same <code>link_index</code>
+regimes as above, plus the case the geom highlighting does not have to distinguish: no message at
+all.</p>
+
+<table>
+  <thead>
+    <tr><th>Readout</th><th>Meaning</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>--</code></td><td>No <code>{rid}_contact_estimate</code> message has ever
+arrived &mdash; the contact node is not running, or has not published yet. <strong>Not</strong>
+the same as a link reading; there is simply no data.</td></tr>
+    <tr><td><code>UNCAL</code></td><td><code>link_index == -1</code>: gated off (uncalibrated,
+wrong control mode, stale calibration, or no joint feedback) &mdash; no statement about contact
+is possible.</td></tr>
+    <tr><td><code>no contact</code></td><td><code>link_index == 0</code>: a genuine measurement
+&mdash; the node is calibrated, gated on, and nothing is touching the arm.</td></tr>
+    <tr><td>a link name and confidence, e.g. <code>ForeArm 87%</code></td><td><code>link_index</code>
+in 1..n: the estimated contacted link (<code>_Link</code> suffix dropped for width) and its
+confidence, rounded to the nearest percent.</td></tr>
+  </tbody>
+</table>
+
+<p>These four states must never collapse into one another &mdash; absence, an uncalibrated
+estimator, and a genuine "nothing is touching the arm" reading are three different facts, and
+looking exactly alike would make the difference invisible to whoever is watching the bar.</p>
+
+<h2>Where the code lives</h2>
+<ul>
+  <li><code>fic_ws/src/fic_contact/fic_contact/residual.py</code> &mdash; Pinocchio model, <code>g(q)</code>, per-link Jacobians, bias calibration</li>
+  <li><code>fic_ws/src/fic_contact/fic_contact/hypotheses.py</code> &mdash; the link classifier and the push-constrained fit</li>
+  <li><code>fic_ws/src/fic_contact/fic_contact/admittance.py</code> &mdash; the admittance-offset observable's cross-check machinery (<code>admitting_link</code>, <code>combine_link_estimates</code>), plus the retired <code>{rid}_trajectory_data</code>-derived path kept for offline use</li>
+  <li><code>fic_ws/src/fic_contact/fic_contact/geometry.py</code> &mdash; per-link surface candidates read from the MJCF</li>
+  <li><code>fic_ws/src/fic_contact/fic_contact/gate.py</code> &mdash; <code>ContactGate</code>, the ROS-free publish/refuse decision</li>
+  <li><code>fic_ws/src/fic_contact/fic_contact/recorder.py</code> &mdash; <code>Recorder</code>, the ROS-free run buffer that writes <code>data.csv</code>/<code>meta.json</code> with absent-not-zero semantics &mdash; see &ldquo;Recording a run&rdquo;, above</li>
+  <li><code>fic_ws/src/fic_contact/fic_contact/contact_node.py</code> &mdash; the ROS node</li>
+  <li><code>fic_ws/src/fic_contact/fic_contact/twin.py</code> &mdash; the MuJoCo viewer</li>
+  <li><code>fic_library/include/fic/fic_control.h</code> &mdash; <code>ficControl::humanOffset()</code>, the per-instance accumulated push offset read by both publishers below</li>
+  <li><code>fic_ws/src/fic_hardware/src/fic_hardware.cpp</code> &mdash; publishes <code>{rid}_joint_torques</code> and <code>{rid}_admittance_offset</code></li>
+  <li><code>fic_ws/src/fic_simulation/src/fic_simulation.cpp</code> &mdash; publishes <code>{rid}_admittance_offset</code> for the simulated arm too</li>
+  <li><code>fic_ws/src/fic_studio/fic_studio/mixins/joint_state_mixin.py</code> &mdash; subscribes to <code>{rid}_joint_torques</code>/<code>{rid}_contact_estimate</code>/<code>{rid}_admittance_offset</code>; exposes <code>joint_torque_for()</code>, <code>contact_estimate_for()</code>, <code>admittance_offset_for()</code></li>
+  <li><code>fic_ws/src/fic_studio/fic_studio/mixins/process_mixin.py</code> &mdash; <code>_start_contact_twin()</code>/<code>_stop_contact_twin()</code>, launching <code>twin.py</code> as a managed subprocess</li>
+  <li><code>fic_ws/src/fic_studio/fic_studio/mixins/control_bar_mixin.py</code> &mdash; the Contact panel (Calibrate, ground truth) and the four-state live link readout &mdash; see &ldquo;Launching the viewer from the Studio&rdquo;, above</li>
+  <li><code>fic_ws/src/fic_studio/fic_studio/main_window_pro.py</code> &mdash; the toolbar's <code>&#9654;&nbsp;VIEW</code> button (<code>tb_viewer_btn</code>) and its hardware-only visibility in <code>_refresh_toolbar_launch</code></li>
+</ul>
+<p><code>residual</code>, <code>hypotheses</code>, <code>geometry</code>, <code>recorder</code>, <code>gate</code> and <code>admittance</code> import no <code>rclpy</code>, no PyQt5 and no <code>fic_studio</code>, so the whole estimator is testable with neither a robot nor a GUI. That purity is enforced by an AST test, not by good intentions.</p>
+
+<p><code>geometry.load_candidates()</code> samples each link's candidate points by a <strong>uniform stride</strong> over that link mesh's native vertex order &mdash; not random sampling, so a run is reproducible &mdash; keeping at most <code>n_per_link</code> of them (the function's own default is 200), each with its outward normal carried along and transformed into the same body frame the Jacobians use. The Kinova link meshes run from 4,593 vertices (<code>ForeArm_Link</code>) to 11,637 (<code>Bracelet_Link</code>) at roughly 5&ndash;6&nbsp;mm mean vertex spacing, so even a few hundred candidates per link sample far more finely than the estimator can resolve (see Limits, above). <code>ContactNode</code> itself overrides that default down to <strong>20</strong> via its own <code>n_per_link</code> parameter &mdash; see &ldquo;Wiring it in: the cheap gate first&rdquo;, above, for why 200 was too slow for the 100&nbsp;Hz tick budget.</p>
+
+<div class="admonition tip">
+  <div class="adm-title">Running the tests</div>
+  <p>ROS 2's <code>launch_testing</code> pytest plugins are incompatible with the <code>fic_ros</code> environment's pytest 9.1.1, so a bare <code>pytest</code> crashes before collecting anything. Use:</p>
+  <pre><code>PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest test/ -q</code></pre>
+</div>
+
+<div class="doc-footer">
+  <p>See also: <a href="#references" onclick="showPage('references')">References</a> &middot; <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a> &middot; <a href="#topics" onclick="showPage('topics')">ROS 2 Topics</a> &middot; <a href="#simulation" onclick="showPage('simulation')">Simulation (MuJoCo)</a> &middot; <a href="#safety" onclick="showPage('safety')">Safety System</a> &middot; <a href="#hapfic" onclick="showPage('hapfic')">Hapfic</a></p>
+</div>

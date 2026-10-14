@@ -1,0 +1,60 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Modularity &amp; Extensibility</div>
+<h1>Modularity &amp; Extensibility</h1>
+<p class="subtitle">Pluggable kinematics solvers (incl. closed-loop parallel mechanisms), robots with more joints than actuators, and an uncapped dashboard — the system adapts to the robot instead of the robot adapting to the system.</p>
+
+<div class="admonition tip"><div class="adm-title">Why this matters</div><p>These changes let FIC Studio drive robots it was never hard-coded for: a <strong>parallel/closed-loop</strong> mechanism (via a new solver), a robot whose <strong>controlled joints ≠ displayed joints</strong> (N actuated of M total), and <strong>any joint count</strong> in the dashboard. Everything is driven by <code>robots_config.yaml</code> + a small pluggable C++ seam — no per-robot code branches.</p></div>
+
+<h2>1 · Pluggable kinematics solvers</h2>
+<p>The FIC controller talks only to an abstract <code>fic::KinematicsSolver</code> interface (<code>fic_library/include/fic/kinematics_solver.hpp</code>). The concrete solver is chosen <strong>per robot</strong> by the <code>kinematics_solver:</code> key in <code>robots_config.yaml</code> and built by <code>solver_factory.hpp</code>:</p>
+<table>
+  <tr><th><code>kinematics_solver</code></th><th>Solver</th><th>Use</th></tr>
+  <tr><td><code>pinocchio</code> (default)</td><td>Built-in serial solver</td><td>Ordinary open-chain arms (Kinova, Franka, IIWA…)</td></tr>
+  <tr><td><code>none</code></td><td>none (degraded)</td><td>Joint-space control only; Cartesian/IK/FK disabled. Deliberate, no error.</td></tr>
+  <tr><td><code>pinocchio_closed_loop</code></td><td>Closed-loop solver (below)</td><td>Parallel / closed-loop mechanisms (e.g. CSPM)</td></tr>
+  <tr><td><em>your name</em></td><td>Custom</td><td>Register in <code>solver_factory.hpp</code> — see <code>docs/custom-kinematics-solver.md</code></td></tr>
+</table>
+<p>Adding a solver is: implement <code>fic::KinematicsSolver</code> in a header, add one <code>#include</code> + one <code>if (name == "…")</code> branch in <code>solver_factory.hpp</code>, rebuild, and set the name in config. The interface is <strong>Eigen-only</strong> (no ROS, no pinocchio pulled in for the caller), so solvers are unit-testable outside a ROS workspace.</p>
+
+<h2>2 · Closed-loop / parallel mechanisms</h2>
+<p>A URDF is a kinematic <em>tree</em>; a parallel mechanism has <strong>closed loops</strong> a tree can't express. The new <code>ClosedLoopPinocchioSolver</code> (<code>fic_library/include/fic/solvers/closed_loop_pinocchio_solver.hpp</code>) handles this generically:</p>
+<ul>
+  <li>It holds the full open tree (from the URDF) <strong>plus N loop closures</strong> given as frame pairs in config — no mechanism-specific math.</li>
+  <li>It presents an <strong>actuated-joint interface</strong> to the controller (<code>nq()=nv()=</code> the number of actuated joints), whose end-effector is the moving platform.</li>
+  <li>Per control cycle it does a warm-started <strong>Newton constrained-FK</strong> (solve the passive joints so all loops close) and returns the <strong>reduced Jacobian</strong> (EE twist per actuated joint) via a constraint null-space projection. IK uses that reduced Jacobian.</li>
+  <li>With <strong>zero loops</strong> it degrades to the ordinary serial solver — a strict superset usable for any robot.</li>
+</ul>
+<p>Config keys (per robot in <code>robots_config.yaml</code>):</p>
+<pre><code>kinematics_solver: pinocchio_closed_loop
+ee_frame_name: platform          # the controlled (moving) frame
+ee_orientation_only: true        # control rotation only (fixed-CoR spherical mechanism)
+loop_closures:                   # each pair of points the mechanism holds coincident
+- bodyA: leg1_tip
+  posA: [0.028961, 0.050163, -0.048264]
+  bodyB: platform
+  posB: [0.028961, 0.050163, -0.048264]
+- { bodyA: leg2_tip, posA: [...], bodyB: platform, posB: [...] }
+- { bodyA: leg3_tip, posA: [...], bodyB: platform, posB: [...] }</code></pre>
+<div class="admonition tip"><div class="adm-title">Validated</div><p>For the <strong>CSPM</strong> spherical parallel manipulator the solver's platform orientation matches MuJoCo ground truth to <strong>&lt; 0.03°</strong> and the reduced Jacobian is full rank (the platform's 3-DOF orientation is fully controllable by the 3 motors). The controller loads it as <em>"Loaded robot model: CSPM (nq: 3, nv: 3, solver: pinocchio_closed_loop)"</em>.</p></div>
+<div class="admonition warning"><div class="adm-title">Real-time note</div><p>The constrained FK is iterative (Newton). It stays real-time because it is <strong>warm-started</strong> from the previous cycle's configuration, converging in a few iterations. Cold starts (first cycle) take more.</p></div>
+
+<h2>3 · Robots with more joints than actuators (N of M)</h2>
+<p>A parallel robot has passive joints you want to <em>see</em> but not <em>command</em>. Two independent config lists express this:</p>
+<table>
+  <tr><th>Key</th><th>Meaning</th></tr>
+  <tr><td><code>joint_names</code> + <code>num_joints</code></td><td>The <strong>actuated</strong> joints — what the controller drives (e.g. 3).</td></tr>
+  <tr><td><code>view_joint_names</code> (optional)</td><td>The <strong>full display</strong> set — every joint to show (e.g. 9 hinges + 3 platform-orientation pseudo-joints). Omit for conventional robots.</td></tr>
+</table>
+<p>The GUI reacts automatically (all in <code>fic_studio</code>):</p>
+<ul>
+  <li><strong>The control bar's joint surface</strong> lists every <code>view_joint_names</code> joint; only the actuated ones are interactive, the rest are greyed/disabled but show live data. Commands publish only the actuated joints, by name.</li>
+  <li><strong>Dashboard</strong> joint rows are now built <strong>dynamically, one per joint (uncapped)</strong> — previously hard-limited to 7. A robot with 3, 12 or 20 joints all render correctly, rebuilt on robot change.</li>
+  <li>View-only joints get their live data <strong>by name</strong> from the simulator's <code>joint_states</code> (which the MuJoCo simulator publishes for every joint, plus <code>&lt;ball&gt;_roll/pitch/yaw</code> pseudo-joints for a platform's orientation).</li>
+</ul>
+<div class="admonition note"><div class="adm-title">Backward compatible</div><p>Robots without <code>view_joint_names</code> behave exactly as before (num_joints controllable rows, index-based telemetry). All of this is platform-independent and applies on Linux too.</p></div>
+
+<h2>See also</h2>
+<ul>
+  <li><a href="#robot-config" onclick="showPage('robot-config')">Robot Config &amp; Models</a> — adding robots, the config schema</li>
+  <li><a href="#control-modes" onclick="showPage('control-modes')">Control Modes &amp; FIC Algorithm</a> — the Cartesian modes a solver enables</li>
+  <li><code>docs/custom-kinematics-solver.md</code> (repo) — full walkthrough of writing/registering a solver</li>
+</ul>

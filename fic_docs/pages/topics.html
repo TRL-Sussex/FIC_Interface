@@ -1,0 +1,204 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">›</span> Topics</div>
+<h1>ROS 2 Topics</h1>
+<p class="subtitle">Consolidated reference for all topics used by FIC Control Studio.</p>
+
+<h2>Naming conventions</h2>
+<p>Everything is scoped so that up to four independent robot stations can share one ROS 2 network:</p>
+<table>
+  <tr><th>Convention</th><th>Meaning</th></tr>
+  <tr><td><code>robot{N}_*</code></td><td>Per-robot controller topics. <code>N</code> is the numeric robot / station id (1&ndash;4). The GUI creates a full publisher family per active robot; each <code>fic_simulation</code> / <code>fic_hardware</code> process reads its own family based on its <code>station_id</code> ROS parameter.</td></tr>
+  <tr><td><code>robot{N}_simulation/*</code></td><td>Physics-backend topics. The MuJoCo launch file builds this prefix as <code>robot{sid}_simulation</code> from its <code>station_id</code> argument and passes it to the sim node's <code>topic_prefix</code> parameter.</td></tr>
+  <tr><td><code>vr/*</code>, <code>vr{i}/*</code></td><td>Same physics-backend topics when the FIC controller is launched with <code>source_prefix:=vr</code> for VR headset mode &mdash; see <a href="#vr-zed-teleop" onclick="showPage('vr-zed-teleop')">VR / ZED Teleop</a>.</td></tr>
+  <tr><td><code>fic_studio_{host}</code></td><td>The GUI node name. It embeds the machine's hostname so two Studios on one ROS domain don't collide.</td></tr>
+</table>
+
+<h2>Topic flow</h2>
+<svg viewBox="0 0 700 470" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="FIC Control Studio (GUI)">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-left { text-anchor: start; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#topics-arrowhead); }
+    .arrow-blue { stroke: #1976d2; marker-end: url(#topics-arrowhead-blue); }
+    .arrow-green { stroke: #388e3c; marker-end: url(#topics-arrowhead-green); }
+    .arrow-orange { stroke: #f57c00; marker-end: url(#topics-arrowhead-orange); }
+    .line { stroke: #bbb; stroke-width: 1; stroke-dasharray: 4,3; }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+    .container-solid { fill: #fafbfd; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; }
+  </style>
+  <defs>
+    <marker id="topics-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+    <marker id="topics-arrowhead-blue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#1976d2"/>
+    </marker>
+    <marker id="topics-arrowhead-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#388e3c"/>
+    </marker>
+    <marker id="topics-arrowhead-orange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#f57c00"/>
+    </marker>
+  </defs>
+
+  <!-- Studio GUI -->
+  <rect x="180" y="15" width="340" height="55" class="box box-blue"/>
+  <text x="350" y="35" class="label-bold">FIC Control Studio (GUI)</text>
+  <text x="350" y="53" class="label-code">node: fic_studio_{host}</text>
+
+  <!-- Commands down -->
+  <line x1="270" y1="70" x2="270" y2="165" class="arrow arrow-blue"/>
+  <text x="145" y="90" class="label-code">robot{N}_mode_select / _control_mode</text>
+  <text x="145" y="105" class="label-code">command_ee_position_change_robot{N}</text>
+  <text x="145" y="120" class="label-code">robot{N}_desired_joint_angles</text>
+  <text x="145" y="135" class="label-code">robot{N}_safety/* &middot; enable toggles</text>
+
+  <!-- Feedback up -->
+  <line x1="430" y1="165" x2="430" y2="70" class="arrow arrow-green"/>
+  <text x="555" y="90" class="label-code">robot{N}_trajectory_data (1 kHz)</text>
+  <text x="555" y="105" class="label-code">robot{N}_ee_current_pose</text>
+  <text x="555" y="120" class="label-code">robot{N}_q_current (hardware)</text>
+  <text x="555" y="135" class="label-code">robot{N}_force_torque (hardware)</text>
+
+  <!-- FIC controller -->
+  <rect x="180" y="165" width="340" height="60" class="box box-green"/>
+  <text x="350" y="185" class="label-bold">FIC controller &mdash; 1 kHz loop</text>
+  <text x="350" y="205" class="label-code">fic_simulation | fic_hardware (station_id N)</text>
+
+  <!-- Controller to sim -->
+  <line x1="270" y1="225" x2="270" y2="330" class="arrow arrow-orange"/>
+  <text x="150" y="255" class="label-code">robot{N}_simulation/actuators_cmds</text>
+  <text x="150" y="270" class="label-sm">ActuatorCmds: torq_j1..torq_jn</text>
+
+  <!-- Sim to controller -->
+  <line x1="430" y1="330" x2="430" y2="225" class="arrow arrow-orange"/>
+  <text x="558" y="245" class="label-code">robot{N}_simulation/joint_states</text>
+  <text x="558" y="260" class="label-code">robot{N}_simulation/gravity_torques</text>
+  <text x="558" y="275" class="label-code">robot{N}_simulation/force_torque</text>
+
+  <!-- Physics backend -->
+  <rect x="60" y="330" width="330" height="70" class="box box-orange"/>
+  <text x="225" y="350" class="label-bold">Physics backend</text>
+  <text x="225" y="368" class="label">MuJoCo (mujoco_native, CPU)</text>
+  <text x="225" y="384" class="label">or Newton GPU (500 Hz step, 200 Hz publish)</text>
+
+  <!-- Hardware driver -->
+  <rect x="440" y="330" width="220" height="70" class="box box-grey"/>
+  <text x="550" y="350" class="label-bold">Robot driver</text>
+  <text x="550" y="368" class="label">FR3 / Kinova Gen3 API</text>
+  <text x="550" y="384" class="label-sm">shared memory, not ROS topics</text>
+  <line x1="520" y1="225" x2="550" y2="330" class="line"/>
+
+  <!-- Sim reset service -->
+  <text x="350" y="435" class="label-sm">Service: robot{N}_simulation/sim_reset (communication/srv/SimulationReset)</text>
+  <text x="350" y="452" class="label-sm">One topic family per station &mdash; robot1_*, robot2_*, … coexist with no collisions.</text>
+</svg>
+
+<h2>GUI &rarr; Controller (published by <code>fic_studio_{host}</code>)</h2>
+<p>Every robot the Studio talks to gets its own family of topics, prefixed by <code>robot{N}</code> where <code>N</code> is 1&ndash;4. Since v3.3.0 these are created on demand: when the operator clicks <strong>＋ Add Robot</strong> in <a href="#control-panel" onclick="showPage('control-panel')">Multi-Robot</a>, <code>node.add_robot(N)</code> creates the full set; the ✕ button on a card destroys them. <em>TL</em> marks TRANSIENT_LOCAL durability, so late-joining controllers still receive the last value.</p>
+<table>
+  <tr><th>Topic</th><th>Type</th><th>Description</th></tr>
+  <tr><td><code>robot{N}_mode_select</code></td><td>String</td><td>Mode by name (e.g.&nbsp;<code>"Joint Impedance"</code>, <code>"Cartesian Planner"</code>). Consumed by <code>fic_hardware</code>, which also accepts <code>"Stop Controller"</code> and <code>"Pause Controller"</code>.</td></tr>
+  <tr><td><code>robot{N}_control_mode</code></td><td>Int32</td><td>Numeric mode id (0&ndash;8; 0&nbsp;=&nbsp;stop/idle). Consumed by <code>fic_simulation</code>, which snaps targets to the current pose on every mode switch. See <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>.</td></tr>
+  <tr><td><code>robot{N}_selected_robot</code></td><td>String</td><td>Robot model name (e.g. <code>KinovaGen3_7DOF</code>); the controller reloads its kinematic model and config on change.</td></tr>
+  <tr><td><code>robot{N}_active_profile</code></td><td>String (TL)</td><td>Active tuning profile name. On a different name than the current one, both FIC nodes read the tuning again with it in the background and switch the controllers to it when ready (a repeat of the current name is ignored).</td></tr>
+  <tr><td><code>robot{N}_number_of_joints</code></td><td>Int32 (TL)</td><td>Joint count for this robot.</td></tr>
+  <tr><td><code>robot{N}_desired_joint_angles</code></td><td>Float32MultiArray</td><td>Joint targets in radians. E-STOP locks each robot at its own last-known pose by publishing here (after the graceful mode-0 ramp).</td></tr>
+  <tr><td><code>command_ee_position_change_robot{N}</code></td><td>Pose</td><td>Cartesian EE target (metres + quaternion). Safety-clamped on receipt.</td></tr>
+  <tr><td><code>robot{N}_target_joint_angles</code></td><td>JointState</td><td>Named joint targets, consumed by <code>fic_simulation</code> (used by sequences and scripted motion).</td></tr>
+  <tr><td><code>robot{N}_gripper_width</code></td><td>Float32</td><td>Gripper aperture command (metres). Also drives the simulation gripper bridge.</td></tr>
+  <tr><td><code>robot{N}_postural_enable</code></td><td>Bool (TL)</td><td>Null-space postural toggle (Cartesian modes 5&ndash;8).</td></tr>
+  <tr><td><code>robot{N}_elbow_enable</code></td><td>Bool (TL)</td><td>Null-space elbow-hold toggle (Cartesian modes 5&ndash;8). Snapshots the current elbow position as the hold target.</td></tr>
+  <tr><td><code>robot{N}_hapfic_enable</code></td><td>Bool (TL)</td><td><a href="#hapfic" onclick="showPage('hapfic')">Hapfic</a> overlay toggle. Controller engages it on modes 6&ndash;8 only.</td></tr>
+  <tr><td><code>robot{N}_desired_wrench</code></td><td>Wrench</td><td>Desired wrench of the Cartesian admittance (modes 7/8, and Hapfic on them), [N, N&middot;m]. Zero at controller start-up; not latched. See <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>.</td></tr>
+  <tr><td><code>robot{N}_admittance_planner_enable</code></td><td>Bool (TL)</td><td>Planner smoothing inside the joint admittance modes (3/4); on by default.</td></tr>
+  <tr><td><code>robot{N}_gravity_compensated</code></td><td>Bool (TL)</td><td>Whether the robot's own drives already compensate gravity (skips adding g(q) to the output).</td></tr>
+  <tr><td><code>robot{N}_wrench_gravity_compensated</code></td><td>Bool (TL)</td><td>Whether the measured wrench is already gravity-compensated.</td></tr>
+  <tr><td><code>robot{N}_wrench_from_api</code></td><td>Bool (TL)</td><td>Both nodes: take the external wrench from the driver API (hardware) or the wrist F/T sensor (simulation) instead of estimating it from the joint torques as <code>pinv(J&#7488;)&middot;(&tau;_meas &minus; g(q))</code>.</td></tr>
+  <tr><td><code>robot{N}_param_update</code></td><td>String</td><td>Parameter hot-reload trigger: <code>"robotN:param_type:param"</code>, sent on every SAVE TO XML. Any message makes both FIC nodes read <code>config.xml</code> again in the background; the controllers keep the old tuning until the new set is ready (the payload is only logged). See <a href="#tuning" onclick="showPage('tuning')">Tuning</a>.</td></tr>
+  <tr><td><code>robot{N}_safety/cartesian_limits</code></td><td>Float64MultiArray</td><td><code>[x_min, x_max, enabled, y_min, y_max, enabled, z_min, z_max, enabled]</code> (metres).</td></tr>
+  <tr><td><code>robot{N}_safety/joint_limits</code></td><td>Float64MultiArray</td><td><code>[j0_min, j0_max, j1_min, j1_max, &hellip;, enabled]</code> (radians).</td></tr>
+  <tr><td><code>robot{N}_safety/velocity_limits</code></td><td>Float64MultiArray</td><td><code>[max_joint_vel, max_cart_vel, enabled]</code>.</td></tr>
+</table>
+<p>Safety limits are broadcast: the <a href="#safety" onclick="showPage('safety')">Safety panel</a> publishes the same workspace, joint, and velocity bounds to <em>every</em> active robot. The matching <code>fic_hardware</code> / <code>fic_simulation</code> process subscribes to <em>its own</em> <code>robot{N}_*</code> family based on its <code>station_id</code> ROS parameter, so two robots on one network never collide.</p>
+
+<h2>Controller &rarr; GUI</h2>
+<table>
+  <tr><th>Topic</th><th>Type</th><th>Rate</th><th>Description</th></tr>
+  <tr><td><code>robot{N}_trajectory_data</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Full FIC internal state (per-joint blocks in joint modes, 8-value strides in Cartesian modes; drives the Dashboard plots).</td></tr>
+  <tr><td><code>robot{N}_ee_current_pose</code></td><td>Pose</td><td>1 kHz</td><td>Current end-effector pose from forward kinematics.</td></tr>
+  <tr><td><code>robot{N}_q_current</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Measured joint positions. Published by <code>fic_hardware</code> only; in simulation the GUI falls back to <code>trajectory_data</code>.</td></tr>
+  <tr><td><code>robot{N}_joint_velocities</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Finite-difference joint velocities (<code>fic_hardware</code> only).</td></tr>
+  <tr><td><code>robot{N}_force_torque</code></td><td>Wrench</td><td>1 kHz</td><td>Tool wrench (<code>fic_hardware</code>, SensorData QoS): from the driver API or estimated from joint torques.</td></tr>
+  <tr><td><code>robot{N}_joint_torques</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Measured joint torques (Nm) from the hardware driver, Butterworth-filtered (<code>fic_hardware</code> only).</td></tr>
+  <tr><td><code>robot{N}_admittance_offset</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Accumulated per-joint human push offset (radians), <code>fic::ficControl::humanOffset()</code> read straight off the joint-admittance controller. Published by <code>fic_hardware</code> and <code>fic_simulation</code>, and only while an admittance mode (3 or 4) is active &mdash; absent, not zero, in every other mode. See <a href="#contact-localization" onclick="showPage('contact-localization')">Contact Localization</a>.</td></tr>
+  <tr><td><code>robot{N}_contact_estimate</code></td><td>communication/ContactEstimate</td><td>100 Hz</td><td>Estimated contact location on the arm from joint torque residuals (<code>fic_contact</code>, mode 1 only): link id, confidence, force, point, and calibration status.</td></tr>
+  <tr><td><code>robot{N}_jacobian</code></td><td>communication/Jacobian</td><td>joint-state rate</td><td>EE Jacobian (<code>fic_simulation</code>): <code>rows</code>, <code>cols</code>, flat <code>float64[] jacobian</code>.</td></tr>
+  <tr><td><code>/robot{N}_fic_torque_commands</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Commanded joint torques after the output guard (non-finite&rarr;0, per-joint clamp) &mdash; for logging and inspection.</td></tr>
+</table>
+<p>The GUI also keeps two unprefixed fallback subscriptions, <code>joint_states</code> and <code>simulation_joint_states</code> (JointState), which route into the <em>first</em> active robot's state slot.</p>
+
+<h2>Simulation topics (<code>robot{N}_simulation/</code> prefix)</h2>
+<p>Published by the physics backend &mdash; the CPU MuJoCo simulator (<code>mujoco_native</code>) or the optional Newton GPU node, selected in <a href="#settings" onclick="showPage('settings')">Settings &rarr; Simulation</a>. The prefix comes from the node's <code>topic_prefix</code> parameter (default <code>simulation</code>; the launch file sets <code>robot{sid}_simulation</code>).</p>
+<table>
+  <tr><th>Topic</th><th>Type</th><th>Rate (MuJoCo, CPU)</th><th>Description</th></tr>
+  <tr><td><code>&hellip;/actuators_cmds</code></td><td>communication/ActuatorCmds</td><td>sub</td><td>Torque commands from the FIC controller (and the gripper bridge); actuator names <code>torq_j1&hellip;torq_jn</code>, merged per name across publishers. A torque not refreshed for 200&nbsp;ms is zeroed; a position actuator (the gripper) keeps its setpoint.</td></tr>
+  <tr><td><code>&hellip;/joint_states</code></td><td>JointState</td><td>1 kHz</td><td>Simulated positions, velocities, efforts.</td></tr>
+  <tr><td><code>&hellip;/gravity_torques</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>g(q) inside the sim, from <code>qfrc_bias</code> at zero velocity. The FIC controller <strong>adds this raw</strong> to its own output in the joint modes, so a wrong vector here is injected feedforward on every joint. Sanity check: a vertical-axis joint must read ~0 Nm in every pose.</td></tr>
+  <tr><td><code>&hellip;/contact_torques</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Joint torques the environment applies to each hinge (<code>qfrc_constraint + qfrc_applied</code>: contacts, joint limits, applied wrenches), without the controller's own command. <code>fic_simulation</code> estimates Hapfic's external wrench in Modes 7/8 from it (since v5.3.0). MuJoCo backend only.</td></tr>
+  <tr><td><code>&hellip;/force_torque</code></td><td>Wrench</td><td>200 Hz</td><td>The arm's wrench estimate at the EE sensor site. <strong>Includes gravity</strong> &mdash; measured at 46.7 N with a Kinova standing still and untouched &mdash; so it is not a contact detector on its own.</td></tr>
+  <tr><td><code>&hellip;/imu_data</code></td><td>Imu</td><td>500 Hz</td><td>From the MJCF's accelerometer / gyro / framequat sensors (defaults when the model has none).</td></tr>
+  <tr><td><code>&hellip;/odom</code></td><td>Odometry</td><td>50 Hz</td><td>Floating-base odometry (zeros for a fixed base).</td></tr>
+  <tr><td><code>&hellip;/actuator_torques</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Final per-joint torques the controller sent (after velocity damping and clamping) &mdash; published by <code>fic_simulation</code>, not the sim.</td></tr>
+</table>
+<p>One service: <code>robot{N}_simulation/sim_reset</code> (<code>communication/srv/SimulationReset</code>) resets the model to a requested base pose (floating base) and joint state; <code>header.frame_id</code> must be the model name.</p>
+
+<div class="admonition tip"><div class="adm-title">Newton backend differences</div>
+<p>The Newton GPU backend uses the same topic names but publishes at 200 Hz (500 Hz physics step). Its <code>gravity_torques</code> are computed via <code>mj_inverse</code> on the solver's internal CPU MuJoCo mirror &mdash; <strong>the same recipe that was found wrong in the (since retired) C++ backend in Oct 2026</strong> (<code>mj_forward</code> recomputes <code>qacc</code> from <code>ctrl</code>, so <code>qfrc_inverse</code> returns the actuator command rather than g(q)). Newton has not been re-measured since; treat its gravity as suspect and check a vertical-axis joint reads ~0 Nm before relying on it. <code>imu_data</code> and <code>force_torque</code> are published as <em>empty</em> messages. Incoming torques are applied through an actuator-name&rarr;DoF map into <code>control.joint_f</code>. See <a href="#simulation" onclick="showPage('simulation')">Simulation</a>.</p></div>
+
+<div class="admonition warning"><div class="adm-title">Sensor-data QoS</div>
+<p>All <code>robot{N}_simulation/*</code> topics and <code>robot{N}_force_torque</code> use best-effort sensor-data QoS. If <code>ros2 topic echo</code> shows nothing, force a compatible profile: <code>ros2 topic echo /robot1_simulation/joint_states --qos-profile sensor_data</code>.</p></div>
+
+<h2>Teleoperation topics</h2>
+<p>Created only while a teleop session is active; destroyed on disconnect. See <a href="#teleoperation" onclick="showPage('teleoperation')">Teleoperation</a>.</p>
+<table>
+  <tr><th>Topic</th><th>Type</th><th>Rate</th><th>Description</th></tr>
+  <tr><td><code>/teleop/negotiation</code></td><td>String (JSON)</td><td>1 Hz while waiting</td><td>Role handshake: <code>ANNOUNCE</code> (with desired role), <code>ACK</code>, <code>DISCONNECT</code>, <code>SESSION_BUSY</code>. Machines pair only when roles are complementary.</td></tr>
+  <tr><td><code>/teleop/master_joints</code></td><td>Float64MultiArray</td><td>100 Hz</td><td>Master joint state stream (joint mode).</td></tr>
+  <tr><td><code>/teleop/master_ee_pose</code></td><td>Pose</td><td>100 Hz</td><td>Master EE pose stream (Cartesian mode).</td></tr>
+  <tr><td><code>/teleop/slave_wrench</code></td><td>Wrench</td><td>100 Hz</td><td>Slave contact forces for bilateral force reflection (bounded since the June 2026 safety update).</td></tr>
+  <tr><td><code>/teleop/config</code></td><td>String (JSON)</td><td>On-demand</td><td>Mode/scaling synchronisation between master and slave.</td></tr>
+  <tr><td><code>/teleop/ping</code> / <code>/teleop/pong</code></td><td>Float64</td><td>1 Hz</td><td>Master sends a timestamp; slave echoes it; master computes RTT.</td></tr>
+  <tr><td><code>/teleop/latency</code></td><td>Float64</td><td>1 Hz</td><td>One-way latency estimate (RTT/2), published by the master.</td></tr>
+</table>
+<p>There is no dedicated heartbeat topic: liveness is inferred from data flow. A monitor checks every 2&nbsp;s that <em>some</em> partner message arrived within the configurable timeout (default set in the Teleop panel); on timeout the session ends and the robot holds position.</p>
+
+<h2>Debugging topics from the terminal</h2>
+<pre><code># List all active topics
+ros2 topic list
+
+# View a topic's type and endpoint count
+ros2 topic info /robot1_trajectory_data
+
+# Echo live data (add --qos-profile sensor_data for sim/wrench topics)
+ros2 topic echo /robot1_trajectory_data
+
+# Check publish rate (expect ~1000 Hz from mujoco_native, ~200 Hz from Newton)
+ros2 topic hz /robot1_simulation/joint_states
+
+# Command a mode from the CLI (String for hardware, Int32 for simulation)
+ros2 topic pub --once /robot1_mode_select std_msgs/msg/String "data: 'Joint Impedance'"
+ros2 topic pub --once /robot1_control_mode std_msgs/msg/Int32 "data: 1"</code></pre>
+
+<p>For a live GUI-based topic browser, use the <a href="#topic-monitor" onclick="showPage('topic-monitor')">Topic Monitor</a>. The message definitions for <code>ActuatorCmds</code>, <code>Jacobian</code>, and <code>SimulationReset</code> live in <code>fic_ws/src/communication/</code>.</p>

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en" class="booting">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FIC Studio</title>
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="/icon.svg">
+<link rel="manifest" href="/manifest.webmanifest">
+<script>
+// Before the first paint: the theme this viewer last used (or the Studio's brightness, passed
+// as ?boot=), so the page never flashes the other one. app.js takes over from here.
+(function () {
+  var q = new URLSearchParams(location.search), t = null;
+  try { t = localStorage.getItem('fic-theme'); } catch (e) { /* private window */ }
+  t = q.get('theme') || t || q.get('boot');
+  if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
+<link rel="stylesheet" href="/ui/fic.css">
+</head>
+<body>
+<header class="topbar" id="topbar">
+  <div class="menubar" id="menubar" role="menubar" aria-label="Menus">
+    <button id="nav-toggle" class="btn" type="button" aria-expanded="false" aria-controls="side" title="Show or hide the page list">&#9776;</button>
+    <a class="brand" href="#/dashboard" aria-label="FIC Studio">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M7 14.5c2.5-5 7-5 10 0M12 7v5"/></svg>
+      <span class="brand-text">FIC Studio</span>
+    </a>
+    <nav class="menus" id="menus" aria-label="Menu bar"></nav>
+    <div class="spacer"></div>
+    <button id="theme" class="btn" type="button" title="Switch light / dark / auto [T]">Theme: auto</button>
+  </div>
+  <div class="toolbar-row" id="toolbar" aria-label="Toolbar">
+    <div class="tb-group">
+      <span class="tb-label">Target</span>
+      <div id="target" class="seg" role="group" aria-label="Target"></div>
+      <button id="sess" class="btn btn-primary" type="button">Start<span class="kbd">S</span></button>
+      <span id="sess-dot" class="dot"></span><span id="sess-state" class="state-text">Idle</span>
+    </div>
+    <div class="tb-group tb-tools">
+      <button id="tb-exp" class="btn" type="button" title="Quick-start experiment recording (needs the Experiments extension)">EXP</button>
+      <button id="tb-bags" class="btn" type="button" title="Manual ROS bag record, independent of experiments">BAG</button>
+      <button id="tb-plot" class="btn" type="button" title="Start or stop the plotter">PLT</button>
+      <button id="tb-view" class="btn" type="button" title="Start or stop the contact viewer">VIEW</button>
+    </div>
+    <div class="tb-group">
+      <span class="tb-label">Robot</span>
+      <select id="station" class="select" aria-label="Station"></select>
+      <select id="robot" class="select" aria-label="Robot"></select>
+    </div>
+    <div class="spacer"></div>
+    <div class="estop-wrap"><button id="estop" class="estop" type="button" aria-label="Emergency stop">E-STOP</button><span class="kbd hide-s">Space</span></div>
+  </div>
+  <div class="topconfirm" id="topconfirm"></div>
+  <div class="rnote" id="rnote" role="status" hidden></div>
+</header>
+<nav class="side" id="side" aria-label="Pages"></nav>
+<main id="main" tabindex="-1"></main>
+<footer class="dock" id="dock" aria-label="Control bar"></footer>
+<footer class="statusbar" id="statusbar" aria-label="Status bar"></footer>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="/ui/app.js"></script>
+<script src="/ui/icons.js"></script>
+<script src="/ui/kit.js"></script>
+<script src="/ui/remote.js"></script>
+<script src="/ui/shell.js"></script>
+<script src="/ui/dock.js"></script>
+<script src="/ui/pages-dashlive.js"></script>
+<script src="/ui/pages-dashboard.js"></script>
+<script src="/ui/pages-session.js"></script>
+<script src="/ui/pages-view3d.js"></script>
+<script src="/ui/pages-log.js"></script>
+<script src="/ui/pages-safety.js"></script>
+<script src="/ui/pages-tuning.js"></script>
+<script src="/ui/pages-fleet.js"></script>
+<script src="/ui/pages-locomotion.js"></script>
+<script src="/ui/pages-extensions.js"></script>
+<script src="/ui/pages-users.js"></script>
+<script src="/ui/pages-settings.js"></script>
+<script src="/ui/pages-robots.js"></script>
+<script src="/ui/pages-topics.js"></script>
+<script src="/ui/pages-help.js"></script>
+</body>
+</html>

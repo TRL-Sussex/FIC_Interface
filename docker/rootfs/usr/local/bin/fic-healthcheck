@@ -1,0 +1,4 @@
+#!/bin/sh
+# Docker HEALTHCHECK: in browser mode the desktop page must be served.
+[ "${FIC_DISPLAY:-vnc}" = "vnc" ] || exit 0
+exec curl --noproxy "*" -fsS -o /dev/null --max-time 4 "http://127.0.0.1:${NOVNC_PORT:-6080}/vnc.html"

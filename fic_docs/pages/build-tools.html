@@ -1,0 +1,240 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Build Tools</div>
+<h1>Build Tools</h1>
+<p class="subtitle">Compile the ROS 2 workspace from the GUI or terminal.</p>
+
+<h2>In-App Build Dialogs</h2>
+<p>All build operations run in a modal build dialog (<code>fic_studio.widgets.BuildDialog</code>) with live
+output (ANSI colour codes stripped), an elapsed timer, and a Cancel button that kills the build process.
+No external terminal windows are spawned. On failure the dialog stays open so you can read the log.</p>
+<table>
+  <tr><th>Button</th><th>Command</th><th>Where</th></tr>
+  <tr><td><strong>Rebuild Workspace</strong> (Ctrl+B)</td><td><code>colcon build --symlink-install</code></td><td><a href="#settings" onclick="showPage('settings')">Settings</a> &rarr; Developer card &rarr; Build row</td></tr>
+  <tr><td><strong>Rebuild Package&hellip;</strong></td><td><code>colcon build --symlink-install --packages-select &lt;pkg&gt;</code></td><td>Settings &rarr; Developer (picker lists directories under <code>fic_ws/src</code>)</td></tr>
+  <tr><td><strong>Clean Rebuild</strong></td><td><code>rm -rf build install log</code> then <code>colcon build --symlink-install</code></td><td>Settings &rarr; Developer (asks for confirmation first)</td></tr>
+  <tr><td><strong>COMPILE DRIVER</strong></td><td><code>build_command</code> run in <code>build_directory</code> from <code>robots_config.yaml</code></td><td><a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a> page</td></tr>
+  <tr><td><strong>Install API</strong></td><td><code>python3 -m pip install --break-system-packages -e &lt;FIC_ROOT&gt;/fic_api</code></td><td><a href="#script-editor" onclick="showPage('script-editor')">Script Editor</a> toolbar</td></tr>
+</table>
+<p>Workspace builds run in the workspace path shown in Settings (editable via the Browse button next to it);
+by default this resolves to <code>fic_ws</code> under the repository root. The clean step of Clean Rebuild runs
+as a blocking pre-command with a 120&nbsp;s timeout before <code>colcon</code> starts.</p>
+
+<svg viewBox="0 0 700 330" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="Build entry points and dialogs">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#buildtools-arrowhead); }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+  </style>
+  <defs>
+    <marker id="buildtools-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+  </defs>
+
+  <text x="350" y="18" class="label-title">Build entry points and dialogs</text>
+
+  <!-- Entry points container -->
+  <rect x="20" y="35" width="220" height="280" class="container"/>
+  <text x="130" y="50" class="label-bold">Entry points</text>
+
+  <rect x="35" y="65" width="190" height="50" class="box box-blue"/>
+  <text x="130" y="82" class="label-bold">Settings &rarr; Developer</text>
+  <text x="130" y="99" class="label-sm">Rebuild Workspace / Package / Clean</text>
+
+  <rect x="35" y="125" width="190" height="50" class="box box-orange"/>
+  <text x="130" y="142" class="label-bold">Robot Config</text>
+  <text x="130" y="159" class="label-sm">COMPILE DRIVER (per-robot)</text>
+
+  <rect x="35" y="185" width="190" height="50" class="box box-purple"/>
+  <text x="130" y="202" class="label-bold">Script Editor</text>
+  <text x="130" y="219" class="label-sm">Install API (fic_api)</text>
+
+  <rect x="35" y="245" width="190" height="55" class="box box-grey"/>
+  <text x="130" y="263" class="label-bold">First launch</text>
+  <text x="130" y="281" class="label-code">fic_install/fic-control-studio.sh</text>
+
+  <!-- Dialogs -->
+  <rect x="300" y="95" width="170" height="70" class="box box-green"/>
+  <text x="385" y="115" class="label-bold">BuildDialog (in-app)</text>
+  <text x="385" y="132" class="label-code">fic_studio/widgets.py</text>
+  <text x="385" y="149" class="label-sm">live output &middot; timer &middot; Cancel</text>
+
+  <rect x="300" y="230" width="170" height="70" class="box box-green"/>
+  <text x="385" y="250" class="label-bold">Standalone dialog</text>
+  <text x="385" y="267" class="label-code">fic_install/build_gui.py</text>
+  <text x="385" y="284" class="label-sm">exit 0 ok &middot; 1 fail &middot; 2 cancel &middot; 3 no GUI</text>
+
+  <!-- Shell -->
+  <rect x="520" y="130" width="160" height="105" class="box box-teal"/>
+  <text x="600" y="150" class="label-bold">bash -c &lt;command&gt;</text>
+  <text x="600" y="172" class="label-code">colcon build --symlink-install</text>
+  <text x="600" y="190" class="label-code">cmake / make (driver)</text>
+  <text x="600" y="208" class="label-code">pip install -e fic_api</text>
+  <text x="600" y="225" class="label-sm">optional pre-command: rm -rf &hellip;</text>
+
+  <!-- Arrows -->
+  <path class="arrow" d="M 225 90 C 270 90, 270 110, 300 115"/>
+  <path class="arrow" d="M 225 150 C 265 150, 265 135, 300 132"/>
+  <path class="arrow" d="M 225 210 C 265 210, 265 155, 300 150"/>
+  <path class="arrow" d="M 225 272 L 300 268"/>
+  <path class="arrow" d="M 470 130 C 495 128, 495 150, 520 155"/>
+  <path class="arrow" d="M 470 265 C 500 262, 500 220, 520 210"/>
+</svg>
+
+<h2>Manual Build from Terminal</h2>
+<pre><code># Source ROS 2
+source /opt/ros/jazzy/setup.bash    # or humble/kilted
+
+# Navigate to workspace (adjust if the repo lives elsewhere)
+cd ~/FIC_Interface/fic_ws
+
+# Build everything
+colcon build --symlink-install
+
+# Build a single package
+colcon build --symlink-install --packages-select fic_studio
+
+# Clean and rebuild
+rm -rf build install log
+colcon build --symlink-install
+
+# Source the workspace after building
+source install/setup.bash</code></pre>
+
+<div class="admonition tip"><div class="adm-title">Repo location</div>
+<p><code>~/FIC_Interface</code> is only a convention. The Studio resolves the project root by walking up from
+its own install location, and you can override it with the <code>FIC_ROOT</code> environment variable
+(see <code>fic_studio/config.py</code>). All paths below use <code>~/FIC_Interface</code> as the example root.</p></div>
+
+<h2>First-Launch Auto-Build</h2>
+<p>The desktop launchers <code>fic_install/fic-control-studio.sh</code> and <code>fic-dev-console.sh</code>
+build the workspace automatically if <code>fic_ws/install/setup.bash</code> is missing. They try a chain of
+progress UIs in order:</p>
+<table>
+  <tr><th>Order</th><th>UI</th><th>Requires</th></tr>
+  <tr><td>1</td><td>PyQt5 dialog (<code>build_gui.py</code>)</td><td>PyQt5</td></tr>
+  <tr><td>2</td><td>tkinter dialog (<code>installer_gui.py</code>)</td><td>tkinter</td></tr>
+  <tr><td>3</td><td><code>zenity --progress</code></td><td>zenity</td></tr>
+  <tr><td>4</td><td>Plain terminal <code>colcon build</code></td><td>&mdash;</td></tr>
+</table>
+<p><code>build_gui.py</code> can also be run by hand:
+<code>python3 fic_install/build_gui.py &lt;work_dir&gt; &lt;command&gt; [--title T] [--pre-command CMD]</code>.
+Exit codes: 0 success, 1 failed, 2 cancelled, 3 GUI could not start. On success it auto-closes after
+2&nbsp;seconds; failures stay open. The launcher auto-detects the ROS distro from <code>$ROS_DISTRO</code>
+or the newest entry in <code>/opt/ros/</code>. See <a href="#installation" onclick="showPage('installation')">Installation</a>.</p>
+
+<h2>Compiling Robot Drivers</h2>
+<p>Each robot in <code>fic_library/config/robots_config.yaml</code> can define a <code>build_directory</code>
+and <code>build_command</code> (edit them in Robot Configuration &rarr; Edit &rarr; Build tab). The
+<strong>COMPILE DRIVER</strong> button runs the command in that directory inside a build dialog;
+multi-line commands are joined with <code>&amp;&amp;</code>. Template variables <code>{robot_lib}</code>
+(the <code>robot_library</code> directory) and <code>{robot_name}</code> are substituted first. If the
+build directory does not exist you are offered to create it.</p>
+<pre><code># Franka FR3 (shipped defaults)
+build_directory: '{robot_lib}/libfranka/build'
+build_command:   cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/opt/openrobots .. &amp;&amp; cmake --build .
+
+# Kinova Gen3 (shipped defaults)
+build_directory: '{robot_lib}/Kinova/api_cpp/examples'
+build_command:   ./scripts/build-gcc.sh</code></pre>
+
+<h2>Manual Process Launch Commands</h2>
+<p>These are the commands that the GUI toolbar buttons execute (see
+<a href="#processes" onclick="showPage('processes')">Processes</a>). Use them in a terminal if you prefer manual control or
+need to debug. <code>&lt;sid&gt;</code> is the station id (1 for a single-robot setup).</p>
+
+<h3>MuJoCo Simulation (SIM button)</h3>
+<pre><code>source ~/FIC_Interface/fic_ws/install/setup.bash
+ros2 launch mujoco_native simulation_launch.py robot_name:=Franka_FR3 station_id:=1</code></pre>
+<p>The simulator runs on the <code>mujoco</code> Python wheel, so no library path is needed (add
+<code>headless:=true</code> for no viewer). When the Newton (GPU) backend is
+selected in Settings, the GUI launches <code>mujoco_newton</code> instead:</p>
+<pre><code>ros2 launch mujoco_newton simulation_launch.py robot_name:=Franka_FR3 station_id:=1</code></pre>
+<p>The GUI captures simulator output to <code>/tmp/fic_sim_&lt;pkg&gt;_&lt;timestamp&gt;.log</code> (the path is
+printed in the <a href="#log-viewer" onclick="showPage('log-viewer')">Logs</a>) &mdash; check it if the SIM button toggles
+on but no window appears. If <code>mujoco_newton</code> is not built
+(<code>fic_ws/install/mujoco_newton</code> missing) the GUI logs a warning and falls back to the CPU simulator
+(<code>mujoco_native</code>). See <a href="#simulation" onclick="showPage('simulation')">Simulation</a> for backend details.</p>
+
+<h3>FIC Simulation Controller (FIC button, simulation mode)</h3>
+<pre><code>source ~/FIC_Interface/fic_ws/install/setup.bash
+ros2 launch fic_simulation fic_launch.py robot_name:=Franka_FR3 num_joints:=7 \
+    station_id:=1 source_prefix:=robot1_simulation</code></pre>
+<p><code>source_prefix</code> selects the joint-state source: <code>robot&lt;sid&gt;_simulation</code> for the
+simulator, or <code>vr</code> when driven by the VR relay.</p>
+
+<h3>FIC Hardware Controller (FIC button, hardware mode)</h3>
+<pre><code>source ~/FIC_Interface/fic_ws/install/setup.bash
+ros2 launch fic_hardware robot_control_launch.py robot_name:=Franka_FR3 station_id:=1</code></pre>
+
+<h3>Robot Driver / API (API button)</h3>
+<p>The driver command is configured per robot in <code>robots_config.yaml</code> under
+<code>driver_command</code> (Robot Configuration &rarr; Edit &rarr; File Paths tab). Template variables
+<code>{robot_lib}</code> and <code>{robot_name}</code> are replaced automatically, and the GUI exports
+<code>FIC_ROOT</code> into the driver's environment. Shipped defaults:</p>
+<pre><code># Franka FR3:
+cd {robot_lib}/libfranka/build &amp;&amp; ./examples/cartesian_impedance_control 172.16.0.2
+
+# Kinova Gen3:
+cd {robot_lib}/Kinova/api_cpp/examples/build-gcc-release &amp;&amp; ./01-torque-control_00-Torque_Controller</code></pre>
+<p>Driver stdout is streamed into the GUI log panel (consecutive identical lines are collapsed into a
+&ldquo;repeated &times;N&rdquo; entry). If the driver exits on its own, the log shows
+<code>Driver exited (code N)</code> and the API button resets so you can restart it.</p>
+
+<h3>ROS Bag Recording (BAG button)</h3>
+<p>The GUI records into <code>&lt;FIC_ROOT&gt;/experiments/bags/</code> with an auto-incremented session
+name (<code>YYYY_MM_DD_session_NNN</code>):</p>
+<pre><code>source ~/FIC_Interface/fic_ws/install/setup.bash
+ros2 bag record -a -o ~/FIC_Interface/experiments/bags/$(date +%Y_%m_%d)_session_001</code></pre>
+
+<h3>Bag Replay (REP button)</h3>
+<p>Replays the bag recorded in this session, or the most recent bag in <code>experiments/bags</code>.
+Recording must be stopped first.</p>
+<pre><code>source ~/FIC_Interface/fic_ws/install/setup.bash
+ros2 bag play ~/FIC_Interface/experiments/bags/2026_04_12_session_001</code></pre>
+
+<h3>Plotter (PLT button)</h3>
+<pre><code>source ~/FIC_Interface/fic_ws/install/setup.bash
+ros2 run fic_simulation plotter_node.py --ros-args -p station_id:=1 -p num_joints:=7</code></pre>
+
+<h3>FIC Control Studio GUI</h3>
+<pre><code>source ~/FIC_Interface/fic_ws/install/setup.bash
+ros2 run fic_studio fic_studio_pro       # Full Studio
+ros2 run fic_studio fic_dev              # Dev Console</code></pre>
+
+<h2>Symlink Install</h2>
+<p>The <code>--symlink-install</code> flag creates symlinks instead of copying files for Python packages.
+This means you can edit Python source files and see changes immediately without rebuilding &mdash;
+only C++ packages require a rebuild after code changes.</p>
+
+<div class="admonition warning"><div class="adm-title">Newton backend needs both pip and colcon</div>
+<p>The Newton GPU backend has two halves: the pip packages (<code>newton</code>, <code>mujoco-warp</code>,
+<code>warp-lang</code>, <code>pyglet</code> &mdash; installed by <code>fic_install/install-deps.sh</code> as
+<code>newton[sim,importers]</code> when an NVIDIA GPU is detected) and the <code>mujoco_newton</code> ROS
+package, which must be built with <code>colcon build</code>. If either is missing, the SIM button silently
+falls back to the CPU simulator with a warning in the log.</p></div>
+
+<h2>Troubleshooting Builds</h2>
+<table>
+  <tr><th>Problem</th><th>Fix</th></tr>
+  <tr><td>Build fails with missing header</td><td>Install the missing system dependency via <code>apt</code> (or re-run <code>fic_install/install-deps.sh</code>)</td></tr>
+  <tr><td>Build fails with <code>empy</code> error</td><td><code>pip install empy==3.3.4</code> (v4.x breaks colcon)</td></tr>
+  <tr><td>Package not found after build</td><td>Run <code>source install/setup.bash</code> after building</td></tr>
+  <tr><td>Stale build artefacts</td><td>Use Clean Rebuild (deletes build/install/log folders)</td></tr>
+  <tr><td>Build succeeds but changes not visible</td><td>For C++ changes, rebuild. For Python with symlink-install, restart the node.</td></tr>
+  <tr><td>Newton selected but MuJoCo starts</td><td><code>colcon build --packages-select mujoco_newton</code>, then restart the sim</td></tr>
+  <tr><td>SIM button on, no simulator window</td><td>Read <code>/tmp/fic_sim_*.log</code> (path is logged when the sim starts)</td></tr>
+  <tr><td>Rebuild buttons point at wrong workspace</td><td>Fix the workspace path in <a href="#settings" onclick="showPage('settings')">Settings</a> (Browse button)</td></tr>
+</table>
+<p>For runtime issues see <a href="#troubleshooting" onclick="showPage('troubleshooting')">Troubleshooting</a>.</p>

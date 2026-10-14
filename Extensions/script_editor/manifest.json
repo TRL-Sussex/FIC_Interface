@@ -1,0 +1,12 @@
+{
+  "id": "script_editor",
+  "name": "Script Editor",
+  "description": "Python editor with a robot API namespace (move_joints, move_cartesian, set_gripper, get_trajectory, generic topic subscription, etc.).",
+  "sidebar_icon": "𓆗",
+  "sidebar_section": "Programming",
+  "web": {
+    "page": "page.js",
+    "css": "page.css",
+    "poll_ms": 300
+  }
+}

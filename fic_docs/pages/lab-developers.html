@@ -1,0 +1,65 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Working with Lab Robots</div>
+<h1>Working with Lab Robots from Your Own Machine</h1>
+<p class="subtitle">Run your own Studio as a Master, start a lab robot, and drive it with your own code &mdash; without changing FIC itself.</p>
+
+<h2>Overview</h2>
+<p>In a lab set up as in <a href="#multi-pc-setup" onclick="showPage('multi-pc-setup')">Multi-PC Lab Setup</a>, every robot PC runs the lab's FIC Studio, which is kept on the lab branch. You do not change that. Instead:</p>
+<ol>
+  <li>you run <strong>your own Studio as a Master</strong> on your own machine;</li>
+  <li>from its <a href="#multi-robot" onclick="showPage('multi-robot')">Multi-Robot</a> page you <strong>start a robot</strong> and watch it;</li>
+  <li><strong>your code</strong> (an FIC API script, an extension, your own ROS node) commands that robot over the network.</li>
+</ol>
+<p>Changes to FIC itself go through a pull request into the lab branch, not onto the robots.</p>
+
+<h2>1. Set up your machine</h2>
+<ul>
+  <li>Install FIC as usual (<a href="#installation" onclick="showPage('installation')">Installation (Linux)</a>).</li>
+  <li>Connect to the lab network the robots are on.</li>
+  <li>Use the lab's ROS domain, in the environment your Studio and scripts start in (for example <code>~/.bashrc</code>):
+<pre><code>export ROS_DOMAIN_ID=&lt;the lab's domain&gt;</code></pre></li>
+  <li>In the Studio toolbar, set <strong>Robot</strong> to <strong>Master</strong>. Every Master gets topics of its own, so any number of people can do this at once, and your own simulations never reach a lab robot.</li>
+</ul>
+<div class="admonition warning"><div class="adm-title">Before the first run</div>
+<p>A Studio that has never been configured starts as <strong>Robot&nbsp;1</strong>. On the lab's domain that is a real robot's station. Choose Master, or run with a different <code>ROS_DOMAIN_ID</code> until you have.</p></div>
+<p>For work that does not need the lab robots, use a ROS domain of your own (any number the lab does not use): your simulations and tests are then invisible to the lab and the lab to you.</p>
+
+<h2>2. Start a robot and watch it</h2>
+<p>Open <strong>Multi-Robot</strong>. Every Studio on the network has a card.</p>
+<ul>
+  <li><strong>Start &#9662; &rarr; Simulation</strong> or <strong>Hardware&hellip;</strong> starts that robot's session. The robot's own Studio does it, with the same checks as its web remote. The card shows the answer.</li>
+  <li><strong>Drive</strong> points your control bar and extensions at that robot. Its state then comes to you from the robot's <em>light feed</em> (below).</li>
+  <li><strong>Web</strong> opens the robot's web remote.</li>
+  <li><strong>Commanded by</strong> on each robot card lists every Studio, script and ROS node that can move it &mdash; so everyone can see who is driving what.</li>
+  <li><strong>E-STOP ALL</strong> stops every robot on the network.</li>
+</ul>
+
+<h2>3. Drive it with your own code</h2>
+<p>Everything FIC does to a robot goes through its <code>robotN_*</code> topics (<a href="#topics" onclick="showPage('topics')">Topics</a>). From your machine, the FIC API is the simplest way:</p>
+<pre><code>from fic_api import Robot
+
+r = Robot(target='simulation', robot_id=2, state='lite', node_name='alice_grasp')
+print(r.get_current_joints())
+r.move_joints([0, -30, 0, -90, 0, 60, 0])
+r.close()</code></pre>
+<table>
+  <tr><th>Argument</th><th>Meaning</th></tr>
+  <tr><td><code>robot_id</code></td><td>The robot's station number.</td></tr>
+  <tr><td><code>state='lite'</code></td><td>Read the robot's <strong>light feed</strong>: its state at 50&nbsp;Hz, republished by its Studio on <code>/robotN_lite/joint_states</code> and <code>/robotN_lite/ee_pose</code>. Use it on any machine other than the robot's own PC; the full state is 1&nbsp;kHz on several topics, too much over wifi.</td></tr>
+  <tr><td><code>node_name</code></td><td>Give it a recognisable name: with your script's name and host it appears in the robot's <em>Commanded by</em>.</td></tr>
+</table>
+<p>Your own ROS nodes can publish to the same topics and read the light feed the same way. Extensions in your Master Studio work on a driven robot like on a local one.</p>
+
+<h2>Rules</h2>
+<ul>
+  <li>Your code talks to robots only through their topics. Do not edit FIC on a robot PC: the lab keeps it on the lab branch, and local edits are discarded at the next update.</li>
+  <li>One robot, one driver at a time: check <em>Commanded by</em> before you start, and stop your script when you are done.</li>
+  <li>Start on simulation. Before hardware, make sure the area around the arm is clear &mdash; and remember each robot's own E-stop is the primary stop; stops over the network are a convenience.</li>
+</ul>
+
+<h2>Troubleshooting</h2>
+<table>
+  <tr><th>Symptom</th><th>Check</th></tr>
+  <tr><td>No robots on the Multi-Robot page</td><td>Same network and <code>ROS_DOMAIN_ID</code> as the lab? See <em>When Studios do not see each other</em> in <a href="#multi-pc-setup" onclick="showPage('multi-pc-setup')">Multi-PC Lab Setup</a>.</td></tr>
+  <tr><td>Your script reads zeros</td><td>Is the robot's session running (its card says <em>running</em> or <em>live</em>)? With <code>state='lite'</code>, the robot's Studio must be up.</td></tr>
+  <tr><td>A red warning about a station</td><td>Two Studios claim one station &mdash; usually a fresh install still on Robot&nbsp;1. Set it to Master.</td></tr>
+</table>

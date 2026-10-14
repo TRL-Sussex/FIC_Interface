@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Documentation
+Comment=The FIC Studio documentation
+Exec=fic docs
+Icon=help-browser
+Terminal=false
+Categories=Science;Robotics;

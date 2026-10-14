@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=FIC Dev Console
+Comment=The lightweight FIC console
+Exec=fic dev
+Icon=utilities-system-monitor
+Terminal=false
+Categories=Science;Robotics;

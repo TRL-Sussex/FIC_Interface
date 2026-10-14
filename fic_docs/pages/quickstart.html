@@ -1,0 +1,115 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Quick Start</div>
+<h1>Quick Start Guide</h1>
+<p>This page gets you from a built workspace to a moving simulated robot in a few minutes, then covers the hardware paths. If you have not built the workspace yet, do <a href="#installation" onclick="showPage('installation')">Installation</a> first.</p>
+
+<h2>Launching the Studio</h2>
+<p>Three equivalent ways to start the Full Studio:</p>
+<table>
+  <tr><th>Method</th><th>How</th></tr>
+  <tr><td>Desktop entry</td><td>Super &rarr; search <strong>FIC Control Studio</strong> (installed by <code>fic_install/install-desktop-entry.sh</code>)</td></tr>
+  <tr><td>Launcher script</td><td><code>bash &lt;FIC_Interface&gt;/fic_install/fic-control-studio.sh</code> &mdash; auto-sources ROS 2, builds the workspace if needed, then launches</td></tr>
+  <tr><td>Direct</td><td><code>source fic_ws/install/setup.bash &amp;&amp; ros2 run fic_studio fic_studio_pro</code></td></tr>
+</table>
+<p>The lightweight <strong>FIC Dev Console</strong> has matching entries: desktop search &ldquo;FIC Dev Console&rdquo;, <code>fic-dev-console.sh</code>, or <code>ros2 run fic_studio fic_dev</code>.</p>
+
+<h3>First-launch wizard</h3>
+<p>On the very first launch, a 4-step setup wizard opens: pick your primary robot, verify the workspace (checks <code>src/</code>, <code>fic_library</code>, <code>config.xml</code>, <code>robots_config.yaml</code>, <code>install/</code>, <code>setup.bash</code>), optionally run a test launch (MuJoCo + FIC controller + <code>/trajectory_data</code> check), and choose what to open first. To re-run it later, set <code>general: wizard_completed: false</code> in <code>~/.robot_selector_gui_settings.yaml</code>.</p>
+
+<h2>Simulation (Full Studio)</h2>
+<ol>
+  <li>Launch <strong>FIC Control Studio</strong></li>
+  <li>Select a robot from the toolbar dropdown (e.g. <strong>Franka_FR3</strong>)</li>
+  <li>In the toolbar <strong>Target</strong> selector, pick <strong>Simulation</strong></li>
+  <li>Click <strong>&#9654; Start</strong> &mdash; the MuJoCo simulator launches, and the FIC controller auto-starts 2&nbsp;seconds later. The <em>SIM</em> and <em>FIC</em> status-bar LEDs turn green.</li>
+  <li>Open <strong>&#9650; Joint</strong> on the control bar, pick a control mode from the menu &mdash; <strong>Mode 2 (Joint Impedance With Planner)</strong> is the safest first motion &mdash; and use the joint fields or <strong>Home</strong> button, then <strong>&#9654; Send command</strong> (or tick <em>Live publish</em>)</li>
+  <li>Open the <strong>Tuning Panel</strong> to adjust FIC parameters in real time</li>
+</ol>
+<div class="admonition tip"><div class="adm-title">Sequencing is automatic</div><p>The single Start button handles ordering for you: simulator first, FIC controller 2&nbsp;s later. Clicking Start again stops both. The Target selector and robot dropdowns lock while a session is running &mdash; stop first to switch.</p></div>
+<p>The simulator output is logged to <code>/tmp/fic_sim_&lt;backend&gt;_&lt;timestamp&gt;.log</code>; if the simulator dies during startup, the studio surfaces the last log lines in an error dialog. The default backend is the CPU MuJoCo simulator (<code>mujoco_native</code>); an optional Newton GPU backend can be selected in <em>Settings &rarr; Simulation</em> (see <a href="#simulation" onclick="showPage('simulation')">Simulation</a>). Newton&rsquo;s first launch JIT-compiles CUDA kernels, so its startup health check waits 8&nbsp;s instead of 2&nbsp;s.</p>
+
+<svg viewBox="0 0 700 265" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="Toolbar ▶ Start — what it launches per Target">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#quickstart-arrowhead); }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+  </style>
+  <defs>
+    <marker id="quickstart-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+  </defs>
+  <text x="350" y="16" class="label-title">Toolbar &#9654; Start &mdash; what it launches per Target</text>
+
+  <rect x="20" y="105" width="120" height="56" class="box box-orange"/>
+  <text x="80" y="126" class="label-bold">&#9654; Start</text>
+  <text x="80" y="143" class="label-sm">toolbar button</text>
+
+  <rect x="170" y="36" width="510" height="94" class="container"/>
+  <text x="238" y="50" class="label-sm">Target = Simulation</text>
+  <rect x="190" y="62" width="200" height="52" class="box box-blue"/>
+  <text x="290" y="79" class="label-bold">MuJoCo simulator</text>
+  <text x="290" y="97" class="label-code">mujoco simulation_launch.py</text>
+  <rect x="460" y="62" width="200" height="52" class="box box-green"/>
+  <text x="560" y="79" class="label-bold">FIC controller (sim)</text>
+  <text x="560" y="97" class="label-code">fic_simulation fic_launch.py</text>
+  <path d="M 390 88 L 460 88" class="arrow"/>
+  <text x="425" y="76" class="label-sm">+2 s auto</text>
+
+  <rect x="170" y="140" width="510" height="94" class="container"/>
+  <text x="235" y="154" class="label-sm">Target = Hardware</text>
+  <rect x="190" y="166" width="200" height="52" class="box box-teal"/>
+  <text x="290" y="183" class="label-bold">Vendor driver (API)</text>
+  <text x="290" y="201" class="label-code">driver_command (Robot Config)</text>
+  <rect x="460" y="166" width="200" height="52" class="box box-green"/>
+  <text x="560" y="183" class="label-bold">FIC controller (hw)</text>
+  <text x="560" y="201" class="label-code">fic_hardware robot_control_launch.py</text>
+  <path d="M 390 192 L 460 192" class="arrow"/>
+  <text x="425" y="180" class="label-sm">+2 s auto</text>
+
+  <path d="M 140 118 C 165 118, 160 88, 190 88" class="arrow"/>
+  <path d="M 140 148 C 165 148, 160 192, 190 192" class="arrow"/>
+  <text x="350" y="252" class="label-sm">Clicking &#9632; Stop tears down both processes of the active target. VR target starts the VR relay instead.</text>
+</svg>
+
+<h2>Hardware (Full Studio)</h2>
+<ol>
+  <li>Select your robot, set <strong>Target</strong> to <strong>Hardware</strong>, and click <strong>&#9654; Start</strong></li>
+  <li>The vendor driver (Franka/Kinova API) starts first; the FIC hardware controller auto-starts 2&nbsp;seconds later</li>
+  <li>Use the <strong>control bar</strong> (Hardware target) for joint/Cartesian/gripper commands</li>
+  <li>Safety limits from <a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a> are enforced automatically &mdash; see <a href="#safety" onclick="showPage('safety')">Safety</a></li>
+</ol>
+<p>The driver command comes from <em>Robot Configuration &rarr; Edit &rarr; File Paths &rarr; Driver Command</em> (placeholders <code>{robot_lib}</code> and <code>{robot_name}</code> are expanded). If none is configured, Start shows a dialog pointing you there. Driver stdout is streamed into the <a href="#log-viewer" onclick="showPage('log-viewer')">log panel</a>; if the driver exits on a fault you get a <em>&ldquo;Driver exited (code N)&rdquo;</em> warning and can click Start again.</p>
+<div class="admonition danger"><div class="adm-title">Safety First</div><p>Start with low stiffness. Keep E-STOP (<code>Space</code>) accessible. Test in simulation first &mdash; work through the <a href="#first-motion" onclick="showPage('first-motion')">First Motion checklist</a> before powering a real arm.</p></div>
+
+<h2>Hardware (Dev Console)</h2>
+<p>Use this on a PC next to the real robot for direct control or as a teleop follower. Unlike the Full Studio, the Dev Console keeps separate toolbar buttons for each process.</p>
+<ol>
+  <li>Launch <strong>FIC Dev Console</strong> (Super &rarr; search &ldquo;FIC Dev Console&rdquo;)</li>
+  <li>Select the robot from the toolbar dropdown</li>
+  <li>Click <strong>&#9654; API</strong> (or <code>F9</code>) to start the vendor driver</li>
+  <li>Click <strong>&#9654; FIC</strong> (or <code>F8</code>) to start the hardware controller</li>
+  <li>Select a control mode from the toolbar <strong>Mode</strong> dropdown and click <strong>Send</strong></li>
+  <li>Use the <strong>Control</strong> tab to send joint/Cartesian/gripper commands</li>
+  <li>For teleoperation, switch to the <strong>Teleoperation</strong> tab and click <strong>START TELEOP</strong></li>
+</ol>
+<div class="admonition tip"><div class="adm-title">See the full guide</div><p><a href="#dev-console" onclick="showPage('dev-console')">FIC Dev Console</a> has detailed instructions for both direct control and teleoperation workflows.</p></div>
+
+<h2>Where next</h2>
+<ul>
+  <li><a href="#first-motion" onclick="showPage('first-motion')">First Motion checklist</a> &mdash; layer-by-layer validation before touching hardware</li>
+  <li><a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a> &mdash; what modes 1&ndash;8 do and when to use each</li>
+  <li><a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Simulation vs Hardware</a> &mdash; what changes between the two targets</li>
+  <li><a href="#troubleshooting" onclick="showPage('troubleshooting')">Troubleshooting</a> &mdash; if a process won&rsquo;t start or the arm doesn&rsquo;t move</li>
+</ul>

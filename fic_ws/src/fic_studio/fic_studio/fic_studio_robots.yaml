@@ -1,0 +1,351 @@
+version: '1.0'
+robots:
+  Franka_FR3:
+    display_name: Franka FR3
+    num_joints: 7
+    joint_names:
+    - fr3_joint1
+    - fr3_joint2
+    - fr3_joint3
+    - fr3_joint4
+    - fr3_joint5
+    - fr3_joint6
+    - fr3_joint7
+    urdf_path: menagerie/model/Franka_FR3/URDF/Franka_FR3.urdf
+    mujoco_xml_path: menagerie/model/Franka_FR3/xml/scene.xml
+    ee_frame_name: ee_link
+    elbow_frame_name: fr3_link4
+    default_ee_target:
+      position:
+      - 0.4709
+      - -0.0136
+      - 0.6
+      orientation:
+      - -1.0
+      - 0.0
+      - 0.0
+      - 0.0
+    q_home_deg:
+    - -9.0
+    - -16.6
+    - 5.5
+    - -126.2
+    - 5.4
+    - 110.7
+    - 44.0
+    q_home_rad:
+    - -0.15707963267948966
+    - -0.2897246558310587
+    - 0.09599310885968812
+    - -2.202605516016844
+    - 0.0942477796076938
+    - 1.932079481957723
+    - 0.767944870877505
+    joint_limits_deg:
+      lower:
+      - -166.0
+      - -101.0
+      - -166.0
+      - -190.0
+      - -166.0
+      - -20.0
+      - -130.0
+      upper:
+      - 166.0
+      - 101.0
+      - 166.0
+      - -6.0
+      - 166.0
+      - 280.0
+      - 130.0
+    joint_torque_limits:
+      min:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      max:
+      - 30.0
+      - 30.0
+      - 30.0
+      - 30.0
+      - 9.0
+      - 9.0
+      - 9.0
+    torque_sign: -1
+    gravity_compensated: false
+    wrench_gravity_compensated: false
+    wrench_from_api: true
+    admittance_deadbands:
+      joint_tau: 1.5
+      joint_tau_per_joint:
+      - 2.3
+      - 2.5
+      - 1.8
+      - 2.4
+      - 1.2
+      - 0.5
+      - 0.5
+      cart_force: 4.0
+      cart_torque: 0.2
+    has_gripper: true
+    gripper_range:
+    - 0.0
+    - 0.08
+    is_supported: true
+    driver_command: cd {robot_lib}/libfranka/build && ./examples/cartesian_impedance_control
+      172.16.0.2
+    build_directory: '{robot_lib}/libfranka/build'
+    build_command: cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/opt/openrobots
+      .. &&  cmake --build .
+    safety_zones:
+      cartesian:
+        x:
+          min: -1.0
+          max: 1.0
+          enabled: false
+        y:
+          min: -1.0
+          max: 1.0
+          enabled: false
+        z:
+          min: 0.0
+          max: 1.5
+          enabled: false
+      joint_safety_deg:
+        lower: []
+        upper: []
+        enabled: false
+      velocity:
+        max_joint_vel: 1.0
+        max_cart_vel: 0.5
+        enabled: true
+    kinematics_solver: pinocchio
+  KinovaGen3_7DOF:
+    display_name: Kinova Gen3 7DOF
+    num_joints: 7
+    joint_names:
+    - Actuator1
+    - Actuator2
+    - Actuator3
+    - Actuator4
+    - Actuator5
+    - Actuator6
+    - Actuator7
+    urdf_path: menagerie/model/KinovaGen3_7DOF/URDF/KinovaGen3_7DOF.urdf
+    urdf_path_gripper: menagerie/model/KinovaGen3_7DOF/URDF/KinovaGen3_7DOF_gripper.urdf
+    mujoco_xml_path: menagerie/model/KinovaGen3_7DOF/xml/scene.xml
+    ee_frame_name: ee_link
+    elbow_frame_name: ForeArm_Link
+    default_ee_target:
+      position:
+      - 0.456
+      - 0.0
+      - 0.418
+      orientation:
+      - 0.5
+      - 0.5
+      - 0.5
+      - 0.5
+    q_home_deg:
+    - 0.0
+    - 15.0
+    - -180.0
+    - -129.8
+    - 0.0
+    - 59.6
+    - 90.0
+    sim_start_at_home: true
+    q_home_rad:
+    - 0.0
+    - 0.2617993877991494
+    - -3.141592653589793
+    - -2.26543736908864
+    - 0.0
+    - 1.0402162341886205
+    - 1.5707963267948966
+    joint_limits_deg:
+      lower:
+      - -360.0
+      - -131.0
+      - -360.0
+      - -150.0
+      - -360.0
+      - -122.0
+      - -360.0
+      upper:
+      - 360.0
+      - 131.0
+      - 360.0
+      - 150.0
+      - 360.0
+      - 122.0
+      - 360.0
+    joint_torque_limits:
+      min:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      max:
+      - 39.0
+      - 39.0
+      - 39.0
+      - 39.0
+      - 9.0
+      - 9.0
+      - 9.0
+    torque_sign: 1
+    gravity_compensated: false
+    wrench_gravity_compensated: false
+    wrench_from_api: false
+    admittance_gravity_feedforward: true
+    admittance_deadbands:
+      joint_tau: 2.0
+      cart_force: 4.0
+      cart_torque: 0.2
+    has_gripper: true
+    gripper_range:
+    - 0.0
+    - 0.085
+    is_supported: true
+    driver_command: cd {robot_lib}/Kinova/api_cpp/examples/build-gcc-release && ./01-torque-control_00-Torque_Controller
+    build_directory: '{robot_lib}/Kinova/api_cpp/examples'
+    build_command: ./scripts/build-gcc.sh
+    safety_zones:
+      cartesian:
+        x:
+          min: -1.0
+          max: 1.0
+          enabled: false
+        y:
+          min: -1.0
+          max: 1.0
+          enabled: false
+        z:
+          min: 0.0
+          max: 1.5
+          enabled: false
+      joint_safety_deg:
+        lower:
+        - -360.0
+        - -124.0
+        - -360.0
+        - -143.0
+        - -360.0
+        - -115.0
+        - -360.0
+        upper:
+        - 360.0
+        - 124.0
+        - 360.0
+        - 143.0
+        - 360.0
+        - 115.0
+        - 360.0
+        enabled: true
+      velocity:
+        max_joint_vel: 1.0
+        # Simulation only: a weaker joint velocity damper (L/v) so large moves converge.
+        sim_max_joint_vel: 3.0
+        max_cart_vel: 0.5
+        enabled: true
+    kinematics_solver: pinocchio
+  IIWA_14:
+    display_name: KUKA iiwa 14
+    num_joints: 7
+    joint_names:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    urdf_path: menagerie/model/IIWA_14/URDF/IIWA_14.urdf
+    mujoco_xml_path: menagerie/model/IIWA_14/XML/scene.xml
+    ee_frame_name: iiwa_link_ee
+    elbow_frame_name: iiwa_link_4
+    default_ee_target:
+      position:
+      - 0.4
+      - 0.0
+      - 0.6
+      orientation:
+      - 0.0
+      - 0.707
+      - 0.707
+      - 0.0
+    q_home_deg:
+    - 0.0
+    - 0.0
+    - 0.0
+    - -90.0
+    - 0.0
+    - 90.0
+    - 0.0
+    joint_limits_deg:
+      lower:
+      - -170
+      - -120
+      - -170
+      - -120
+      - -170
+      - -120
+      - -175
+      upper:
+      - 170
+      - 120
+      - 170
+      - 120
+      - 170
+      - 120
+      - 175
+    has_gripper: false
+    gripper_range:
+    - 0.0
+    - 0.0
+    admittance_deadbands:
+      joint_tau: 1.5
+      cart_force: 4.0
+      cart_torque: 0.2
+  Pendulum:
+    display_name: Simple Pendulum
+    num_joints: 1
+    joint_names:
+    - Actuator1
+    urdf_path: menagerie/model/Pendulum/URDF/Pendulum.urdf
+    mujoco_xml_path: menagerie/model/Pendulum/xml/pendulum.xml
+    ee_frame_name: ee_link
+    elbow_frame_name: ''
+    default_ee_target:
+      position:
+      - 0.0
+      - 0.0
+      - -1.0
+      orientation:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+    q_home_deg:
+    - 0.0
+    joint_limits_deg:
+      lower:
+      - -180
+      upper:
+      - 180
+    has_gripper: false
+    gripper_range:
+    - 0.0
+    - 0.0
+    admittance_deadbands:
+      joint_tau: 1.5
+      cart_force: 4.0
+      cart_torque: 0.2

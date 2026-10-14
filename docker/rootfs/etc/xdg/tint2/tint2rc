@@ -1,0 +1,93 @@
+# Taskbar of the FIC Studio desktop: launchers, open windows, clock.
+
+# ── Backgrounds (referred to by number, in order) ──
+# 1: panel
+rounded = 0
+border_width = 0
+background_color = #1e1b18 100
+border_color = #000000 0
+# 2: window button
+rounded = 4
+border_width = 0
+background_color = #3a332d 100
+border_color = #000000 0
+# 3: active window button
+rounded = 4
+border_width = 1
+background_color = #4a4038 100
+border_color = #e8a33d 70
+
+# ── Panel ──
+panel_items = LTSC
+panel_size = 100% 36
+panel_margin = 0 0
+panel_padding = 6 3 6
+panel_background_id = 1
+panel_position = bottom center horizontal
+panel_layer = top
+panel_monitor = all
+panel_dock = 0
+wm_menu = 1
+autohide = 0
+strut_policy = follow_size
+panel_window_name = tint2
+disable_transparency = 1
+font_shadow = 0
+
+# ── Launchers ──
+launcher_padding = 2 2 6
+launcher_background_id = 0
+launcher_icon_size = 26
+launcher_icon_theme = Adwaita
+launcher_tooltip = 1
+launcher_item_app = /usr/share/applications/fic-control-studio.desktop
+launcher_item_app = /usr/share/applications/fic-dev-console.desktop
+launcher_item_app = /usr/share/applications/fic-terminal.desktop
+launcher_item_app = /usr/share/applications/fic-files.desktop
+launcher_item_app = /usr/share/applications/fic-docs.desktop
+
+# ── Open windows ──
+taskbar_mode = single_desktop
+taskbar_padding = 6 2 4
+taskbar_background_id = 0
+taskbar_active_background_id = 0
+taskbar_name = 0
+task_icon = 1
+task_text = 1
+task_centered = 0
+task_maximum_size = 240 30
+task_padding = 6 3 6
+task_font = Ubuntu 10
+task_font_color = #f2ece4 90
+task_active_font_color = #ffffff 100
+task_iconified_font_color = #a89f94 80
+task_background_id = 2
+task_active_background_id = 3
+task_urgent_background_id = 3
+task_iconified_background_id = 2
+mouse_left = toggle_iconify
+mouse_middle = none
+mouse_right = close
+mouse_scroll_up = toggle
+mouse_scroll_down = iconify
+
+# ── System tray ──
+systray_padding = 0 4 2
+systray_background_id = 0
+systray_sort = ascending
+systray_icon_size = 22
+
+# ── Clock ──
+time1_format = %H:%M
+time1_font = Ubuntu Bold 10
+clock_font_color = #f2ece4 90
+clock_padding = 8 0
+clock_background_id = 0
+
+# ── Tooltips ──
+tooltip_show_timeout = 0.3
+tooltip_hide_timeout = 0.1
+tooltip_padding = 6 4
+tooltip_background_id = 2
+tooltip_font_color = #f2ece4 100
+tooltip_font = Ubuntu 10

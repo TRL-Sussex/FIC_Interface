@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Terminal
+Comment=A terminal with ROS 2 and the FIC workspace set up
+Exec=fic terminal
+Icon=utilities-terminal
+Terminal=false
+Categories=Science;Robotics;

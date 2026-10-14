@@ -1,0 +1,350 @@
+#!/usr/bin/env bash
+#
+# fic-state: keep the Studio's own saves across container updates.
+#
+# Most of what the Studio saves lives in the home folder, which is a volume
+# and survives on its own. A few things are written inside the workspace in
+# /opt/fic, which belongs to the image and is replaced when the image is
+# updated:
+#
+#   * the robot list, tuning and controller configs
+#       fic_ws/src/fic_studio/fic_studio/fic_studio_robots.yaml
+#       fic_library/config/robots_config.yaml, fic_library/config/config.xml
+#   * robots added with "Add a robot"     fic_ws/src/menagerie/model/<RobotID>/
+#   * extensions made in the Studio       Extensions/<id>/
+#
+# `save` copies whatever differs from the image into ~/.fic_state, and
+# `restore` (run when a container starts) puts it back. Files the user has not
+# changed are not kept, so image updates to them still come through.
+#
+# When an image update changes a file the user also edited, the user's
+# version is kept and the image's is put next to it in ~/.fic_state
+# (<file>.from-new-image), with a note in the log and in `status`. When an
+# image starts shipping a robot or extension with the same name as one the
+# user made, the image's is used and the user's is kept in
+# ~/.fic_state/<kind>.replaced-by-image/.
+#
+#   fic-state save [--quiet]   copy changes to ~/.fic_state
+#   fic-state restore          put saved changes back into the workspace
+#   fic-state status           list what is saved
+#   fic-state reset            forget saved changes; back to the image's files
+#
+# Also on restore: every folder with a manifest.json in ~/FIC_Studio/extensions
+# is linked into the Studio's Extensions folder, so extensions written on the
+# host appear in the Studio (after a restart of the Studio).
+#
+# Safety: nothing saved is ever deleted because a restore failed. Items that
+# could not be restored are listed in ~/.fic_state/.restore-failed and left
+# alone by `save` until a later restore succeeds.
+
+set -eo pipefail
+
+# Run as the Studio's user, never as root (`docker exec` defaults to root).
+# (Once only: in root-ID mode fic itself is UID 0. gosu also sets HOME.)
+if [ "$(id -u)" = "0" ] && id fic >/dev/null 2>&1 && [ -z "${FIC_AS_ROOT:-}${FIC_REEXEC:-}" ]; then
+    FIC_REEXEC=1 exec gosu fic "$0" "$@"
+fi
+
+ROOT="${FIC_ROOT:-/opt/fic}"
+STATE="${FIC_STATE_DIR:-${HOME}/.fic_state}"
+
+# One fic-state at a time (the periodic save, the save on stop, a manual run).
+# The lock lives outside STATE, which `reset` deletes.
+exec 9>>"${STATE}.lock"
+flock 9
+PRISTINE=/etc/fic/pristine
+USER_EXT="${HOME}/FIC_Studio/extensions"
+FAILED_LIST="${STATE}/.restore-failed"
+# In the container's own filesystem: present once this container's workspace
+# has been restored, so a restart of the same container (docker start) does
+# not put older saved copies over newer edits.
+RESTORED_MARK="${ROOT}/.fic-state-restored"
+
+TRACKED_FILES=(
+    fic_ws/src/fic_studio/fic_studio/fic_studio_robots.yaml
+    fic_library/config/robots_config.yaml
+    fic_library/config/config.xml
+)
+KINDS=("fic_ws/src/menagerie/model:models:models.txt" "Extensions:extensions:extensions.txt")
+
+quiet=0
+say() { [ "${quiet}" = 1 ] || echo "[fic-state] $*"; }
+warn() { echo "[fic-state] WARNING: $*"; }
+
+in_list() { grep -qxF -- "$1" "$2" 2>/dev/null; }
+checksum() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1; }
+failed_before() { in_list "$1" "${FAILED_LIST}"; }
+
+# A temporary name next to $1, hidden (leading dot) so that nothing mistakes
+# a leftover for a real robot or extension.
+tmp_name() { echo "$(dirname "$1")/.$(basename "$1").tmp.$$"; }
+
+# Copy file $1 to $2 all-or-nothing. Kept group-writable, like the workspace.
+copy_file() {
+    local tmp
+    tmp="$(tmp_name "$2")"
+    mkdir -p "$(dirname "$2")" \
+        && cp -p "$1" "${tmp}" && chmod g+w "${tmp}" && mv -f "${tmp}" "$2" \
+        || { rm -f "${tmp}"; return 1; }
+}
+
+# Mirror folder $1 to $2 all-or-nothing: $2 is replaced only once the copy
+# is complete.
+copy_dir() {
+    local tmp
+    tmp="$(tmp_name "$2")"
+    rm -rf "${tmp}"
+    mkdir -p "$(dirname "$2")" && cp -a "$1" "${tmp}" \
+        || { rm -rf "${tmp}"; return 1; }
+    rm -rf "$2" && mv -T "${tmp}" "$2" || { rm -rf "${tmp}"; return 1; }
+}
+
+# Folders in $ROOT/$1 that are not in the image (listed in $2) and are real
+# directories, not links to the user's shared folder.
+added_dirs() {
+    local d name
+    for d in "${ROOT}/$1"/*/; do
+        d="${d%/}"
+        [ -d "${d}" ] && [ ! -L "${d}" ] || continue
+        name="$(basename "${d}")"
+        in_list "${name}" "$2" && continue
+        # Hidden and scratch folders (imports in progress, caches).
+        case "${name}" in .*|_*) continue ;; esac
+        echo "${name}"
+    done
+}
+
+# ─────────────────────────────────────────────────────────────────── save ───
+do_save() {
+    local rel
+    # Only once this container's restore has completed: before that, the
+    # workspace does not hold the saved changes, and saving it would drop them.
+    if [ ! -e "${RESTORED_MARK}" ]; then
+        [ "${quiet}" = 1 ] || warn "not saving: the saved changes were not restored into this container (run: fic-state restore)"
+        return 0
+    fi
+    # Temporary copies left by an interrupted run (only fic-state's own).
+    find "${STATE}" -regextype posix-extended -regex '.*/\.[^/]+\.tmp\.[0-9]+' -mmin +10 \
+         -prune -exec rm -rf {} + 2>/dev/null || true
+    for rel in "${TRACKED_FILES[@]}"; do
+        [ -f "${ROOT}/${rel}" ] || continue
+        # Not restored in this container: the workspace does not hold the
+        # user's version, so neither drop nor overwrite the saved one.
+        failed_before "files/${rel}" && continue
+        if cmp -s "${ROOT}/${rel}" "${PRISTINE}/files/${rel}"; then
+            rm -f "${STATE}/files/${rel}" "${STATE}/files/${rel}.image-sha256" \
+                  "${STATE}/files/${rel}.from-new-image"
+        elif ! cmp -s "${ROOT}/${rel}" "${STATE}/files/${rel}"; then
+            if copy_file "${ROOT}/${rel}" "${STATE}/files/${rel}"; then
+                # The image version this edit was made against. Kept while an
+                # unresolved newer image version is waiting next to it.
+                if [ ! -f "${STATE}/files/${rel}.from-new-image" ]; then
+                    checksum "${PRISTINE}/files/${rel}" > "${STATE}/files/${rel}.image-sha256"
+                fi
+                say "saved ${rel}"
+            else
+                warn "could not save ${rel}"
+            fi
+        fi
+    done
+
+    local kind
+    for kind in "${KINDS[@]}"; do
+        IFS=: read -r dir sub list <<< "${kind}"
+        save_added_dirs "${dir}" "${sub}" "${PRISTINE}/${list}"
+    done
+}
+
+# $1 workspace folder, $2 name under $STATE, $3 list of the image's folders
+save_added_dirs() {
+    local name saved
+    declare -A present=()
+    while IFS= read -r name; do
+        [ -n "${name}" ] || continue
+        present["${name}"]=1
+        failed_before "$2/${name}" && continue
+        if ! diff -rq "${ROOT}/$1/${name}" "${STATE}/$2/${name}" >/dev/null 2>&1; then
+            if copy_dir "${ROOT}/$1/${name}" "${STATE}/$2/${name}"; then
+                say "saved $1/${name}"
+            else
+                warn "could not save $1/${name}"
+            fi
+        fi
+    done < <(added_dirs "$1" "$3")
+
+    # Deleted in the Studio: forget it here too. Never for items whose
+    # restore failed, names the image now ships, or links.
+    for saved in "${STATE}/$2"/*; do
+        [ -d "${saved}" ] && [ ! -L "${saved}" ] || continue
+        name="$(basename "${saved}")"
+        case "${name}" in .*) continue ;; esac
+        [ -n "${present[${name}]:-}" ] && continue
+        failed_before "$2/${name}" && continue
+        in_list "${name}" "$3" && continue
+        rm -rf -- "${saved}"
+        say "removed $1/${name}"
+    done
+}
+
+# ──────────────────────────────────────────────────────────────── restore ───
+do_restore() {
+    # The same container started again: its workspace is newer than any
+    # saved copy. Save it instead of overwriting it.
+    if [ -e "${RESTORED_MARK}" ]; then
+        do_save
+        link_user_extensions
+        return
+    fi
+
+    mkdir -p "${STATE}"
+    : > "${FAILED_LIST}.new"
+    local rel failed=0
+    for rel in "${TRACKED_FILES[@]}"; do
+        [ -f "${STATE}/files/${rel}" ] || continue
+        # Saved copy identical to what this image ships: nothing to keep.
+        if cmp -s "${STATE}/files/${rel}" "${PRISTINE}/files/${rel}"; then
+            rm -f "${STATE}/files/${rel}" "${STATE}/files/${rel}.image-sha256" \
+                  "${STATE}/files/${rel}.from-new-image"
+            continue
+        fi
+        if ! copy_file "${STATE}/files/${rel}" "${ROOT}/${rel}"; then
+            warn "could not restore ${rel}"
+            echo "files/${rel}" >> "${FAILED_LIST}.new"; failed=1; continue
+        fi
+        say "restored ${rel}"
+        # The image's version changed since the user edited theirs.
+        local base
+        base="$(cat "${STATE}/files/${rel}.image-sha256" 2>/dev/null || true)"
+        if [ -n "${base}" ] && [ "${base}" != "$(checksum "${PRISTINE}/files/${rel}")" ]; then
+            if cp "${PRISTINE}/files/${rel}" "${STATE}/files/${rel}.from-new-image"; then
+                say "NOTE: this image has a newer ${rel}; your edited version is kept."
+                say "      The image's version is ~/.fic_state/files/${rel}.from-new-image."
+                say "      To use it instead:  cp ~/.fic_state/files/${rel}.from-new-image ${ROOT}/${rel}"
+            fi
+        fi
+    done
+
+    local kind dir sub list saved name
+    for kind in "${KINDS[@]}"; do
+        IFS=: read -r dir sub list <<< "${kind}"
+        for saved in "${STATE}/${sub}"/*; do
+            [ -d "${saved}" ] && [ ! -L "${saved}" ] || continue
+            name="$(basename "${saved}")"
+            case "${name}" in .*) continue ;; esac
+            # The image now ships its own with this name: use the image's and
+            # keep the user's out of the way.
+            if in_list "${name}" "${PRISTINE}/${list}"; then
+                mkdir -p "${STATE}/${sub}.replaced-by-image"
+                rm -rf "${STATE}/${sub}.replaced-by-image/${name}"
+                mv -T "${saved}" "${STATE}/${sub}.replaced-by-image/${name}"
+                say "NOTE: this image has its own ${dir}/${name}; your version is kept in"
+                say "      ~/.fic_state/${sub}.replaced-by-image/${name}"
+                continue
+            fi
+            if copy_dir "${saved}" "${ROOT}/${dir}/${name}"; then
+                say "restored ${dir}/${name}"
+            else
+                warn "could not restore ${dir}/${name}"
+                echo "${sub}/${name}" >> "${FAILED_LIST}.new"; failed=1
+            fi
+        done
+    done
+
+    mv -f "${FAILED_LIST}.new" "${FAILED_LIST}"
+    [ -s "${FAILED_LIST}" ] || rm -f "${FAILED_LIST}"
+    touch "${RESTORED_MARK}" 2>/dev/null || true
+    link_user_extensions || failed=1
+    return "${failed}"
+}
+
+link_user_extensions() {
+    local d name target
+    # Links left by an earlier run whose folder has since gone.
+    for d in "${ROOT}/Extensions"/*; do
+        if [ -L "${d}" ] && [ ! -e "${d}" ]; then rm -f "${d}"; fi
+    done
+    [ -d "${USER_EXT}" ] || return 0
+    for d in "${USER_EXT}"/*/; do
+        [ -f "${d}manifest.json" ] || continue
+        name="$(basename "${d}")"
+        target="${ROOT}/Extensions/${name}"
+        if [ -e "${target}" ] && [ ! -L "${target}" ]; then
+            # shellcheck disable=SC2088  # "~/" is meant literally, for the reader
+            if in_list "${name}" "${PRISTINE}/extensions.txt"; then
+                warn "~/FIC_Studio/extensions/${name} has the name of a built-in extension; rename its folder"
+            else
+                warn "~/FIC_Studio/extensions/${name} has the name of an extension made in the Studio; rename one of them"
+            fi
+            continue
+        fi
+        if ln -sfn "${d%/}" "${target}"; then
+            say "linked your extension ${name}"
+        else
+            warn "could not link your extension ${name}"
+        fi
+    done
+}
+
+# ───────────────────────────────────────────────────────── status, reset ───
+do_status() {
+    local found=0 f d kind sub
+    if [ -d "${STATE}/files" ]; then
+        while IFS= read -r f; do
+            f="${f#"${STATE}/files/"}"
+            if [ -f "${STATE}/files/${f}.from-new-image" ]; then
+                echo "  ${f}   (the image has a newer version: ~/.fic_state/files/${f}.from-new-image)"
+            else
+                echo "  ${f}"
+            fi
+            found=1
+        done < <(find "${STATE}/files" -type f ! -name '.*' ! -name '*.image-sha256' \
+                      ! -name '*.from-new-image' | sort)
+    fi
+    for kind in "${KINDS[@]}"; do
+        IFS=: read -r _ sub _ <<< "${kind}"
+        for d in "${STATE}/${sub}"/*/; do
+            [ -d "${d}" ] || continue
+            echo "  ${sub}/$(basename "${d}")"
+            found=1
+        done
+        for d in "${STATE}/${sub}.replaced-by-image"/*/; do
+            [ -d "${d}" ] || continue
+            echo "  ${sub}/$(basename "${d}")   (not used: the image has its own; kept in ${sub}.replaced-by-image)"
+            found=1
+        done
+    done
+    if [ -s "${FAILED_LIST}" ]; then
+        echo "  Could not be restored in this container (kept as saved):"
+        sed 's/^/    /' "${FAILED_LIST}"
+        found=1
+    fi
+    [ "${found}" = 1 ] || echo "  nothing saved: the workspace matches the image"
+}
+
+do_reset() {
+    local rel name kind dir sub list
+    rm -rf "${STATE}"
+    for rel in "${TRACKED_FILES[@]}"; do
+        if [ -f "${PRISTINE}/files/${rel}" ]; then
+            copy_file "${PRISTINE}/files/${rel}" "${ROOT}/${rel}" || warn "could not reset ${rel}"
+        fi
+    done
+    for kind in "${KINDS[@]}"; do
+        IFS=: read -r dir sub list <<< "${kind}"
+        while IFS= read -r name; do
+            rm -rf -- "${ROOT:?}/${dir}/${name}"
+        done < <(added_dirs "${dir}" "${PRISTINE}/${list}")
+    done
+    say "back to the image's robot configuration. Restart the Studio to load it."
+}
+
+action="${1:-status}"
+[ "${2:-}" = "--quiet" ] && quiet=1
+
+case "${action}" in
+    save)    do_save ;;
+    restore) do_restore ;;
+    status)  echo "Saved in ${STATE}:"; do_status ;;
+    reset)   do_reset ;;
+    *)       sed -n '3,38p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

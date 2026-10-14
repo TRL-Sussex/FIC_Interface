@@ -1,0 +1,9 @@
+# IKRequest.srv
+
+# Request
+geometry_msgs/Pose pose
+---
+# Response
+bool success
+float64[] joint_positions
+

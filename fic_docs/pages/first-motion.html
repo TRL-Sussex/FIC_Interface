@@ -1,0 +1,169 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">›</span> First Motion Checklist</div>
+<h1>Your First Motion — Validation Checklist</h1>
+<p class="subtitle">Run through this page the first time you use FIC Control Studio on a new machine, a new robot, or after a rebuild. It tells you, in order, <em>how to know</em> each layer of the stack is actually working before the next one goes live.</p>
+
+<div class="admonition danger"><div class="adm-title">Do the simulation pass first</div>
+<p>Never skip straight to hardware on a new setup. If simulation Modes 1, 2, and 5 don't behave correctly, hardware will misbehave in the same way — just with a real arm attached. See <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Simulation vs Hardware</a> for what does and doesn't transfer.</p></div>
+
+<h2>Phase 0 — Environment sanity (once per machine)</h2>
+<ol>
+  <li><strong>ROS 2 sourced.</strong> In a fresh terminal, <code>ros2 --help</code> should succeed without activation. If not, your <code>~/.bashrc</code> isn't sourcing <code>/opt/ros/$ROS_DISTRO/setup.bash</code>. (The launcher script auto-detects and sources the newest distro under <code>/opt/ros/</code> itself, but your own terminals still need it for debugging.)</li>
+  <li><strong>Workspace built.</strong> <code>cd ~/FIC_Interface/fic_ws &amp;&amp; colcon build --symlink-install</code> finishes without errors. <code>--symlink-install</code> matters: the controller reads its tuning from the installed <code>share/fic_simulation/config/config.xml</code>, which is a symlink back to <code>fic_library/config/config.xml</code> only when you build this way — otherwise Tuning-panel saves need a rebuild to reach the controller.</li>
+  <li><strong>GUI launches.</strong> Run <code>bash ~/FIC_Interface/fic_install/fic-control-studio.sh</code> and confirm the main window appears. On the very first launch the setup wizard opens automatically (Welcome → Verify Workspace → Test Your Setup → Setup Complete); accept the defaults for now. See <a href="#installation" onclick="showPage('installation')">Installation</a>.</li>
+  <li><strong>Status LEDs.</strong> The bottom status bar shows LEDs labelled <em>ROS2</em>, <em>FIC</em>, <em>SIM</em>, <em>BAGS</em> and <em>TELEOP</em>. ROS2 goes green as soon as the GUI's node is up; FIC and SIM stay idle until you launch those processes in Phase 1.</li>
+</ol>
+
+<h2>Phase 1 — Simulation baseline</h2>
+<ol>
+  <li><strong>Pick the correct robot.</strong> Toolbar robot dropdown → the robot you intend to validate (<em>Franka_FR3</em>, <em>KinovaGen3_7DOF</em>, <em>IIWA_14</em> or <em>Pendulum</em>). The robot name selects the URDF, the MJCF scene and the <code>config.xml</code> section; everything downstream breaks silently if this is wrong. The dropdown locks while a session is running.</li>
+  <li><strong>Launch the simulation session.</strong> In the toolbar set <strong>Target</strong> to <em>Simulation</em> and click <strong>▶ Start</strong>. This launches the MuJoCo simulation node (a 3D viewer window opens with the robot in its home pose) and auto-starts the FIC controller about 2 s later. The SIM and FIC status LEDs turn green. Equivalent menu items: <em>Simulation → Launch Sim + FIC</em> (<code>F7</code>), or individually <em>Toggle Simulation</em> (<code>F5</code>) and <em>Toggle FIC Controller</em> (<code>F6</code>).</li>
+  <li><strong>Select a test mode.</strong> Open the <a href="#control-panel" onclick="showPage('control-panel')">Control Panel</a> and click the <strong>Joint Planner</strong> mode tab (Mode 2, <em>Joint Impedance With Planner</em>). Clicking a mode tab publishes immediately — there is no separate "send mode" step. On engage the controller snaps its targets to the robot's current state, so the arm holds position instead of jumping.</li>
+  <li><strong>Verify the robot holds against perturbation.</strong> In the MuJoCo viewer, double-click a link to select it, then hold <code>Ctrl</code> and right-drag to pull it (Ctrl + left-drag applies a rotation), and release. The arm should recover to its target under FIC control. If it collapses or drifts, the controller isn't actually running — see the debugging tip below.</li>
+  <li><strong>Test a commanded motion.</strong> In the joint target fields, increase J4 by +10° and click <strong>▶ Send command</strong> (or tick <em>Live publish</em> to stream edits as you type). The arm should ramp smoothly to the new pose. No overshoot, no oscillation.</li>
+  <li><strong>Watch the planner output.</strong> Click <strong>▶ PLT</strong> in the toolbar to launch the live plotter (<code>ros2 run fic_simulation plotter_node.py</code>). It plots per-joint <em>current</em> vs dashed <em>target</em> curves from <code>robot1_trajectory_data</code>; they should converge within about a second. For raw values you can also watch the topic in the <a href="#topic-monitor" onclick="showPage('topic-monitor')">Topic Monitor</a>. If <em>current</em> never reaches <em>target</em>, check the planner's <em>Vel Desired</em> field in the <a href="#tuning" onclick="showPage('tuning')">Tuning panel</a>.</li>
+</ol>
+
+<svg viewBox="0 0 700 340" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="Simulation session — what to check at each hop">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-left { text-anchor: start; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#firstmotion-arrowhead); }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+  </style>
+  <defs>
+    <marker id="firstmotion-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+  </defs>
+  <text x="350" y="20" class="label-title">Simulation session — what to check at each hop</text>
+
+  <rect x="30" y="50" width="170" height="80" class="box box-blue"/>
+  <text x="115" y="70" class="label-bold">FIC Control Studio</text>
+  <text x="115" y="88" class="label-sm">control bar · joint fields</text>
+  <text x="115" y="104" class="label-sm">Safety page · E-STOP</text>
+
+  <rect x="270" y="50" width="170" height="80" class="box box-green"/>
+  <text x="355" y="70" class="label-bold">FIC controller</text>
+  <text x="355" y="88" class="label-sm">fic_simulation node</text>
+  <text x="355" y="104" class="label-sm">1 kHz loop, reads config.xml</text>
+
+  <rect x="510" y="50" width="160" height="80" class="box box-orange"/>
+  <text x="590" y="70" class="label-bold">MuJoCo sim</text>
+  <text x="590" y="88" class="label-sm">3D viewer window</text>
+  <text x="590" y="104" class="label-sm">joint_states ~1 kHz</text>
+
+  <line x1="200" y1="90" x2="270" y2="90" class="arrow"/>
+  <circle cx="235" cy="76" r="9" fill="#fff" stroke="#666"/>
+  <text x="235" y="76" class="label-sm">1</text>
+
+  <line x1="440" y1="75" x2="510" y2="75" class="arrow"/>
+  <circle cx="475" cy="61" r="9" fill="#fff" stroke="#666"/>
+  <text x="475" y="61" class="label-sm">2</text>
+
+  <line x1="510" y1="110" x2="440" y2="110" class="arrow"/>
+  <circle cx="475" cy="124" r="9" fill="#fff" stroke="#666"/>
+  <text x="475" y="124" class="label-sm">3</text>
+
+  <rect x="270" y="180" width="170" height="55" class="box box-purple"/>
+  <text x="355" y="198" class="label-bold">Plotter (▶ PLT)</text>
+  <text x="355" y="216" class="label-sm">current vs target per joint</text>
+
+  <line x1="355" y1="130" x2="355" y2="180" class="arrow"/>
+  <circle cx="371" cy="155" r="9" fill="#fff" stroke="#666"/>
+  <text x="371" y="155" class="label-sm">4</text>
+
+  <circle cx="46" cy="262" r="9" fill="#fff" stroke="#666"/>
+  <text x="46" y="262" class="label-sm">1</text>
+  <text x="62" y="262" class="label-code label-left">robot1_mode_select · robot1_control_mode · robot1_desired_joint_angles</text>
+
+  <circle cx="46" cy="284" r="9" fill="#fff" stroke="#666"/>
+  <text x="46" y="284" class="label-sm">2</text>
+  <text x="62" y="284" class="label-code label-left">robot1_simulation/actuators_cmds — the computed FIC torques</text>
+
+  <circle cx="46" cy="306" r="9" fill="#fff" stroke="#666"/>
+  <text x="46" y="306" class="label-sm">3</text>
+  <text x="62" y="306" class="label-code label-left">robot1_simulation/joint_states — robot state back to the controller (~1 kHz)</text>
+
+  <circle cx="46" cy="328" r="9" fill="#fff" stroke="#666"/>
+  <text x="46" y="328" class="label-sm">4</text>
+  <text x="62" y="328" class="label-code label-left">robot1_trajectory_data — telemetry to plotter, Dashboard and Topic Monitor</text>
+</svg>
+
+<div class="admonition tip"><div class="adm-title">Sanity check for Mode 1</div>
+<p>Mode 1 (<em>Joint Impedance</em>) has <strong>no velocity damping</strong> — commanding it as your first test can mask other problems because oscillation looks like a controller bug. Use Mode 2 for the first motion; drop to Mode 1 only once Mode 2 is clean. See <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>.</p></div>
+
+<div class="admonition tip"><div class="adm-title">If nothing moves: where the logs are</div>
+<p>The simulation subprocess writes to <code>/tmp/fic_sim_&lt;package&gt;_&lt;timestamp&gt;.log</code> (the exact path is printed in the <a href="#log-viewer" onclick="showPage('log-viewer')">Logs</a> when the sim starts). If the sim dies during startup, Studio flips the Start button back and prints the last log lines automatically. On the Newton backend (Settings → Simulation) the first launch JIT-compiles GPU kernels for several seconds — Studio waits 8 s before declaring it dead, so give it time. See <a href="#simulation" onclick="showPage('simulation')">Simulation</a>.</p></div>
+
+<h2>Phase 2 — Tuning sanity</h2>
+<ol>
+  <li><strong>Open the <a href="#tuning" onclick="showPage('tuning')">Tuning panel</a>.</strong> Confirm the parameters for the mode you just tested load without warnings in the log. Joint modes show per-joint stiffness <em>K₀</em>, <em>Error Max</em> breakpoints, <em>Force Max</em> ceilings and the planner group (<em>Vel Desired</em>, <em>Damping Ratio</em>).</li>
+  <li><strong>Nudge stiffness.</strong> Halve <em>K₀</em> for one joint, and click <strong>SAVE TO XML</strong> — the save tells the controller to read <code>config.xml</code> again, and it switches to the new values a few tens of milliseconds later without leaving the mode. The arm should feel visibly softer on the next commanded motion. Restore the value when done.</li>
+  <li><strong>Break it on purpose.</strong> Set an obviously-too-high <em>K₀</em>; the joint should oscillate on the next motion. This confirms the Tuning panel actually reaches the running controller — if it doesn't, you built without <code>--symlink-install</code> (see Phase 0).</li>
+</ol>
+
+<h2>Phase 3 — Cartesian baseline</h2>
+<ol>
+  <li><strong>Switch to Mode 5.</strong> Click the <strong>Cart Imp</strong> tab (<em>Cartesian Impedance</em>). The control area rebuilds from joint fields to EE pose fields automatically.</li>
+  <li><strong>Hold the EE pose.</strong> Don't command anything — the controller snapped the Cartesian target to the current EE pose on engage, so just confirm the arm holds it. Perturb a mid-chain link in the viewer; the EE should recover but the elbow may "swim" in the null space.</li>
+  <li><strong>Enable postural.</strong> In the Control Panel's <em>Null-space</em> row, tick <strong>Postural</strong>. Perturb the elbow again — it should return to the IK-preferred configuration without the EE moving noticeably. (The row also has <strong>Elbow</strong>, <strong>Hapfic</strong> and <strong>Admittance Planner</strong> toggles; Postural and Elbow both work in every Cartesian mode, the admittance Modes 7/8 included. See <a href="#hapfic" onclick="showPage('hapfic')">Hapfic</a>.)</li>
+  <li><strong>Commanded EE step.</strong> Offset the Cartesian target by 5 cm in one axis and click <strong>▶ Send command</strong>. The EE should move smoothly, not jump.</li>
+</ol>
+
+<h2>Phase 4 — Pre-hardware checklist</h2>
+<p>Do every item on this list before powering a real robot.</p>
+<ul>
+  <li>☐ Phases 1–3 above all pass <em>on this machine</em> for <em>this robot</em>.</li>
+  <li>☐ <strong>E-Stop works.</strong> In simulation, press <code>Space</code> (or the toolbar <strong>■ E-STOP</strong> button). Studio commands a graceful <em>Stop Controller</em> ramp to every active robot, waits ~250 ms for the torque ramp-down, then kills all Studio-launched processes (with an OS-level <code>pkill</code> backstop for the hardware controllers). The status label reads <em>E-STOP ACTIVE - ALL PROCESSES KILLED</em>. See <a href="#estop" onclick="showPage('estop')">Emergency Stop</a>.</li>
+  <li>☐ <strong>Safety limits set and ENABLED.</strong> Open the sidebar <strong>Safety</strong> page (or Robot Config → <em>Safety Zones</em> tab) and set joint, velocity and Cartesian-zone limits that match your physical cell. Per-robot zones ship <em>disabled</em> in <code>fic_studio_robots.yaml</code> — tick their enable boxes. Limits are published on <code>robot{N}_safety/cartesian_limits</code>, <code>…/joint_limits</code> and <code>…/velocity_limits</code>; the C++ control loop enforces them (virtual-wall force at Cartesian bounds, joint-target clamping, out-of-zone target rejection), and the GUI runs a 10 Hz check that commands a graceful stop if the robot is actually past a limit. See <a href="#safety" onclick="showPage('safety')">Safety</a>.</li>
+  <li>☐ <strong>You know where the physical E-Stop is.</strong> Within arm's reach of wherever you'll be standing.</li>
+  <li>☐ <strong>Low stiffness for first motion.</strong> Halve the <em>K₀</em> values that Phase 2 validated. You can ramp back up once the arm tracks cleanly.</li>
+  <li>☐ <strong>Nobody in the workspace.</strong> Clear the robot's full reach envelope, not just the current target.</li>
+  <li>☐ <strong>Vendor driver tested.</strong> Start the driver alone (menu <em>Simulation → Toggle Robot Driver</em>, <code>F9</code> — do <em>not</em> use the combined ▶ Start yet) and confirm gravity compensation holds the arm without drift. The driver command per robot lives in Robot Config → <em>File Paths</em> (e.g. the libfranka <code>cartesian_impedance_control</code> example for Franka_FR3, the Kortex torque-control example for KinovaGen3_7DOF).</li>
+</ul>
+
+<h2>Phase 5 — First hardware motion</h2>
+<ol>
+  <li><strong>Start the vendor driver.</strong> <code>F9</code> (as validated in Phase 4). Wait until joint positions appear on <code>robot1_q_current</code> in the <a href="#topic-monitor" onclick="showPage('topic-monitor')">Topic Monitor</a>.</li>
+  <li><strong>Start the FIC hardware controller.</strong> <code>F8</code> (<em>Simulation → Toggle Controller</em>). It starts passive — no mode is engaged, the arm is held only by the driver's gravity compensation and should sag slightly. (Once you trust the pair, toolbar Target = <em>Hardware</em> + <strong>▶ Start</strong> launches driver-then-controller in one click.)</li>
+  <li><strong>Engage Mode 2 with zero delta.</strong> Click the <em>Joint Planner</em> tab without commanding a new target. The controller snaps its target to the current pose on engage, so the arm should hold; joint errors in the plotter should be near zero.</li>
+  <li><strong>Command a small motion.</strong> One joint, 5° change, then <strong>▶ Send command</strong>. Watch the physical arm and the <code>robot1_trajectory_data</code> plot — they should track within the bandwidth your stiffness allows.</li>
+  <li><strong>Scale up gradually.</strong> Larger angles, then multi-joint, then Cartesian. Never skip directly to haptic / admittance modes (3, 4, 7, 8) on a new setup.</li>
+</ol>
+
+<div class="admonition warning"><div class="adm-title">Red flag behaviours</div>
+<ul>
+  <li><strong>Arm oscillates on mode engage.</strong> Stiffness too high for the damping available. Drop <em>K₀</em>; use Mode 2 over Mode 1.</li>
+  <li><strong>Arm drifts slowly in one direction.</strong> Gravity model mismatch — check the URDF payload / tool mass in <a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a>.</li>
+  <li><strong>Arm jumps right after entering a mode.</strong> The controller snaps targets to the current state on engage, so a jump means a stale or streaming target arrived immediately afterwards — untick <em>Live publish</em>, and check nothing else (script, gamepad, teleop) is publishing targets.</li>
+  <li><strong>Joint torques saturate at rest.</strong> <em>K₀</em> much too high, or your error is larger than the last <code>error_max</code> breakpoint (FIC is in its final saturation stage even near zero commanded delta). See <a href="#glossary" onclick="showPage('glossary')">Glossary → Saturation stage</a>.</li>
+</ul>
+</div>
+
+<h2>Launch shortcuts reference</h2>
+<table>
+  <thead><tr><th>Key</th><th>Action</th></tr></thead>
+  <tbody>
+    <tr><td><code>F5</code></td><td>Toggle MuJoCo simulation</td></tr>
+    <tr><td><code>F6</code></td><td>Toggle FIC controller (simulation)</td></tr>
+    <tr><td><code>F7</code></td><td>Launch Sim + FIC together (same as toolbar ▶ Start with Target = Simulation)</td></tr>
+    <tr><td><code>F8</code></td><td>Toggle FIC controller (hardware)</td></tr>
+    <tr><td><code>F9</code></td><td>Toggle vendor robot driver</td></tr>
+    <tr><td><code>Ctrl+Shift+Q</code></td><td>Stop all processes</td></tr>
+    <tr><td><code>Ctrl+H</code></td><td>Move to home pose</td></tr>
+    <tr><td><code>Space</code></td><td>Emergency stop</td></tr>
+  </tbody>
+</table>
+<p>Full list on the <a href="#shortcuts" onclick="showPage('shortcuts')">Shortcuts</a> page. If something in this checklist fails and the hints here don't resolve it, continue to <a href="#troubleshooting" onclick="showPage('troubleshooting')">Troubleshooting</a>.</p>

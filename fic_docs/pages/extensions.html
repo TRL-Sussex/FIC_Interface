@@ -1,0 +1,689 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">›</span> Writing Extensions</div>
+<h1>Writing Extensions</h1>
+<p class="subtitle">FIC Studio's optional pages — Sequences, Teach Mode, Script Editor, Experiments, Auto-Tuning, Teleoperation, Trackers, Battery Sorter, Trajectory Tests, VR ZED Teleop and more — are extensions you can toggle individually in <a href="#settings" onclick="showPage('settings')">Settings → Extensions</a>. This page tells you how to write your own: with a <strong>web page</strong> (the way to build a new one, which works in the Studio window, on phones and on a headless board) or with a <strong>Qt page</strong> (how the existing ones are built; the web interface shows those automatically).</p>
+
+<div class="admonition tip"><div class="adm-title">Quick start</div>
+<pre><code>python3 fic_install/new_extension.py my_tool "My Tool"</code></pre>
+<p>This copies the template (<code>Extensions/_template/</code>) to <code>Extensions/my_tool/</code> with the id, name and class renamed. Enable it in <strong>Settings → Extensions</strong>, restart the Studio, and <strong>My Tool</strong> is in the page list with live robot readouts, a setting, a switch, buttons and a log. Edit <code>extension.py</code> and <code>web/page.js</code> from there; the walkthrough is <a href="#extensions" onclick="document.getElementById('ext-template').scrollIntoView({behavior:'smooth'}); return false;">below</a>.</p></div>
+
+<h2>Why extensions</h2>
+<p>The Studio has a small core that every user needs — Dashboard, Multi-Robot, Tuning Panel, Robot Config, Topic Monitor, Safety, Settings — and a much larger surface of optional features that not every user does. Everything else, including former built-ins like <a href="#sequences" onclick="showPage('sequences')">Sequences</a>, <a href="#teach-mode" onclick="showPage('teach-mode')">Teach Mode</a>, <a href="#script-editor" onclick="showPage('script-editor')">Script Editor</a> and <a href="#experiments" onclick="showPage('experiments')">Experiments</a>, is an extension. Extensions let each user enable just the pages they care about, and let third parties add new pages without touching the core.</p>
+
+<p>An extension is a folder under <code>FIC_Interface/Extensions/&lt;name&gt;/</code> containing two files. The Studio locates the <code>Extensions/</code> root relative to its own checkout automatically; set the <code>FIC_ROOT</code> environment variable to point it somewhere else.</p>
+<ul>
+  <li><code>manifest.json</code> — metadata read at startup so the Studio can list the extension in <strong>Settings → Extensions</strong> without importing it.</li>
+  <li><code>extension.py</code> — the Python module that gets imported only when the user enables the extension. Exports <code>class Extension</code>.</li>
+</ul>
+
+<div class="admonition tip"><div class="adm-title">Discover-then-load</div><p>The Studio scans every <code>Extensions/&lt;name&gt;/manifest.json</code> on startup, but only <em>imports</em> the extensions whose IDs are in <code>settings.extensions.enabled</code>. A buggy disabled extension cannot break the Studio.</p></div>
+
+<h2 id="ext-two-kinds">Two kinds of extension page</h2>
+<p>Since v5.1.0 the Studio's interface is a web page (shown in its own window, and to phones and other computers through the web remote). An extension's page can reach it in two ways:</p>
+<table>
+  <thead><tr><th></th><th>Web page (new)</th><th>Qt page (mirrored)</th></tr></thead>
+  <tbody>
+    <tr><td>You write</td><td><code>web_state()</code> and <code>web_action()</code> in <code>extension.py</code>, and <code>web/page.js</code></td><td><code>build_page()</code> returning a <code>QWidget</code></td></tr>
+    <tr><td>Looks</td><td>Native: built from the same UI kit as the Studio's own pages</td><td>Automatic: the Studio describes the Qt widgets and the web UI redraws them in the Studio's style (section cards, form rows, slider cards, button rows)</td></tr>
+    <tr><td>Phones, remote computers, headless board</td><td>Yes</td><td>Yes (the mirror runs on the Studio)</td></tr>
+    <tr><td>Classic Qt window (<code>--classic</code>)</td><td>A note saying where to find it, unless you also write <code>build_page()</code></td><td>Yes</td></tr>
+    <tr><td>Custom drawing (plots, video, 3D)</td><td>Yes, any HTML, SVG or canvas</td><td>No: shown as "cannot be shown in the browser"</td></tr>
+    <tr><td>Use it for</td><td>Every new extension</td><td>Existing extensions; they need no change</td></tr>
+  </tbody>
+</table>
+<p>An extension may have both. The web interface then uses the web page; the classic window uses the Qt page. <a href="#extensions" onclick="document.getElementById('ext-move').scrollIntoView({behavior:'smooth'}); return false;">Moving a Qt extension to a web page</a> shows how, using Sequences as the example.</p>
+
+<h2>Folder layout</h2>
+<pre><code>FIC_Interface/
+└── Extensions/
+    ├── _shared/                    # private helpers shared between extensions
+    │   ├── __init__.py
+    │   ├── process_runner.py
+    │   └── theme_helpers.py
+    ├── battery_sorter/             # an example built-in extension
+    │   ├── __init__.py             # empty
+    │   ├── manifest.json
+    │   ├── extension.py
+    │   └── ...other scripts...
+    ├── _template/                  # the template new_extension.py copies (not loaded)
+    └── my_extension/               # YOUR extension goes here
+        ├── __init__.py             # empty file
+        ├── manifest.json
+        ├── extension.py
+        └── web/                    # its web page (optional)
+            ├── page.js
+            └── page.css            # optional</code></pre>
+
+<p>Folders whose name starts with <code>_</code> (<code>_template</code>, <code>_shared</code>) are never loaded as extensions. The empty <code>__init__.py</code> turns the folder into a Python package so <code>from my_extension.extension import Extension</code> works. Folders <em>without</em> a <code>manifest.json</code> are skipped by discovery — they're treated as runtime helpers (e.g.&nbsp;the launchable scripts in <code>Extensions/realsense_hand/</code> and <code>Extensions/lemniscate/</code>, and <code>_shared/</code> itself). Discovery iterates folders in sorted (alphabetical) order, which is also the order they appear in <strong>Settings → Extensions</strong>. A manifest that fails to parse is skipped with a <code>[extensions] Skipping &lt;name&gt;: ...</code> message on the launching terminal's stdout — the rest of the Studio starts normally.</p>
+
+<h2>The manifest</h2>
+<p>A minimal <code>manifest.json</code>:</p>
+<pre><code>{
+  "id": "my_extension",
+  "name": "My Extension",
+  "description": "Short sentence shown in Settings → Extensions.",
+  "sidebar_icon": "",
+  "sidebar_section": "Experiments"
+}</code></pre>
+
+<table>
+  <thead><tr><th>Field</th><th>Required</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>id</code></td><td>yes</td><td>Stable string used as the persistence key. Don't change it after release.</td></tr>
+    <tr><td><code>name</code></td><td>yes</td><td>Sidebar button label.</td></tr>
+    <tr><td><code>description</code></td><td>no</td><td>One-line blurb for the Settings page. Keep it short.</td></tr>
+    <tr><td><code>sidebar_icon</code></td><td>no</td><td>Single emoji or glyph that appears before the name in the sidebar.</td></tr>
+    <tr><td><code>sidebar_section</code></td><td>no</td><td>Section header in the sidebar. Defaults to <code>"Extensions"</code>.</td></tr>
+    <tr><td><code>entry_module</code></td><td>no</td><td>Defaults to <code>&lt;folder&gt;.extension</code>; override only if you want a different filename.</td></tr>
+    <tr><td><code>web</code></td><td>no</td><td>The extension's web page. Without it the web UI mirrors the Qt page. See below.</td></tr>
+  </tbody>
+</table>
+
+<p>The <code>web</code> block:</p>
+<pre><code>"web": {
+  "page": "page.js",
+  "css": "page.css",
+  "poll_ms": 250,
+  "local_only": ["save_file", "reset_settings"]
+}</code></pre>
+<table>
+  <thead><tr><th>Key</th><th>Required</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>page</code></td><td>yes</td><td>The page module, relative to the extension's <code>web/</code> folder. Served at <code>/ext/&lt;id&gt;/page.js</code>.</td></tr>
+    <tr><td><code>css</code></td><td>no</td><td>A stylesheet loaded while the page is open and removed when it is left. Use the Studio's colour tokens (<code>var(--ink)</code>, <code>var(--rule)</code>, <code>var(--accent)</code>, …) so it follows the theme.</td></tr>
+    <tr><td><code>poll_ms</code></td><td>no</td><td>How often the open page asks for <code>web_state()</code>. Default 250 ms, at least 100 ms.</td></tr>
+    <tr><td><code>local_only</code></td><td>no</td><td>Action names refused unless the request comes from the Studio's own window: anything that writes files, changes settings or launches programs on this computer.</td></tr>
+  </tbody>
+</table>
+
+<h2>The Extension class contract</h2>
+<p>Your <code>extension.py</code> must export a class named <code>Extension</code> that subclasses <code>fic_studio.extensions.Extension</code>:</p>
+
+<pre><code>from PyQt5.QtWidgets import QWidget, QVBoxLayout
+from fic_studio.extensions import Extension as ExtensionBase
+
+
+class Extension(ExtensionBase):
+    ID = "my_extension"
+    NAME = "My Extension"
+    DESCRIPTION = "Short sentence shown in Settings → Extensions."
+    SIDEBAR_ICON = ""
+    SIDEBAR_SECTION = "Experiments"
+
+    def __init__(self, host):
+        super().__init__(host)
+        # Initialise local state ONLY. Extensions are constructed BEFORE the
+        # toolbar and central widget are built, so host.robot_dropdown and the
+        # main stack do not exist yet. host.node (the rclpy node) is available.
+        self._page = None
+
+    def build_page(self) -> QWidget:
+        # Called once during MainWindow setup. Return the QWidget that will be
+        # mounted as the extension's page.
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.addWidget(self.host.make_page_title("My Extension"))
+        # ... build the rest of the UI ...
+        self._page = page
+        return page
+
+    def teardown(self) -> None:
+        # Called when the user disables the extension (next launch) and on
+        # app close. Stop any timers, kill any subprocesses, destroy any
+        # publishers/subscribers you created.
+        pass
+
+    # OPTIONAL hooks
+    def on_activate(self) -> None:
+        # Called when the user clicks this extension's sidebar button.
+        pass
+
+    def on_emergency_stop(self) -> None:
+        # Called when the user presses Space (or safety violation triggers).
+        # Halt anything dangerous immediately.
+        pass</code></pre>
+
+<table>
+  <thead><tr><th>Class attr / method</th><th>Required</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>ID</code></td><td>yes</td><td>Must match <code>manifest.json</code>.</td></tr>
+    <tr><td><code>NAME</code></td><td>yes</td><td>Sidebar label (mirror of manifest).</td></tr>
+    <tr><td><code>DESCRIPTION</code></td><td>no</td><td>Settings-page description.</td></tr>
+    <tr><td><code>SIDEBAR_ICON</code></td><td>no</td><td>Leading glyph.</td></tr>
+    <tr><td><code>SIDEBAR_SECTION</code></td><td>no</td><td>Section header to merge into. Defaults to <code>"Extensions"</code>.</td></tr>
+    <tr><td><code>__init__(self, host)</code></td><td>yes</td><td>Construct local state. Always call <code>super().__init__(host)</code>.</td></tr>
+    <tr><td><code>build_page(self)</code></td><td>Qt page only</td><td>Return the <code>QWidget</code> for the extension's page. Called once after every <code>__init__</code>. Leave it out for a web-only extension: the classic window then shows a note.</td></tr>
+    <tr><td><code>web_state(self)</code></td><td>web page</td><td>Return a JSON-able dict: what the web page shows. Called on the Qt thread every <code>poll_ms</code> while the page is open, so read, don't compute or wait.</td></tr>
+    <tr><td><code>web_action(self, name, args)</code></td><td>web page</td><td>Do one thing the page asked (<code>args</code> is a dict); return a JSON-able result (or <code>None</code>). Raise <code>ValueError("why")</code> to refuse: the page shows the message.</td></tr>
+    <tr><td><code>teardown(self)</code></td><td>yes</td><td>Clean up timers, subprocesses, ROS interfaces.</td></tr>
+    <tr><td><code>on_activate(self)</code></td><td>no</td><td>Refresh data when the user navigates to the page.</td></tr>
+    <tr><td><code>on_emergency_stop(self)</code></td><td>no</td><td>Halt anything risky.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="ext-web-page">The web page</h2>
+<p><code>web/page.js</code> is an ES module. Its default export draws the page once and returns how to refresh and leave it:</p>
+<pre><code>export default function build(root, api) {
+  const { ui } = api;
+  const speed = ui.slider({ label: 'Speed', min: 0, max: 1, step: 0.01,
+    onChange: v =&gt; api.call('set_speed', { value: v }) });
+  const go = ui.button({ label: 'Start', kind: 'solid', onClick: () =&gt; api.call('start') });
+  root.append(ui.section('Motion', speed, ui.buttons(go)));
+  return {
+    update(state, studio) { speed.set(state.speed); go.set({ disabled: state.running }); },
+    dispose() {},
+  };
+}</code></pre>
+<ol>
+  <li>The web UI imports the module when the page is opened and calls <code>build(root, api)</code>.</li>
+  <li>Every <code>poll_ms</code> it fetches <code>web_state()</code> and calls <code>update(state, studio)</code>; <code>studio</code> is the Studio's own snapshot (robot, joints, pose, mode, …).</li>
+  <li><code>api.call(name, args)</code> runs <code>web_action(name, args)</code> in the Studio and resolves to its result, or to <code>null</code> when it was refused (the reason is already shown to the user). The page refreshes right after.</li>
+  <li><code>dispose()</code> runs when the user leaves the page.</li>
+</ol>
+<table>
+  <thead><tr><th><code>api.</code></th><th>What it is</th></tr></thead>
+  <tbody>
+    <tr><td><code>id</code></td><td>The extension's id.</td></tr>
+    <tr><td><code>ui</code></td><td>The UI kit (below).</td></tr>
+    <tr><td><code>call(name, args)</code></td><td>Run a <code>web_action</code>; a Promise of its result or <code>null</code>.</td></tr>
+    <tr><td><code>state()</code> / <code>studio()</code></td><td>The last <code>web_state()</code> / the Studio's snapshot, outside <code>update</code>.</td></tr>
+    <tr><td><code>confirm(host, { title, lines, label, danger, onConfirm })</code></td><td>Ask before something that matters, in place under <code>host</code> (the Studio never uses pop-up dialogs).</td></tr>
+    <tr><td><code>toast(text, isError)</code></td><td>A short message at the bottom of the window.</td></tr>
+    <tr><td><code>h(tag, attrs, ...children)</code></td><td>Make an element, for anything the kit does not cover.</td></tr>
+  </tbody>
+</table>
+<div class="admonition tip"><div class="adm-title">Keep the page thin</div><p>All the logic lives in Python, where the robot, ROS and the settings are. The page only draws <code>web_state()</code> and turns clicks into <code>api.call()</code>. That way the same rules apply whoever is driving, and a page can never get ahead of the Studio.</p></div>
+
+<h3 id="ext-ui-kit">The UI kit</h3>
+<p><code>api.ui</code> builds the pieces the Studio's own pages are made of, so an extension looks native with no CSS of its own. Interactive pieces carry <code>.set(value)</code> so <code>update()</code> can refresh them without rebuilding; <code>.set</code> never overwrites a field the user is typing in.</p>
+<table>
+  <thead><tr><th>Builder</th><th>Draws</th></tr></thead>
+  <tbody>
+    <tr><td><code>section(title, [{aside}], ...children)</code></td><td>A framed section card with a heading. <code>.setAside(text)</code>.</td></tr>
+    <tr><td><code>grid(cols, ...children)</code></td><td>Cards side by side (fewer on narrow windows, one on a phone).</td></tr>
+    <tr><td><code>stats([{key, label, value, unit, note, digits}])</code></td><td>Big readouts. <code>.set(key, value, note)</code>.</td></tr>
+    <tr><td><code>field(label, control, hint)</code></td><td>A form row: label on the left, control on the right.</td></tr>
+    <tr><td><code>button({label, icon, kind, title, disabled, onClick})</code></td><td><code>kind</code>: <code>''</code> quiet, <code>'primary'</code> tinted, <code>'solid'</code> the page's main action, <code>'danger'</code>. <code>.set({label, disabled})</code>.</td></tr>
+    <tr><td><code>buttons(...buttons)</code></td><td>A row of buttons.</td></tr>
+    <tr><td><code>toggle({label, value, onChange})</code></td><td>An on/off switch.</td></tr>
+    <tr><td><code>select({options, value, onChange})</code></td><td>A drop-down; options are strings or <code>{value, label}</code>. <code>.setOptions(list, value)</code>.</td></tr>
+    <tr><td><code>number({value, min, max, step, unit, digits, onChange})</code></td><td>A number field; sends on Enter or when it loses focus.</td></tr>
+    <tr><td><code>text({value, placeholder, onChange})</code></td><td>A text field.</td></tr>
+    <tr><td><code>slider({label, value, min, max, step, unit, digits, onChange, onInput})</code></td><td>The control bar's slider card. <code>.setNow(measured)</code> adds the "now" tick; <code>.setRange(min, max)</code>.</td></tr>
+    <tr><td><code>bar({label, value})</code></td><td>A progress bar, 0 to 1.</td></tr>
+    <tr><td><code>log({lines, height})</code></td><td>A scrolling log that stays at the bottom unless the reader scrolled up.</td></tr>
+    <tr><td><code>note(text, kind)</code></td><td>A line of text; <code>kind</code> <code>'warn'</code> or <code>'bad'</code> colours it.</td></tr>
+    <tr><td><code>table({columns: [{key, label, num}], rows, empty})</code></td><td>A table; <code>.set(rows)</code>.</td></tr>
+  </tbody>
+</table>
+
+<h3 id="ext-security">Who may do what</h3>
+<ul>
+  <li><strong>Reading</strong> (<code>web_state</code>, the page files) needs the same sign-in and <em>Extensions</em> page permission as the rest of the web UI. View-only accounts can watch.</li>
+  <li><strong>Acting</strong> (<code>web_action</code>) needs the <em>control lease</em>, like every command: one viewer at a time drives the robot. Remote users take it with <em>Request control</em>.</li>
+  <li>Actions listed in <code>web.local_only</code> run only from the Studio's own window, never from a phone or another computer.</li>
+  <li><strong>E-STOP</strong> needs nothing and calls every extension's <code>on_emergency_stop()</code>. Stop what your extension drives there.</li>
+  <li>The Studio serves only scripts, styles and images (<code>.js .mjs .css .json .svg .png .woff2</code>) from <code>web/</code>, never HTML, and never anything outside <code>web/</code>.</li>
+  <li><code>on_activate()</code> runs once before the first <code>web_state</code> or <code>web_action</code>, as when a classic page is opened, so timers an extension starts there also run for a web page.</li>
+</ul>
+
+<h3 id="ext-mirror">How a Qt page looks in the web UI</h3>
+<p>An extension without a web page is mirrored: the Studio describes its widget tree (<code>web_remote/qtmirror.py</code>) and the web UI draws it with the kit. Group boxes become section cards; a bold or large label starts a new card with that label as its title; a label beside a field becomes the field's name; sliders become slider cards; consecutive buttons sit in a row; lists and tables become lists and tables; outer frames and scroll areas are left out. To make a Qt page mirror well:</p>
+<ul>
+  <li>Put each part of the page in a <code>QGroupBox</code> with a title, or start it with a bold label.</li>
+  <li>Put a <code>QLabel</code> just before each field, or give the field an <code>objectName</code> like <code>max_speed</code> (shown as "Max speed").</li>
+  <li>Give icon-only buttons a tooltip, an accessible name or an <code>objectName</code>.</li>
+  <li>Never open a <code>QMessageBox</code> or <code>QInputDialog</code> from a button: nobody can click it from a browser or on a headless board. Show the message in a label instead.</li>
+</ul>
+
+<h2>The host API</h2>
+<p>The <code>host</code> object passed to <code>__init__</code> is an <code>ExtensionHost</code> — one instance per loaded extension, defined in <code>fic_ws/src/fic_studio/fic_studio/extensions/host.py</code>. It is the only way an extension talks to the Studio. Treat <code>self.host</code> as the entire Studio — never reach into <code>main_window</code> directly except when the API explicitly hands you a handle.</p>
+
+<svg viewBox="0 0 700 190" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="The host boundary">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#ext-host-arrowhead); }
+    .arrow-red { stroke: #c62828; stroke-dasharray: 5,4; marker-end: url(#ext-host-arrowhead-red); }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+  </style>
+  <defs>
+    <marker id="ext-host-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+    <marker id="ext-host-arrowhead-red" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#c62828"/>
+    </marker>
+  </defs>
+  <text x="350" y="16" class="label-title">The host boundary</text>
+
+  <rect x="20" y="45" width="170" height="90" class="box box-blue"/>
+  <text x="105" y="65" class="label-bold">Your extension</text>
+  <text x="105" y="85" class="label-code">Extensions/&lt;name&gt;/</text>
+  <text x="105" y="100" class="label-code">extension.py</text>
+  <text x="105" y="120" class="label-sm">holds self.host</text>
+
+  <rect x="265" y="45" width="180" height="90" class="box box-purple"/>
+  <text x="355" y="65" class="label-bold">ExtensionHost</text>
+  <text x="355" y="85" class="label-sm">one per extension</text>
+  <text x="355" y="100" class="label-sm">own target robot + combos</text>
+  <text x="355" y="115" class="label-sm">namespaced settings, signals</text>
+
+  <rect x="510" y="35" width="170" height="52" class="box box-grey"/>
+  <text x="595" y="52" class="label-bold">MainWindow</text>
+  <text x="595" y="70" class="label-sm">widgets, processes, settings</text>
+
+  <rect x="510" y="103" width="170" height="52" class="box box-green"/>
+  <text x="595" y="120" class="label-bold">FicStudioNode</text>
+  <text x="595" y="138" class="label-code">host.node — rclpy, pubs[rid]</text>
+
+  <path class="arrow" d="M 190 90 H 265"/>
+  <text x="227" y="80" class="label-sm">API calls</text>
+  <path class="arrow" d="M 445 75 L 510 61"/>
+  <path class="arrow" d="M 445 105 L 510 125"/>
+  <path class="arrow arrow-red" d="M 105 135 C 160 185, 480 185, 590 160"/>
+  <text x="350" y="172" class="label-sm" fill="#c62828">direct MainWindow access — forbidden</text>
+</svg>
+
+<h3>ROS access &amp; control</h3>
+<table>
+  <thead><tr><th>Attribute</th><th>Type</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>host.node</code></td><td><code>FicStudioNode</code></td><td>The shared rclpy node. Use it to <code>create_publisher</code>, <code>create_subscription</code>, <code>destroy_publisher</code>, <code>destroy_subscription</code>. Always destroy what you create in <code>teardown</code>. Its per-robot publishers live in <code>host.node.pubs[rid]</code> (a dict of dicts keyed by <code>'robot1'</code>, <code>'robot2'</code>, …).</td></tr>
+    <tr><td><code>host.set_control_mode(mode_str)</code></td><td>method</td><td>Publishes a mode string to the <em>target robot's</em> <code>mode_select</code> publisher. Multiple extensions can publish — there's no arbitration.</td></tr>
+    <tr><td><code>host.set_mode(mode_str)</code></td><td>method</td><td>Like <code>set_control_mode</code>, but also syncs the Studio's mode selector UI (via <code>update_mode_ui_only</code>) so the control bar reflects the change without publishing twice.</td></tr>
+    <tr><td><code>host.set_admittance_planner(enabled)</code></td><td>method</td><td>Enable/disable the motion planner inside admittance modes on the target robot. See <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>.</td></tr>
+    <tr><td><code>host.robot_target(rid=None)</code></td><td>method</td><td>Returns <code>'simulation'</code>, <code>'hardware'</code>, or <code>'vr'</code> for the given robot (target robot if <code>rid</code> omitted).</td></tr>
+    <tr><td><code>host.set_robot_target(rid, target)</code></td><td>method</td><td>Set the per-robot sim/hardware/vr target. Values other than those three strings are silently ignored.</td></tr>
+  </tbody>
+</table>
+
+<h3>Robot state (read-only)</h3>
+<p>Since v3.3.0 these getters return data for this extension's <strong>target robot</strong> (the one selected in its Target Robot combo, or the first active robot if none is set). For unmigrated extensions that never call <code>set_target_robot()</code>, behaviour is identical to v3.2.0 &mdash; the target stays at the first active robot.</p>
+<table>
+  <thead><tr><th>Attribute</th><th>Returns</th></tr></thead>
+  <tbody>
+    <tr><td><code>host.current_robot_name()</code></td><td>Robot type of the target (e.g. <code>"Franka_FR3"</code>). Card 1 follows the toolbar dropdown; cards 2&ndash;4 use their own per-card type.</td></tr>
+    <tr><td><code>host.current_robot_config()</code></td><td>dict for the target's type — joint limits, default EE target, home angles, etc. (per <code>robot_configs.yaml</code>).</td></tr>
+    <tr><td><code>host.joint_count()</code></td><td>int — number of joints for the target's type.</td></tr>
+    <tr><td><code>host.robots</code></td><td><code>{name: num_joints}</code> for every configured robot type.</td></tr>
+    <tr><td><code>host.robot_configs</code></td><td>full per-robot-type config dict.</td></tr>
+    <tr><td><code>host.robot_dropdown</code></td><td>The toolbar's robot-type <code>QComboBox</code>. Read-only.</td></tr>
+    <tr><td><code>host.current_ee_pose</code></td><td>Latest <code>geometry_msgs/Pose</code> for the target robot, or <code>None</code> until first message.</td></tr>
+    <tr><td><code>host.current_joint_positions</code></td><td>Joint positions (radians) for the target robot, or <code>None</code> until first message.</td></tr>
+  </tbody>
+</table>
+
+<h3>Multi-robot API (v3.3.0+)</h3>
+<p>An extension picks <em>which</em> robot to act on at runtime. Each <code>ExtensionHost</code> carries its own target — picking a robot in the Teleop page's combo doesn't affect the Sequences page's target.</p>
+<table>
+  <thead><tr><th>Attribute / method</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>host.active_robot_ids() &rarr; list[int]</code></td><td>Numeric ids of currently-active robots, in insertion order (e.g. <code>[1, 2]</code>).</td></tr>
+    <tr><td><code>host.active_robot_rids() &rarr; list[str]</code></td><td>Same but as <code>'robotN'</code> strings (e.g. <code>['robot1', 'robot2']</code>).</td></tr>
+    <tr><td><code>host.target_robot_id &rarr; str</code></td><td>The current target's rid (<code>'robot1'</code>, <code>'robot2'</code>, &hellip;). Falls back to the first active robot if the operator hasn't picked one or if a previously-picked robot has been removed.</td></tr>
+    <tr><td><code>host.target_robot_n &rarr; int</code></td><td>Same value as an int.</td></tr>
+    <tr><td><code>host.set_target_robot(n)</code></td><td>Change the target programmatically. Accepts <code>int N</code>, <code>'robotN'</code>, or <code>'robot_N'</code>. Emits <code>target_robot_changed</code>.</td></tr>
+    <tr><td><code>host.target_robot_changed</code></td><td>Qt signal carrying the new target rid (<code>str</code>). Connect this if your extension keeps stateful subscribers/publishers and needs to retarget when the operator picks a different robot.</td></tr>
+    <tr><td><code>host.robots_changed</code></td><td>Qt signal (no payload) emitted whenever the set of active robots changes (a robot card is added or removed). Target-robot combos created via <code>make_target_robot_combo()</code> repopulate automatically; connect this only if you keep your own per-robot state.</td></tr>
+    <tr><td><code>host.make_target_robot_combo(parent=None)</code></td><td>Returns a <code>QComboBox</code> pre-bound to this extension's target. Drop it into your title row. Auto-repopulates if <code>set_target_robot()</code> is called from elsewhere.</td></tr>
+    <tr><td><code>host.broadcast(fn)</code></td><td>Calls <code>fn(rid)</code> once per active robot. Use for global ops where every robot should receive the same command.</td></tr>
+    <tr><td><code>host.broadcast_set_mode(mode)</code></td><td>Convenience: publishes a mode string to every active robot's <code>mode_select</code> topic.</td></tr>
+    <tr><td><code>host.broadcast_stop()</code></td><td>Sends <code>"Stop Controller"</code> to every active robot.</td></tr>
+    <tr><td><code>host.joint_positions_for(rid)</code></td><td>Joint positions for a specific robot (use this to read state from a robot that <em>isn't</em> your target).</td></tr>
+    <tr><td><code>host.ee_pose_for(rid)</code></td><td>EE pose for a specific robot.</td></tr>
+    <tr><td><code>host.robot_type_for(rid) &rarr; str</code></td><td>Robot type name for a given rid.</td></tr>
+    <tr><td><code>host.extension_id &rarr; str</code></td><td>Your extension's own id string (as passed to the host at load time).</td></tr>
+  </tbody>
+</table>
+
+<h4>Pattern: standard extension with a Target Robot picker</h4>
+<pre><code>def build_page(self):
+    title_row = QHBoxLayout()
+    title_row.addWidget(self.host.make_page_title("My Extension"))
+    title_row.addStretch()
+    title_row.addWidget(QLabel("Target Robot:"))
+    title_row.addWidget(self.host.make_target_robot_combo())
+    # &hellip;rest of your UI
+</code></pre>
+
+<h4>Pattern: publish to the target robot</h4>
+<pre><code>rid  = self.host.target_robot_id
+pubs = self.host.node.pubs.get(rid, {})
+if pubs.get('mode_select'):
+    pubs['mode_select'].publish(StringMsg(data="Joint Impedance"))
+</code></pre>
+<p>Equivalent shorthand for the common modes:</p>
+<pre><code>self.host.set_control_mode("Joint Impedance")  # publishes to host.target_robot_id</code></pre>
+
+<h4>Pattern: react when the operator changes target</h4>
+<p>Connect the signal in <code>__init__</code> or <code>build_page</code> (there is no separate <code>setup</code> hook):</p>
+<pre><code>def __init__(self, host):
+    super().__init__(host)
+    self.host.target_robot_changed.connect(self._on_target_changed)
+
+def _on_target_changed(self, new_rid: str):
+    self._teardown_subscribers()
+    self._build_subscribers_for(new_rid)
+</code></pre>
+
+<h4>Pattern: broadcast to every active robot (e-stop, pause-all)</h4>
+<pre><code>def panic_stop(self):
+    self.host.broadcast_stop()              # "Stop Controller" to every robot
+
+def custom_broadcast(self):
+    def push(rid):
+        self.host.node.pubs[rid]['mode_select'].publish(StringMsg(data="Mode 1"))
+    self.host.broadcast(push)
+</code></pre>
+
+<h4>Migration tip</h4>
+<p>If you're moving an existing v3.2 extension forward: drop in the combo, then sweep <code>self.host.node.station_robot_id</code> &rarr; <code>self.host.target_robot_id</code> and <code>self.host.node.&lt;legacy_pub&gt;.publish(&hellip;)</code> &rarr; <code>self.host.node.pubs[self.host.target_robot_id]['&lt;key&gt;'].publish(&hellip;)</code>. The legacy attributes still resolve to the first active robot, so you can do this incrementally.</p>
+
+<h3>System state flags (read-only)</h3>
+<table>
+  <thead><tr><th>Property</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>host.controller_running</code></td><td>Hardware FIC controller is up.</td></tr>
+    <tr><td><code>host.simulation_running</code></td><td>MuJoCo is up.</td></tr>
+    <tr><td><code>host.fic_running</code></td><td>FIC sim controller is up.</td></tr>
+  </tbody>
+</table>
+
+<h3>Logging</h3>
+<pre><code>host.log("INFO", "Extension started", "MyExt")
+host.log("WARN", f"Bad sample: {x}", "MyExt")
+host.log("ERROR", "Couldn't connect to ...", "MyExt")</code></pre>
+<p>Levels are <code>"DEBUG"</code>, <code>"INFO"</code>, <code>"WARN"</code>, <code>"ERROR"</code>. The <code>category</code> argument is optional and defaults to your extension's ID; pass a more specific tag if your extension has multiple subsystems.</p>
+
+<h3>UI factories</h3>
+<p>Use these so your widgets pick up the Studio's theme automatically:</p>
+<pre><code>btn = host.make_button("START", "BtnPrimary")  # styled push button
+title = host.make_page_title("My Extension")    # large bold page title</code></pre>
+
+<h3>Settings persistence</h3>
+<pre><code>host.set_setting("threshold", 0.42)
+v = host.get_setting("threshold", default=1.0)</code></pre>
+<p>Values are auto-namespaced under <code>settings.extensions.data.&lt;your_id&gt;.*</code> in the same YAML file the rest of the Studio uses. Saved immediately.</p>
+
+<h3>XMLManager (URDF param read/write)</h3>
+<p>For extensions that read or write robot URDF parameters (the way Auto-Tuning does):</p>
+<pre><code>mgr = host.xml_manager()
+jp = mgr.load_joint_params(robot_name, joint_idx, mode, profile)
+# ... mutate jp ...
+mgr.save_joint_params(robot_name, joint_idx, mode, jp, profile)
+mgr.save()</code></pre>
+
+<h3>Process control (used by the Experiments page's Replay)</h3>
+<pre><code>host.start_simulation()      # launches MuJoCo
+host.start_fic_simulation()  # launches the FIC sim controller</code></pre>
+
+<h3>Dialogs</h3>
+<p><code>QMessageBox.warning(self._page, …)</code> centres the dialog on your extension's page. Capture the page widget at the end of <code>build_page</code>:</p>
+<pre><code>def build_page(self) -> QWidget:
+    page = QWidget()
+    # ... build UI ...
+    self._page = page
+    return page</code></pre>
+<p>If you need the entire Studio window as parent (e.g.&nbsp;for a file dialog before the page is shown), use <code>host.main_window</code> — but treat that handle as opaque. Don't poke at MainWindow internals through it.</p>
+
+<h2>Sidebar grouping</h2>
+<p>Each extension declares its <code>SIDEBAR_SECTION</code>. The Studio merges by section name:</p>
+<ul>
+  <li>If the section already exists as a built-in (<code>"Tuning"</code>, <code>"Programming"</code>, <code>"Teleoperation"</code>, <code>"Experiments"</code>, <code>"System"</code>), your button is inserted <em>inside</em> that existing section, alongside the built-in entries.</li>
+  <li>If the section is brand-new (e.g.&nbsp;<code>"Vision"</code>), a new section block is added between Experiments and System.</li>
+  <li>If a section ends up with no buttons (e.g.&nbsp;<strong>Teleoperation</strong> when both <code>teleop</code> and <code>tracker</code> extensions are disabled), its header is hidden automatically.</li>
+</ul>
+<p><strong>System is always last</strong> regardless of how many extensions are loaded.</p>
+
+<h2 id="ext-template">From the template, step by step</h2>
+<ol>
+  <li><strong>Make your copy</strong>: <code>python3 fic_install/new_extension.py my_tool "My Tool" --section Programming</code>. It refuses an id that exists already.</li>
+  <li><strong>Enable it</strong>: <strong>Settings → Extensions</strong>, tick <em>My Tool</em>, apply, restart the Studio. It is in the page list, in its section.</li>
+  <li><strong>Read the three files</strong>:
+    <ul>
+      <li><code>manifest.json</code>: id, name, section and the <code>web</code> block, with <code>reset_settings</code> marked <code>local_only</code>.</li>
+      <li><code>extension.py</code>: <code>web_state()</code> returns the robot's name, end-effector position and joint angles (from the host API), a gain, an on/off flag and a log; <code>web_action()</code> handles <code>set_gain</code> (checked and saved with <code>host.set_setting</code>), <code>set_enabled</code>, <code>hello</code>, <code>publish</code> (a <code>std_msgs/String</code> on <code>/my_tool/message</code>), <code>clear_log</code> and <code>reset_settings</code>. <code>on_emergency_stop()</code> switches it off.</li>
+      <li><code>web/page.js</code>: four section cards (Robot, Settings, Actions, Log) built with the kit, refreshed in <code>update()</code>.</li>
+    </ul></li>
+  <li><strong>Change it</strong>: add a key to <code>web_state()</code>, show it in <code>update()</code>; add an action to <code>web_action()</code>, call it from a button. Restart the Studio after Python changes; reload the page (Ctrl+R in the window, or leave and come back) after <code>page.js</code> changes.</li>
+  <li><strong>Check it from a phone</strong>: open the web remote, sign in, take control, and use the page; <code>reset_settings</code> is refused there.</li>
+</ol>
+
+<h2 id="ext-move">Moving a Qt extension to a web page</h2>
+<p><code>Extensions/sequences/</code> has both pages; compare its <code>web_state</code>/<code>web_action</code> and <code>web/page.js</code> with its <code>build_page</code>.</p>
+<ol>
+  <li>Add the <code>web</code> block to <code>manifest.json</code>.</li>
+  <li>Write <code>web_state()</code> from the state your Qt handlers already keep (Sequences: the sequence list, waypoints, playing index, status, loop and target).</li>
+  <li>Write <code>web_action()</code> by calling the same handlers the Qt buttons call, so there is one state machine and the Qt page stays in sync. Replace every dialog with a check that raises <code>ValueError</code> (Sequences: deleting the last sequence, playing an empty one).</li>
+  <li>Write <code>web/page.js</code> with the kit. Draw lists that change only when their content changed, so a field being typed in is not rebuilt.</li>
+  <li>Keep <code>build_page()</code> while people still use <code>--classic</code>; remove it when they don't.</li>
+</ol>
+
+<h2>Hello World with a Qt page</h2>
+<p>The classic way, still supported: a tiny extension that publishes a heartbeat string at 1 Hz when the user clicks <strong>Start</strong>. The web UI shows this page through the mirror.</p>
+
+<h3>1.&nbsp;Create the folder</h3>
+<pre><code>mkdir -p ~/FIC_Interface/Extensions/heartbeat
+cd ~/FIC_Interface/Extensions/heartbeat
+touch __init__.py</code></pre>
+
+<h3>2.&nbsp;Write <code>manifest.json</code></h3>
+<pre><code>{
+  "id": "heartbeat",
+  "name": "Heartbeat",
+  "description": "Publishes a 1 Hz heartbeat string to /heartbeat.",
+  "sidebar_icon": "",
+  "sidebar_section": "Experiments"
+}</code></pre>
+
+<h3>3.&nbsp;Write <code>extension.py</code></h3>
+<pre><code>import time
+
+from PyQt5.QtCore import QTimer
+from PyQt5.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from std_msgs.msg import String
+
+from fic_studio.extensions import Extension as ExtensionBase
+
+
+class Extension(ExtensionBase):
+    ID = "heartbeat"
+    NAME = "Heartbeat"
+    DESCRIPTION = "Publishes a 1 Hz heartbeat string to /heartbeat."
+    SIDEBAR_ICON = ""
+    SIDEBAR_SECTION = "Experiments"
+
+    def __init__(self, host):
+        super().__init__(host)
+        self._pub = None
+        self._timer = None
+        self._count = 0
+        self._page = None
+        self._count_label = None
+        self._toggle_btn = None
+
+    def build_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(22, 20, 22, 20)
+        layout.setSpacing(12)
+
+        layout.addWidget(self.host.make_page_title("Heartbeat"))
+
+        row = QHBoxLayout()
+        self._toggle_btn = self.host.make_button("Start", "BtnPrimary")
+        self._toggle_btn.clicked.connect(self._toggle)
+        row.addWidget(self._toggle_btn)
+
+        self._count_label = QLabel("Sent: 0")
+        row.addWidget(self._count_label)
+        row.addStretch()
+        layout.addLayout(row)
+        layout.addStretch()
+
+        self._page = page
+        return page
+
+    def teardown(self) -> None:
+        self._stop()
+
+    def on_emergency_stop(self) -> None:
+        self._stop()
+
+    # ── Internals ─────────────────────────────────────────────────────
+    def _toggle(self):
+        if self._timer is None:
+            self._start()
+        else:
+            self._stop()
+
+    def _start(self):
+        self._pub = self.host.node.create_publisher(String, "/heartbeat", 10)
+        self._timer = QTimer()
+        self._timer.timeout.connect(self._tick)
+        self._timer.start(1000)
+        self._toggle_btn.setText("Stop")
+        self.host.log("INFO", "Heartbeat started", "Heartbeat")
+
+    def _stop(self):
+        if self._timer is not None:
+            self._timer.stop()
+            self._timer = None
+        if self._pub is not None:
+            try:
+                self.host.node.destroy_publisher(self._pub)
+            except Exception:
+                pass
+            self._pub = None
+        if self._toggle_btn is not None:
+            self._toggle_btn.setText("Start")
+
+    def _tick(self):
+        if self._pub is None:
+            return
+        msg = String()
+        msg.data = f"hb {self._count} at {time.time():.3f}"
+        self._pub.publish(msg)
+        self._count += 1
+        self._count_label.setText(f"Sent: {self._count}")</code></pre>
+
+<h3>4.&nbsp;Enable it</h3>
+<ol>
+  <li>Launch the Studio.</li>
+  <li>Open <strong>Settings → Extensions</strong>. <em>Heartbeat</em> appears in the list.</li>
+  <li>Tick its checkbox, click <strong>APPLY</strong>, accept the restart prompt.</li>
+  <li>After restart, the <strong>Experiments</strong> sidebar section gains a new <strong>Heartbeat</strong> entry.</li>
+  <li>Click it, hit <strong>Start</strong>, and verify with <code>ros2 topic echo /heartbeat</code>.</li>
+</ol>
+
+<div class="admonition tip"><div class="adm-title">Iterating on extension code</div><p>You don't need to <code>colcon build</code> to test extension changes — they live outside the ROS workspace. Just edit the file, restart the Studio.</p></div>
+
+<h2>Lifecycle</h2>
+<ol>
+  <li><strong>Discovery</strong> at startup: every <code>Extensions/&lt;name&gt;/manifest.json</code> is parsed.</li>
+  <li><strong>Load</strong>: only manifests whose <code>id</code> is in <code>settings.extensions.enabled</code> get their <code>extension.py</code> imported.</li>
+  <li><strong>Construction</strong>: <code>Extension(host)</code> runs once. Robot dropdown and main_stack widgets <em>do</em> exist by this point, but you should still defer touching them until <code>build_page</code>.</li>
+  <li><strong>UI mount</strong>: <code>build_page()</code> is called once. Its return value is added to the main stacked widget; a sidebar button is appended to the matching section.</li>
+  <li><strong>Activation</strong>: when the user clicks the sidebar button, the page is shown and <code>on_activate()</code> fires. In the web UI it fires once, before the first <code>web_state</code>, <code>web_action</code> or mirrored control.</li>
+  <li><strong>Web page</strong>: while it is open, <code>web_state()</code> every <code>poll_ms</code>; <code>web_action()</code> per click.</li>
+  <li><strong>E-stop</strong>: when the safety subsystem fires (Space key, joint-limit violation, etc.), <code>on_emergency_stop()</code> is called on every loaded extension. Handle it idempotently — it may fire multiple times.</li>
+  <li><strong>Teardown</strong>: on app shutdown OR when the user disables the extension and restarts, <code>teardown()</code> is called. Stop timers, kill child processes, destroy ROS publishers/subscribers.</li>
+</ol>
+
+<h2>Common patterns</h2>
+
+<h3>Subprocess management</h3>
+<p>If your extension launches external Python scripts and wants Start/Stop button toggles with crash detection, use the shared <code>ProcessRunner</code>:</p>
+<pre><code>from _shared.process_runner import ProcessRunner
+
+class Extension(ExtensionBase):
+    def __init__(self, host):
+        super().__init__(host)
+        self._runner = ProcessRunner(
+            log_func=host.log,
+            log_category="MyExt",
+            log_prefix="my",   # log files land at /tmp/my_&lt;key&gt;.log
+        )
+
+    def _toggle_my_script(self):
+        if self._runner.is_running("scriptA"):
+            self._runner.stop("scriptA"); return
+        argv = ["python3", "-u", "/path/to/script.py", "--robot-id", self.host.node.station_robot_id]
+        self._runner.start("scriptA", argv, self._scriptA_btn, "Script A")
+
+    def teardown(self):
+        self._runner.stop_all()</code></pre>
+<p>Each extension owns a separate <code>ProcessRunner</code> instance, so two extensions can both manage subprocesses without colliding. The runner handles button styling (red while running), 1 Hz watchdog polling, and logs the last 6 lines of stdout/stderr if the script exits non-zero.</p>
+
+<h3>ROS publishers and subscribers</h3>
+<pre><code>from rclpy.qos import qos_profile_sensor_data
+from std_msgs.msg import Float64MultiArray
+
+def _start(self):
+    self._pub = self.host.node.create_publisher(
+        Float64MultiArray, "/my_topic", qos_profile_sensor_data)
+    self._sub = self.host.node.create_subscription(
+        Float64MultiArray, "/feedback", self._on_feedback, qos_profile_sensor_data)
+
+def teardown(self):
+    if self._pub:
+        try: self.host.node.destroy_publisher(self._pub)
+        except Exception: pass
+    if self._sub:
+        try: self.host.node.destroy_subscription(self._sub)
+        except Exception: pass</code></pre>
+
+<h3>Reacting to robot changes</h3>
+<pre><code>def build_page(self):
+    page = QWidget()
+    # ... build UI ...
+    self.host.robot_dropdown.currentTextChanged.connect(self._on_robot_changed)
+    self._on_robot_changed(self.host.current_robot_name())
+    return page
+
+def _on_robot_changed(self, robot_name: str):
+    n = self.host.robots.get(robot_name, 7)
+    # update labels / spinboxes / etc. for the new joint count</code></pre>
+
+<h3>Persisting user choices</h3>
+<pre><code>def build_page(self):
+    self._scale_spin = QDoubleSpinBox()
+    self._scale_spin.setValue(self.host.get_setting("scale", default=1.0))
+    self._scale_spin.valueChanged.connect(
+        lambda v: self.host.set_setting("scale", v))</code></pre>
+
+<h2>Gotchas</h2>
+<ul>
+  <li><strong>The Extension class is not a QObject.</strong> If you need to parent a <code>QObject</code> (e.g.&nbsp;<code>QTimer</code> with a parent), pass <code>host.main_window</code>, not <code>self</code>.</li>
+  <li><strong><code>build_page</code> runs after toolbar setup but inside <code>_setup_central_widget</code></strong>. <code>host.robot_dropdown</code> exists, but the rest of the sidebar/main_stack is still being built. Don't try to navigate (<code>setCurrentIndex</code>) from inside <code>build_page</code>.</li>
+  <li><strong>Don't write to <code>host.current_joint_positions</code></strong> — it's read-only. The shared attribute is populated by core mixins; your extension should read it, not stomp on it.</li>
+  <li><strong>Dialogs block in the web UI.</strong> A <code>QMessageBox</code> or <code>QInputDialog</code> opened from a mirrored button waits for a click nobody can give from a browser, and a headless board has no screen at all. Show messages in a label (Qt page) or raise <code>ValueError</code> (web action).</li>
+  <li><strong><code>web_state()</code> runs often.</strong> Keep it to reading attributes; do slow work in timers or threads and store the result.</li>
+  <li><strong>Mode publishing is free-for-all</strong>. <code>host.set_control_mode(...)</code> publishes immediately with no arbitration. If two enabled extensions try to claim the controller at once, last write wins. Coordinate via UI (e.g.&nbsp;disable one button while the other is active).</li>
+  <li><strong>Don't import from <code>fic_studio.mixins.*</code></strong> in your extension. Those are subject to change. Stick to the <code>host</code> API and <code>fic_studio.extensions</code>.</li>
+</ul>
+
+<h2>Examples in the repo</h2>
+<p>Read these for patterns:</p>
+<ul>
+  <li><code>Extensions/_template/</code> — the web-page template: <code>web_state</code>, <code>web_action</code>, settings, a ROS publisher, a local-only action and a kit-built page.</li>
+  <li><code>Extensions/sequences/</code> — a real extension with both a Qt page and a web page (<code>web/page.js</code>, <code>web/page.css</code>).</li>
+  <li><code>Extensions/battery_sorter/extension.py</code> — simplest Qt example. Three buttons, each launches an external script via <code>ProcessRunner</code>, plus a calibration-status indicator.</li>
+  <li><code>Extensions/trajectory_tests/extension.py</code> — multiple cards each with a Start/Stop subprocess; uses <code>host.current_ee_pose</code>; publishes mode changes via <code>host.node</code>.</li>
+  <li><code>Extensions/teleop/extension.py</code> — biggest networked example. Manages a dozen ROS topics, six QTimers, exposes a <code>state</code> property the status bar reads, handles E-stop cleanly.</li>
+  <li><code>Extensions/autotuning/extension.py</code> — heaviest example. Drives a long-running optimiser (state machine), reads/writes URDF params via <code>host.xml_manager()</code>, persists profiles via <code>QFileDialog</code>.</li>
+</ul>
+
+<h2>Distributing extensions</h2>
+<p>An extension is just a folder. To share one, zip <code>Extensions/&lt;name&gt;/</code> and have the recipient extract it into their own <code>FIC_Interface/Extensions/</code>. No installation, no setup.py, no colcon. After they restart the Studio it appears in <strong>Settings → Extensions</strong> ready to enable.</p>

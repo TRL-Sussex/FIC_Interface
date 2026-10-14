@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="Documentation for FIC Control Studio — torque control, simulation and hardware for robot arms such as the Kinova Gen3 and Franka FR3.">
+<title>FIC Control Studio — Documentation</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap">
+<link rel="stylesheet" href="css/style.css?v=3">
+</head>
+<body>
+
+<a class="skip-link" href="#content">Skip to Content</a>
+
+<!-- ═══ TOP BAR ═══ -->
+<header class="top-bar">
+  <a class="logo" href="#home" onclick="showPage('home')">
+    <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9.5h18M9.5 9.5V21"/></svg>
+    <span translate="no">FIC Control Studio</span>
+  </a>
+  <span class="version-badge" translate="no">v5.6.0</span>
+
+  <nav class="nav-links" aria-label="Primary">
+    <a href="#home" onclick="showPage('home')">Home</a>
+    <a href="#installation" onclick="showPage('installation')">Install</a>
+    <a href="#tutorials" onclick="showPage('tutorials')">Tutorials</a>
+    <a href="#api-reference" onclick="showPage('api-reference')">API</a>
+  </nav>
+
+  <div class="search-box" id="search-box" role="search">
+    <label class="visually-hidden" for="search-input">Search Documentation</label>
+    <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input type="search" id="search-input" name="q"
+           placeholder="Search the docs…"
+           autocomplete="off" spellcheck="false"
+           role="combobox" aria-expanded="false" aria-controls="search-results"
+           aria-autocomplete="list"
+           oninput="onSearchInput(this.value)" onfocus="onSearchFocus()" onkeydown="onSearchKey(event)">
+    <div class="search-results" id="search-results" role="listbox"
+         aria-label="Search Results"></div>
+  </div>
+  <p class="visually-hidden" id="search-status" aria-live="polite"></p>
+</header>
+
+<!-- ═══ SIDEBAR ═══ -->
+<nav class="sidebar" id="sidebar" aria-label="Documentation">
+
+  <h2 class="section-title">Getting Started</h2>
+  <a href="#home" onclick="showPage('home')" data-page="home">Overview</a>
+  <a href="#installation-macos" onclick="showPage('installation-macos')" data-page="installation-macos">Installation (macOS)</a>
+  <a href="#installation" onclick="showPage('installation')" data-page="installation">Installation (Linux)</a>
+  <a href="#installation-docker" onclick="showPage('installation-docker')" data-page="installation-docker">Installation (Docker)</a>
+  <a href="#multi-pc-setup" onclick="showPage('multi-pc-setup')" data-page="multi-pc-setup">Multi-PC Lab Setup</a>
+  <a href="#quickstart" onclick="showPage('quickstart')" data-page="quickstart">Quick Start Guide</a>
+  <a href="#first-motion" onclick="showPage('first-motion')" data-page="first-motion">First Motion Checklist</a>
+  <a href="#architecture" onclick="showPage('architecture')" data-page="architecture">Architecture</a>
+  <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')" data-page="sim-vs-hardware">Simulation vs. Hardware</a>
+  <a href="#mcu-inner-loop" onclick="showPage('mcu-inner-loop')" data-page="mcu-inner-loop">Inner-Loop MCU (Real-Time)</a>
+  <a href="#glossary" onclick="showPage('glossary')" data-page="glossary">Glossary</a>
+
+  <h2 class="section-title">User Guide</h2>
+  <a href="#dev-console" onclick="showPage('dev-console')" data-page="dev-console">FIC Dev Console</a>
+  <a href="#dashboard" onclick="showPage('dashboard')" data-page="dashboard">Dashboard</a>
+  <a href="#control-panel" onclick="showPage('control-panel')" data-page="control-panel">Control Bar</a>
+  <a href="#multi-robot" onclick="showPage('multi-robot')" data-page="multi-robot">Multi-Robot</a>
+  <a href="#lab-developers" onclick="showPage('lab-developers')" data-page="lab-developers">Working with Lab Robots</a>
+  <a href="#control-modes" onclick="showPage('control-modes')" data-page="control-modes">Control Modes & FIC Algorithm</a>
+  <a href="#legged-locomotion" onclick="showPage('legged-locomotion')" data-page="legged-locomotion">Legged Locomotion (Spot)</a>
+  <a href="#hapfic" onclick="showPage('hapfic')" data-page="hapfic">Hapfic (Hybrid Control)</a>
+  <a href="#tuning" onclick="showPage('tuning')" data-page="tuning">Manual Tuning</a>
+  <a href="#autotuning" onclick="showPage('autotuning')" data-page="autotuning">Auto-Tuning</a>
+  <a href="#sequences" onclick="showPage('sequences')" data-page="sequences">Sequence Programming</a>
+  <a href="#teach-mode" onclick="showPage('teach-mode')" data-page="teach-mode">Teach Mode</a>
+  <a href="#script-editor" onclick="showPage('script-editor')" data-page="script-editor">Script Editor</a>
+  <a href="#gamepad" onclick="showPage('gamepad')" data-page="gamepad">Gamepad Control</a>
+  <a href="#web-remote" onclick="showPage('web-remote')" data-page="web-remote">Web Remote (Phone)</a>
+  <a href="#teleoperation" onclick="showPage('teleoperation')" data-page="teleoperation">Teleoperation</a>
+  <a href="#tracker" onclick="showPage('tracker')" data-page="tracker">Tracker Teleoperation</a>
+  <a href="#vr-zed-teleop" onclick="showPage('vr-zed-teleop')" data-page="vr-zed-teleop">VR ZED Teleoperation</a>
+  <a href="#experiments" onclick="showPage('experiments')" data-page="experiments">Experiment Manager</a>
+  <a href="#trajectory-tests" onclick="showPage('trajectory-tests')" data-page="trajectory-tests">Trajectory Tests</a>
+  <a href="#admittance-validation" onclick="showPage('admittance-validation')" data-page="admittance-validation">Admittance Validation</a>
+  <a href="#contact-localization" onclick="showPage('contact-localization')" data-page="contact-localization">Contact Localization</a>
+  <a href="#contact-localization-porting" onclick="showPage('contact-localization-porting')" data-page="contact-localization-porting">&nbsp;&nbsp;&mdash; Adding a Robot</a>
+  <a href="#contact-accuracy" onclick="showPage('contact-accuracy')" data-page="contact-accuracy">&nbsp;&nbsp;&mdash; Accuracy &amp; Validation</a>
+  <a href="#following" onclick="showPage('following')" data-page="following">Following</a>
+  <a href="#gaze" onclick="showPage('gaze')" data-page="gaze">Gaze (Watching &amp; Gestures)</a>
+  <a href="#battery-sorter" onclick="showPage('battery-sorter')" data-page="battery-sorter">Battery Sorter</a>
+
+  <h2 class="section-title">Configuration</h2>
+  <a href="#robot-config" onclick="showPage('robot-config')" data-page="robot-config">Robot Config & Models</a>
+  <a href="#adding-a-robot" onclick="showPage('adding-a-robot')" data-page="adding-a-robot">&nbsp;&nbsp;&mdash; Adding a Robot (URDF)</a>
+  <a href="#config-xml" onclick="showPage('config-xml')" data-page="config-xml">config.xml Reference</a>
+  <a href="#modularity" onclick="showPage('modularity')" data-page="modularity">Modularity &amp; Extensibility</a>
+  <a href="#settings" onclick="showPage('settings')" data-page="settings">GUI Settings</a>
+
+  <h2 class="section-title">Processes & Tools</h2>
+  <a href="#simulation" onclick="showPage('simulation')" data-page="simulation">Simulation (MuJoCo)</a>
+  <a href="#processes" onclick="showPage('processes')" data-page="processes">Process Management</a>
+  <a href="#topics" onclick="showPage('topics')" data-page="topics">ROS 2 Topics</a>
+  <a href="#topic-monitor" onclick="showPage('topic-monitor')" data-page="topic-monitor">Topic Monitor</a>
+  <a href="#log-viewer" onclick="showPage('log-viewer')" data-page="log-viewer">Logs</a>
+  <a href="#build-tools" onclick="showPage('build-tools')" data-page="build-tools">Build Tools</a>
+
+  <h2 class="section-title">Safety</h2>
+  <a href="#safety" onclick="showPage('safety')" data-page="safety">Safety System</a>
+  <a href="#estop" onclick="showPage('estop')" data-page="estop">Emergency Stop</a>
+
+  <h2 class="section-title">Extending the Studio</h2>
+  <a href="#page-builder" onclick="showPage('page-builder')" data-page="page-builder">Page Builder</a>
+  <a href="#extensions" onclick="showPage('extensions')" data-page="extensions">Writing Extensions</a>
+
+  <h2 class="section-title">Reference</h2>
+  <a href="#api-reference" onclick="showPage('api-reference')" data-page="api-reference">Script API / Python API</a>
+  <a href="#shortcuts" onclick="showPage('shortcuts')" data-page="shortcuts">Keyboard Shortcuts</a>
+  <a href="#troubleshooting" onclick="showPage('troubleshooting')" data-page="troubleshooting">Troubleshooting</a>
+  <a href="#tutorials" onclick="showPage('tutorials')" data-page="tutorials">Tutorials</a>
+  <a href="#references" onclick="showPage('references')" data-page="references">References</a>
+  <a href="#changelog" onclick="showPage('changelog')" data-page="changelog">Changelog</a>
+
+</nav>
+
+<!-- ═══ CONTENT (pages load here) ═══ -->
+<main class="main" id="content" tabindex="-1">
+  <p>Loading…</p>
+</main>
+
+<script src="js/nav.js?v=3"></script>
+</body>
+</html>

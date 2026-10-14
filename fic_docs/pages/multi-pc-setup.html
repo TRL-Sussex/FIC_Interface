@@ -1,0 +1,178 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Multi-PC Lab Setup</div>
+<h1>Multi-PC Lab Setup</h1>
+<p class="subtitle">Running FIC Control Studio on several robot PCs at once &mdash; one Studio per robot, all on the same version, told apart by station, reachable from other devices, and started automatically.</p>
+
+<h2>Overview</h2>
+<p>A lab usually has one PC per robot, each running its own FIC Control Studio. For those Studios
+to work together &mdash; and not trip over each other &mdash; a handful of things have to be the same
+on every PC, and one thing has to be different:</p>
+<table>
+  <tr><th>Must be the same on every PC</th><th>Must be different on every PC</th></tr>
+  <tr><td>FIC branch and commit, built</td><td rowspan="3"><strong>Station ID</strong> &mdash; one per robot, matching the PC (PC&nbsp;1 &rarr; station&nbsp;1, &hellip;)</td></tr>
+  <tr><td>ROS&nbsp;2 domain ID</td></tr>
+  <tr><td>Default robot model and first-launch choices</td></tr>
+</table>
+<p>This page covers those settings, reaching each Studio's <a href="#web-remote" onclick="showPage('web-remote')">Web Remote</a>
+from other devices, starting the Studio at boot, and keeping every PC on the latest version. It does
+not prescribe a network layout: whether the PCs share a switch, a Wi&#8209;Fi network, or something
+else is up to your lab. The only requirement is that each device can reach the PC it wants to talk to,
+and that the robot PCs can reach each other if their Studios should discover one another.</p>
+
+<div class="admonition warning"><div class="adm-title">Edit settings with the Studio closed</div>
+<p>Everything below lives in <code>~/.robot_selector_gui_settings.yaml</code> on each PC. The Studio
+auto-saves that file on a timer and on exit, so an edit made while it runs is silently overwritten.
+Close the Studio, edit, then start it again. See <a href="#settings" onclick="showPage('settings')">Settings</a>
+for every key.</p></div>
+
+<h2>1. The same version on every PC</h2>
+<p>Pick one branch for the whole lab and put every PC on the same commit of it:</p>
+<pre><code>cd ~/FIC_Interface
+git fetch origin
+git checkout -B &lt;branch&gt; origin/&lt;branch&gt;
+./build.sh</code></pre>
+<p>Check with <code>git log -1 --oneline</code> on each PC: the commit must match. Local edits on a
+robot PC (tuning files, config tweaks) make PCs silently differ &mdash; commit what should be shared,
+and keep genuinely per-robot changes out of the checkout, or record them before resetting.</p>
+
+<div class="admonition warning"><div class="adm-title">Workspaces copied from another machine</div>
+<p>A <code>fic_ws</code> copied from another PC (or another user's home) carries CMake caches that point
+at the old path. <code>colcon</code> then fails within a second with <em>&ldquo;The current
+CMakeCache.txt directory &hellip; is different than the directory &hellip; where CMakeCache.txt was
+created&rdquo;</em>. Delete the generated folders and build clean &mdash; they are not in git:</p>
+<pre><code>cd ~/FIC_Interface/fic_ws && rm -rf build install log && cd .. && ./build.sh</code></pre>
+<p>The Settings page's <strong>Clean Rebuild</strong> does the same.</p></div>
+
+<div class="admonition tip"><div class="adm-title">One PC builds, another does not</div>
+<p>Compare installed packages. A common case is the MuJoCo simulation failing with
+<code>GLFW/glfw3.h: No such file or directory</code>: that PC has <code>libglfw3</code> but not
+<code>libglfw3-dev</code>. See the dependency lists on <a href="#installation" onclick="showPage('installation')">Installation (Linux)</a>.</p></div>
+
+<h2>2. A unique station ID per PC</h2>
+<p>The station ID decides which <code>robotN</code> topics a Studio drives and names its nodes, so two
+Studios with the same ID on the same ROS domain fight over the same robot. Give each PC the ID of its
+robot. In the Studio use the toolbar <strong>Robot</strong> selector (it confirms and restarts the
+app), or with the Studio closed set it in the settings file:</p>
+<pre><code>general:
+  station_id: 2</code></pre>
+<p>A PC that has never run the Studio has no settings file and starts as station&nbsp;1 &mdash; easy to
+miss when several PCs were set up the same day.</p>
+<p>A PC with no arm of its own (a lab's control PC) takes the <strong>Master</strong> station
+(<code>station_id: 0</code>; any number of PCs can be Master, each on topics of its own): it sees and commands the whole fleet from the
+<a href="#multi-robot" onclick="showPage('multi-robot')">Multi-Robot</a> page, and its simulations can
+never reach a real arm. The Multi-Robot page warns when two Studios claim the same station.</p>
+
+<h2>3. One shared ROS domain</h2>
+<p>Studios find each other (the Web Remote lists the other Studios, and multi-robot work spans PCs) only
+when they share a ROS&nbsp;2 domain. Choose one domain ID for the lab and set it on every PC:</p>
+<pre><code>network:
+  ros_domain_id: 10</code></pre>
+<div class="admonition warning"><div class="adm-title">The shell wins over the settings file</div>
+<p>The Studio only applies <code>network.ros_domain_id</code> if <code>ROS_DOMAIN_ID</code> is not already
+set, and both launch scripts re-apply <code>export ROS_DOMAIN_ID=&hellip;</code> lines from
+<code>~/.bashrc</code>. An old export there silently overrides the file. Keep the two in agreement:</p>
+<pre><code>grep -n ROS_DOMAIN_ID ~/.bashrc</code></pre>
+<p>If there is an export, make it the lab's value (or remove it). Terminal-launched ROS tools use it too.</p></div>
+<div class="admonition note"><div class="adm-title">When Studios do not see each other</div>
+<p>ROS&nbsp;2 finds other machines by multicast (group <code>239.255.0.1</code>). Check the path with two
+terminals, <code>ros2 topic pub /t std_msgs/msg/String</code> on one PC and <code>ros2 topic echo /t</code>
+on another. If PCs on wifi stop seeing each other a few minutes after they start, while wired ones still
+work, the wifi router is filtering multicast by <em>IGMP snooping</em> and nothing on the network sends
+IGMP queries, so it forgets who listens. Either turn IGMP snooping off on the router, or run an IGMP
+querier on one wired machine (one query a minute is enough).</p>
+<p><code>ROS_STATIC_PEERS</code> (a list of addresses to contact directly) also works around missing
+multicast, but over wifi it makes every new publisher or subscription slow &mdash; a Studio can take a
+minute to start &mdash; so prefer fixing multicast.</p></div>
+<p>Avoid domain&nbsp;0 on a network that other ROS machines share: it is every machine's default, so a
+visitor's laptop would join your graph.</p>
+
+<h2>4. Reaching each Studio's Web Remote</h2>
+<p>Each Studio serves its <a href="#web-remote" onclick="showPage('web-remote')">Web Remote</a> on all of
+the PC's network interfaces, on <code>web_remote.port</code> (default <strong>8088</strong>; the next free
+port is used if it is taken). So any device that can reach the PC on <em>any</em> of its addresses can
+open it:</p>
+<pre><code>http://&lt;an address of the robot PC&gt;:&lt;port&gt;/</code></pre>
+<ul>
+  <li>Use the address on the network the <em>device</em> is on &mdash; a PC with two network connections has
+    two addresses, and a device on either side uses the one on its side. The Web Remote settings card
+    lists the PC's addresses.</li>
+  <li>If one PC is set to a different port, note it: the port is per PC, in <code>web_remote.port</code>.</li>
+  <li>A firewall on the robot PC must allow that port from the networks that should use it.</li>
+</ul>
+<div class="admonition danger"><div class="adm-title">No login, by design</div>
+<p>Anyone who can reach the port can take control of the robot from the page. Only expose it on networks
+you trust.</p></div>
+
+<h2>5. Starting the Studio at boot</h2>
+<p>FIC Control Studio is a desktop application: it needs a logged-in desktop session. A robot PC that
+reboots to the login screen has no Studio &mdash; and so no Web Remote &mdash; until someone logs in.</p>
+
+<h3>Start it at login</h3>
+<p>Create <code>~/.config/autostart/fic-control-studio.desktop</code> for the robot PC's user (adjust the path):</p>
+<pre><code>[Desktop Entry]
+Type=Application
+Name=FIC Control Studio
+Exec=/home/&lt;user&gt;/FIC_Interface/fic_install/fic-control-studio.sh
+Terminal=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=10</code></pre>
+<p>The short delay lets the network come up before the Studio starts.</p>
+
+<h3>Log in automatically (optional)</h3>
+<p>For a PC nobody sits at, enable automatic login so the desktop &mdash; and the Studio &mdash; come up after
+every reboot. On Ubuntu with GDM, in <code>/etc/gdm3/custom.conf</code> under <code>[daemon]</code>:</p>
+<pre><code>AutomaticLoginEnable=true
+AutomaticLogin=&lt;user&gt;</code></pre>
+<p>Trade-off: whoever is at the PC's screen has its desktop without a password (<code>sudo</code> still asks).
+Also stop the PC suspending when idle, or it will look switched off.</p>
+
+<h3>Answer the first-launch wizard in advance</h3>
+<p>The first time a user starts the Studio it opens the <strong>first-launch wizard</strong> and waits. Until
+it is answered the main window is not built &mdash; and the Web Remote does not start. On an
+unattended PC that is a Studio that appears to run but cannot be reached. Answer it once by hand, or
+set it in the settings file (Studio closed):</p>
+<pre><code>general:
+  wizard_completed: true
+  default_robot: KinovaGen3_7DOF</code></pre>
+<div class="admonition warning"><div class="adm-title">Set default_robot explicitly</div>
+<p>A Studio that has started once writes the built-in default <code>default_robot: Franka_FR3</code> even
+though nobody chose it. When pre-answering the wizard, set the robot the PC actually drives.</p></div>
+
+<h2>6. Keeping every PC up to date</h2>
+<p>Update each PC with the commands in step&nbsp;1 whenever the branch moves. If you automate it
+(a timer, or a script run from one machine), follow the same rules the Studio's own safety relies on:</p>
+<ul>
+  <li><strong>Never update while a hardware or simulation node is running</strong>
+    (<code>fic_hardware</code>, <code>fic_simulation</code>, &hellip;): the code would change under a moving
+    arm. Skip that PC and try again later.</li>
+  <li><strong>Close the Studio first</strong>, update and rebuild, then start it again. An open Studio holds
+    the old build, and it rewrites its settings file on exit.</li>
+  <li>Save anything a reset would discard (<code>git diff</code>, untracked files) before resetting a PC.</li>
+  <li>After updating, confirm each PC still has its own station ID and the shared domain.</li>
+</ul>
+
+<h2>Checklist</h2>
+<table>
+  <tr><th>On each robot PC</th><th>Check</th></tr>
+  <tr><td>Same commit</td><td><code>git -C ~/FIC_Interface log -1 --oneline</code> matches the other PCs</td></tr>
+  <tr><td>Built</td><td><code>fic_ws/install/setup.bash</code> exists; the last build had no failed packages</td></tr>
+  <tr><td>Station ID</td><td><code>general.station_id</code> = this robot's number, unique across PCs</td></tr>
+  <tr><td>ROS domain</td><td><code>network.ros_domain_id</code> = the lab's, and no conflicting export in <code>~/.bashrc</code></td></tr>
+  <tr><td>Default robot / wizard</td><td><code>default_robot</code> is this PC's robot; <code>wizard_completed: true</code></td></tr>
+  <tr><td>Starts at boot</td><td>Autostart entry present; automatic login if nobody logs in by hand</td></tr>
+  <tr><td>Web Remote</td><td><code>http://&lt;PC address&gt;:&lt;port&gt;/</code> opens from a device on each network that should use it</td></tr>
+</table>
+
+<h2>Troubleshooting</h2>
+<table>
+  <tr><th>Symptom</th><th>Likely cause</th></tr>
+  <tr><td>Web Remote unreachable from every device</td><td>The Studio is not running (PC at the login screen), or it is waiting on the first-launch wizard</td></tr>
+  <tr><td>Web Remote reachable from some devices, not others</td><td>The device is using an address of the PC it cannot reach; a firewall on the PC; or that PC uses a different port</td></tr>
+  <tr><td>Two Studios drive the same robot, or &ldquo;nothing updates&rdquo;</td><td>Duplicate or wrong <code>station_id</code></td></tr>
+  <tr><td>Studios do not see each other</td><td>Different ROS domains &mdash; often a <code>~/.bashrc</code> export overriding the settings file</td></tr>
+  <tr><td>Build fails in about a second</td><td>A workspace copied from another machine: clean rebuild</td></tr>
+  <tr><td>Only one PC fails to build</td><td>A missing <code>-dev</code> package on that PC (e.g. <code>libglfw3-dev</code>)</td></tr>
+  <tr><td>Settings change &ldquo;does not stick&rdquo;</td><td>The file was edited while the Studio was running</td></tr>
+</table>
+<p>See also <a href="#multi-robot" onclick="showPage('multi-robot')">Multi-Robot</a>,
+<a href="#settings" onclick="showPage('settings')">Settings</a> and
+<a href="#troubleshooting" onclick="showPage('troubleshooting')">Troubleshooting</a>.</p>

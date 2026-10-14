@@ -1,0 +1,269 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Process Management</div>
+<h1>Process Management</h1>
+<p class="subtitle">Starting, stopping, and monitoring background processes from the GUI.</p>
+
+<h2>Overview</h2>
+<p>FIC Control Studio manages several background processes &mdash; the physics simulator
+(<a href="#simulation" onclick="showPage('simulation')">MuJoCo or Newton backend</a>), the FIC controllers (simulation and
+hardware variants), the vendor robot driver, the VR relay, bag recorders, and the plotter. All of them
+are spawned as OS subprocesses by <code>fic_studio/mixins/process_mixin.py</code>; the GUI is the single
+owner of their lifecycle. Status is shown via LED indicators in the status bar.</p>
+
+<h2>Launch Toolbar</h2>
+<p>The toolbar uses a <strong>target selector</strong> plus a single <strong>Start/Stop</strong> button
+instead of one button per process. Pick a target (<code>Simulation</code>, <code>Hardware</code>, or
+<code>VR</code>), then press <strong>&#9654; Start</strong>. While a session is running the target
+segments, the station selector (<code>Robot 1&ndash;4</code>), and the robot dropdown are locked, and the
+button turns into a red <strong>&#9632; Stop</strong>.</p>
+<table>
+  <tr><th>Target</th><th>What Start launches</th><th>Stop behaviour</th></tr>
+  <tr><td><strong>Simulation</strong></td><td>Simulator (<code>mujoco_native</code> or <code>mujoco_newton</code> package) + gripper bridge, then the FIC simulation controller <strong>2&nbsp;s later</strong></td><td>Stops FIC controller, then force-kills the simulator</td></tr>
+  <tr><td><strong>Hardware</strong></td><td>Vendor robot driver (from <code>driver_command</code>), then the FIC hardware controller <strong>2&nbsp;s later</strong>. If the driver fails to start, the controller is not launched</td><td>Stops controller, then driver</td></tr>
+  <tr><td><strong>VR</strong></td><td>VR relay node; FIC controllers are spawned automatically per robot once the headset publishes <code>/vr/scene_config</code></td><td>Kills relay and all VR FIC controllers</td></tr>
+</table>
+<p>Utility buttons sit next to the launch cluster: <strong>EXP</strong> (quick experiment recording &mdash;
+only visible when the <a href="#experiments" onclick="showPage('experiments')">Experiments extension</a> is enabled),
+<strong>BAG</strong> (manual rosbag record), <strong>PLT</strong> (plotter), and <strong>VIEW</strong>
+(toggles the <a href="#contact-localization" onclick="showPage('contact-localization')">contact
+localization</a> twin viewer &mdash; visible only while the control target is Hardware, since
+mirroring the real arm's measured pose only makes sense while driving it). Running buttons show a red
+<strong>&#9632;</strong>; idle buttons show <strong>&#9654;</strong> in their category accent colour. The
+red <strong>&#11035; E-STOP</strong> button is always on the right &mdash; see
+<a href="#estop" onclick="showPage('estop')">E-STOP</a>.</p>
+
+<figure>
+<svg viewBox="0 0 700 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="What the Start button launches per target">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#processes-arrowhead); }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+  </style>
+  <defs>
+    <marker id="processes-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+  </defs>
+  <rect x="230" y="12" width="240" height="34" class="box box-red"/>
+  <text x="350" y="29" class="label-bold">Toolbar: Target + &#9654; Start</text>
+
+  <rect x="20" y="70" width="210" height="218" class="container"/>
+  <text x="125" y="86" class="label-title">Simulation</text>
+  <rect x="250" y="70" width="210" height="218" class="container"/>
+  <text x="355" y="86" class="label-title">Hardware</text>
+  <rect x="480" y="70" width="200" height="218" class="container"/>
+  <text x="580" y="86" class="label-title">VR</text>
+
+  <path class="arrow" d="M 300 46 L 125 98"/>
+  <path class="arrow" d="M 350 46 L 353 98"/>
+  <path class="arrow" d="M 400 46 L 578 98"/>
+
+  <rect x="35" y="100" width="180" height="42" class="box box-blue"/>
+  <text x="125" y="114" class="label">Simulator node</text>
+  <text x="125" y="130" class="label-code">mujoco | mujoco_newton</text>
+  <rect x="35" y="152" width="180" height="34" class="box box-grey"/>
+  <text x="125" y="169" class="label-code">gripper_bridge.py</text>
+  <path class="arrow" d="M 125 186 L 125 210"/>
+  <text x="160" y="198" class="label-sm">+2 s</text>
+  <rect x="35" y="212" width="180" height="42" class="box box-green"/>
+  <text x="125" y="226" class="label">FIC sim controller</text>
+  <text x="125" y="242" class="label-code">fic_simulation fic_launch.py</text>
+
+  <rect x="265" y="100" width="180" height="42" class="box box-orange"/>
+  <text x="355" y="114" class="label">Vendor driver</text>
+  <text x="355" y="130" class="label-code">driver_command (yaml)</text>
+  <path class="arrow" d="M 355 142 L 355 210"/>
+  <text x="382" y="176" class="label-sm">+2 s</text>
+  <rect x="265" y="212" width="180" height="42" class="box box-teal"/>
+  <text x="355" y="226" class="label">FIC hardware controller</text>
+  <text x="355" y="242" class="label-code">fic_hardware robot_control_launch.py</text>
+
+  <rect x="495" y="100" width="170" height="42" class="box box-purple"/>
+  <text x="580" y="114" class="label">VR relay</text>
+  <text x="580" y="130" class="label-code">vr_relay_node.py</text>
+  <path class="arrow" d="M 580 142 L 580 210"/>
+  <text x="622" y="176" class="label-sm">/vr/scene_config</text>
+  <rect x="495" y="212" width="170" height="42" class="box box-green"/>
+  <text x="580" y="226" class="label">FIC controller per robot</text>
+  <text x="580" y="242" class="label-code">source_prefix:=vr / vr{i}</text>
+</svg>
+<figcaption>The single Start button launches a different process chain per target. Second-stage processes start after a fixed 2&nbsp;s stagger (Simulation/Hardware) or on headset scene detection (VR).</figcaption>
+</figure>
+
+<h2>Keyboard Shortcuts</h2>
+<p>The individual process toggles still exist as shortcuts and in the <strong>Simulation</strong> menu:</p>
+<table>
+  <tr><th>Key</th><th>Action</th></tr>
+  <tr><td><kbd>F5</kbd></td><td>Toggle simulation only</td></tr>
+  <tr><td><kbd>F6</kbd></td><td>Toggle FIC simulation controller only</td></tr>
+  <tr><td><kbd>F7</kbd></td><td>Launch Sim + FIC (same as Start with the Simulation target)</td></tr>
+  <tr><td><kbd>F8</kbd></td><td>Toggle FIC hardware controller</td></tr>
+  <tr><td><kbd>F9</kbd></td><td>Toggle vendor robot driver</td></tr>
+  <tr><td><kbd>Ctrl+Shift+Q</kbd></td><td>Stop all processes (with confirmation dialog)</td></tr>
+  <tr><td><kbd>Space</kbd></td><td>E-STOP</td></tr>
+</table>
+<p>See <a href="#shortcuts" onclick="showPage('shortcuts')">Keyboard Shortcuts</a> for the full list.</p>
+<div class="admonition warning"><div class="adm-title">Start order matters for manual toggles</div>
+<p>When starting processes individually, launch the data source first: <strong>simulator before the FIC
+simulation controller</strong> (the controller reads joint states from the simulation topics), and
+<strong>driver before the FIC hardware controller</strong>. The Start button and <kbd>F7</kbd> enforce this
+automatically with a 2&nbsp;s stagger. BAG and PLT can start at any time.</p></div>
+
+<h2>Status LEDs</h2>
+<p>The status bar shows LED indicators (colours from the Warmth theme tokens):</p>
+<table>
+  <tr><th>LED</th><th>Green</th><th>Orange</th><th>Blue</th><th>Grey</th></tr>
+  <tr><td>ROS2</td><td>ROS 2 node created at startup</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td></tr>
+  <tr><td>FIC</td><td>FIC simulation controller running</td><td>&mdash;</td><td>&mdash;</td><td>Stopped</td></tr>
+  <tr><td>SIM</td><td>Simulator running</td><td>&mdash;</td><td>&mdash;</td><td>Stopped</td></tr>
+  <tr><td>BAGS</td><td>&mdash;</td><td>Recording</td><td>&mdash;</td><td>Stopped</td></tr>
+  <tr><td>TELEOP</td><td>Slave connected</td><td>Waiting</td><td>Master active</td><td>Idle / extension not loaded</td></tr>
+  <tr><td>GAMEPAD</td><td>USB gamepad detected</td><td>&mdash;</td><td>&mdash;</td><td>No gamepad</td></tr>
+</table>
+<p>LEDs refresh on a 500&nbsp;ms timer. The FIC LED tracks the <em>simulation</em> controller flag; when
+driving hardware, watch the driver output in the <a href="#log-viewer" onclick="showPage('log-viewer')">log panel</a> instead.</p>
+
+<h2>Process Launch Commands</h2>
+<p>These are the exact commands the GUI executes (all wrapped in <code>bash -c "source .../install/setup.bash && exec ..."</code>).
+Use them in a terminal for manual control or debugging. <code>&lt;sid&gt;</code> is the station id from the
+toolbar's <code>Robot N</code> selector (topics are prefixed <code>robot&lt;sid&gt;_</code>, simulation topics
+<code>robot&lt;sid&gt;_simulation/</code>).</p>
+
+<h3>Simulator</h3>
+<pre><code>source ~/FIC_Interface/fic_ws/install/setup.bash
+ros2 launch mujoco_native simulation_launch.py robot_name:=Franka_FR3 station_id:=1 model_file:=&lt;scene&gt;</code></pre>
+<p>When <strong>Settings &rarr; Simulation &rarr; Backend</strong> is set to <code>newton</code>, the GUI
+launches <code>ros2 launch mujoco_newton simulation_launch.py ...</code> instead. If the
+<code>mujoco_newton</code> package has not been built (<code>fic_ws/install/mujoco_newton</code> missing),
+it logs a warning and falls back to the CPU simulator. Alongside the simulator the GUI also spawns
+<code>Extensions/mujoco_playground/gripper_bridge.py</code>, which translates the
+<code>robot&lt;sid&gt;_gripper_width</code> topic into <code>simulation/actuators_cmds</code> for the
+<code>gripper</code> actuator (harmless on robots without one).</p>
+
+<h3>FIC Simulation Controller</h3>
+<pre><code>ros2 launch fic_simulation fic_launch.py robot_name:=Franka_FR3 num_joints:=7 \
+    station_id:=1 source_prefix:=robot1_simulation</code></pre>
+<p><code>source_prefix</code> selects where the controller reads robot state from:
+<code>robot&lt;sid&gt;_simulation</code> for the simulator, or <code>vr</code> / <code>vr&lt;i&gt;</code> when
+launched by the VR target (multi-robot VR scenes additionally pass <code>joint_name_prefix:=r&lt;i&gt;_</code>).</p>
+
+<h3>FIC Hardware Controller</h3>
+<pre><code>ros2 launch fic_hardware robot_control_launch.py robot_name:=Franka_FR3 station_id:=1</code></pre>
+
+<h3>Robot Driver (API)</h3>
+<p>Configured per robot in <code>fic_library/config/robots_config.yaml</code> under
+<code>driver_command</code> (editable in <a href="#robot-config" onclick="showPage('robot-config')">Robot Configuration</a>
+&rarr; Edit &rarr; File Paths). The placeholders <code>{robot_lib}</code> (the <code>robot_library/</code>
+directory) and <code>{robot_name}</code> are substituted before launch, and <code>FIC_ROOT</code> is set in
+the driver's environment. The shipped commands:</p>
+<pre><code># Franka FR3:
+cd {robot_lib}/libfranka/build && ./examples/cartesian_impedance_control 172.16.0.2
+
+# Kinova Gen3 7DOF:
+cd {robot_lib}/Kinova/api_cpp/examples/build-gcc-release && ./01-torque-control_00-Torque_Controller</code></pre>
+<p>The driver's stdout is streamed live into the GUI log panel (tag <code>Driver</code>). Lines containing
+<code>[FAULT]</code> or <code>[SESSION]</code> are flagged as warnings, and consecutive identical lines are
+collapsed into a single entry plus a <em>repeated &times;N</em> summary so a faulted arm spamming at the
+1&nbsp;kHz control rate cannot freeze the UI. If the driver exits on its own, the GUI detects it, logs the
+exit code, and resets the button so you can restart. Drivers are compiled from
+<strong>Robot Configuration &rarr; Compile</strong> (see <a href="#build-tools" onclick="showPage('build-tools')">Build Tools</a>).</p>
+
+<h3>ROS Bag Recording</h3>
+<pre><code>ros2 bag record -a -o ~/FIC_Interface/experiments/bags/2026_07_04_session_001</code></pre>
+<p>Bags are stored under <code>experiments/bags/</code> in the repo root (not <code>~/bags</code>) as
+<code>YYYY_MM_DD_session_NNN</code>; the session number auto-increments per day. The mixin also implements a
+bag-replay toggle that plays the most recently recorded bag with <code>ros2 bag play</code> and refuses to
+start while recording is active. For structured recording with metadata, prefer the
+<a href="#experiments" onclick="showPage('experiments')">Experiments extension</a> (EXP button).</p>
+
+<h3>Plotter</h3>
+<pre><code>ros2 run fic_simulation plotter_node.py --ros-args -p station_id:=1 -p num_joints:=7</code></pre>
+
+<h2>Log Files and Health Checks</h2>
+<p>The simulator, gripper bridge, and VR relay write their output to per-launch files in <code>/tmp</code>
+(timestamped with the launch epoch), so silent startup failures are diagnosable:</p>
+<table>
+  <tr><th>Process</th><th>Log location</th></tr>
+  <tr><td>Simulator</td><td><code>/tmp/fic_sim_mujoco_&lt;epoch&gt;.log</code> or <code>/tmp/fic_sim_mujoco_newton_&lt;epoch&gt;.log</code></td></tr>
+  <tr><td>Gripper bridge</td><td><code>/tmp/fic_gripper_bridge_&lt;epoch&gt;.log</code></td></tr>
+  <tr><td>VR relay</td><td><code>/tmp/fic_vr_relay_&lt;epoch&gt;.log</code></td></tr>
+  <tr><td>Driver</td><td>Streamed into the GUI <a href="#log-viewer" onclick="showPage('log-viewer')">log panel</a></td></tr>
+  <tr><td>FIC controllers, bags, plotter</td><td>Discarded (<code>/dev/null</code>) &mdash; run the launch command in a terminal to see their output</td></tr>
+</table>
+<p>After starting the simulator, the GUI runs a one-shot health check: <strong>2&nbsp;s</strong> after a
+MuJoCo launch, <strong>8&nbsp;s</strong> after a Newton launch (Newton's first run JIT-compiles CUDA kernels
+for several seconds). If the simulator process has died by then, the GUI reads the tail of its log file,
+prints the last lines into the log panel, resets the button, and shows an error dialog pointing at the full
+log path. The exact log path is also printed in the log panel at start
+(<em>"simulation started … (log: /tmp/fic_sim_…)"</em>).</p>
+
+<h2>Process Termination</h2>
+<p>Every subprocess is started in its own process group (<code>setsid</code>), so stop actions signal the
+whole tree (<code>ros2 launch</code> plus every node it spawned), not just the shell wrapper. The signals
+differ per process:</p>
+<table>
+  <tr><th>Process</th><th>Stop semantics</th></tr>
+  <tr><td>FIC controllers (sim + hw), plotter</td><td><code>SIGTERM</code> to the process group</td></tr>
+  <tr><td>Simulator</td><td><code>SIGKILL</code> to the group, then to any process still in its session (strays that moved to another process group); the gripper bridge the same way. Nothing outside the Studio's own processes is touched.</td></tr>
+  <tr><td>Bag recorder</td><td><code>SIGINT</code> (so the bag closes cleanly), 5&nbsp;s grace, then <code>SIGKILL</code></td></tr>
+  <tr><td>Driver</td><td><code>SIGTERM</code>, 3&nbsp;s grace, then <code>SIGKILL</code></td></tr>
+  <tr><td>VR relay + VR FIC controllers</td><td><code>SIGTERM</code> relay / <code>SIGKILL</code> controllers, plus <code>pkill -9 -f vr_relay_node.py</code></td></tr>
+</table>
+<div class="admonition note"><div class="adm-title">Simulator stop is scoped to this Studio</div>
+<p>Before v4.5.0, stopping the simulator also ran <code>pkill -9 -f mujoco</code>, which killed any process on
+the machine whose command line contained "mujoco", including simulators started by another Studio or another
+user. It now stops only the processes in its own session, so several simulators can share a PC. The VR relay
+and the contact twin still use a <code>pkill</code> sweep on their own script names.</p></div>
+
+<h3>Crash-safe cleanup</h3>
+<p>If the GUI itself dies, its children must not keep running &mdash; an orphaned controller would keep
+sending the last torque command to the robot. Two independent defences cover every exit path:</p>
+<ol>
+  <li><strong>Python-level hooks</strong> &mdash; <code>install_crash_cleanup()</code> wires
+  <code>_kill_all_processes()</code> into Qt's <code>aboutToQuit</code>, <code>atexit</code>, and the
+  <code>SIGTERM</code>/<code>SIGHUP</code>/<code>SIGQUIT</code> handlers. It stops the children one at a
+  time &mdash; the <strong>driver first</strong>, so it leaves torque mode while its controller is still
+  running &mdash; SIGTERMing each process group, waiting 2&nbsp;s, then SIGKILLing stragglers.</li>
+  <li><strong>Kernel-level parent-death signal</strong> &mdash; every child is spawned with
+  <code>prctl(PR_SET_PDEATHSIG, SIGTERM)</code>, so the kernel itself signals the child the moment the GUI
+  dies, covering the cases Python can never catch (SIGKILL, segfault, OOM-kill). The launch commands use
+  <code>exec</code> so this signal lands directly on <code>ros2 launch</code>, not on a bash wrapper that
+  would not forward it.</li>
+</ol>
+<div class="admonition note"><div class="adm-title">An exception in the GUI is not a crash (v4.3.0)</div>
+<p><code>sys.excepthook</code> is still replaced, but it only reports. With a custom hook installed,
+PyQt5 routes exceptions from every Qt slot and timer through it and keeps running, so it fired for
+harmless UI bugs too. Until v4.3.0 the first such exception tore down the robot stack mid-run; a
+fatal exception still ends the interpreter, and <code>atexit</code> reaps the children. On its way
+out <code>fic_hardware</code> also clears the shared-memory <code>alive</code> flag, which makes the
+Kinova driver and the CSPM bridge leave torque mode rather than keep applying the last torque.</p></div>
+
+<h2>E-STOP and Stop All</h2>
+<p>The <a href="#estop" onclick="showPage('estop')">E-STOP</a> (<kbd>Space</kbd>) does <em>not</em> simply kill processes.
+Since the June 2026 safety remediation it runs a graceful sequence: (1) fan out to every loaded extension's
+emergency-stop hook, (2) publish mode&nbsp;0 (Stop Controller) to every active robot so the C++ controller
+ramps its torque down and locks at the last-known joint pose, (3) wait ~250&nbsp;ms for the ramp, and only
+then (4) tear down all processes as a backstop. See <a href="#safety" onclick="showPage('safety')">Safety</a> for the full
+contract.</p>
+<p><strong>Simulation &rarr; Stop All Processes</strong> (<kbd>Ctrl+Shift+Q</kbd>) asks for confirmation and
+then stops simulator, FIC controllers, driver, bags, and plotter in order &mdash; without the torque-ramp
+step, so use E-STOP when a real robot is moving.</p>
+
+<h2>Related Pages</h2>
+<ul>
+  <li><a href="#simulation" onclick="showPage('simulation')">Simulation</a> &mdash; MuJoCo vs Newton backends and their rates</li>
+  <li><a href="#dashboard" onclick="showPage('dashboard')">Dashboard</a> &mdash; quick-action buttons for bag recording, plotter, and E-STOP</li>
+  <li><a href="#topics" onclick="showPage('topics')">Topics</a> &mdash; the <code>robot&lt;N&gt;_</code> topic naming these processes use</li>
+  <li><a href="#troubleshooting" onclick="showPage('troubleshooting')">Troubleshooting</a> &mdash; what to do when a process will not start</li>
+</ul>

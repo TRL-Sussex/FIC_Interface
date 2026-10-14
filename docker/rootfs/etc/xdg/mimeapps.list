@@ -1,0 +1,5 @@
+[Default Applications]
+inode/directory=pcmanfm.desktop
+text/html=fic-browser.desktop
+x-scheme-handler/http=fic-browser.desktop
+x-scheme-handler/https=fic-browser.desktop

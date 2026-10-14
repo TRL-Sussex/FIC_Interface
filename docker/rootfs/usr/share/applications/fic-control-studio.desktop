@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=FIC Control Studio
+Comment=The full FIC Studio: control, tuning, simulation, extensions
+Exec=env QTWEBENGINE_CHROMIUM_FLAGS="--no-sandbox --disable-gpu --disable-dev-shm-usage" fic studio --web-ui
+Icon=fic-studio
+Terminal=false
+Categories=Science;Robotics;
+Actions=Classic;
+
+[Desktop Action Classic]
+Name=Classic interface
+Exec=fic studio --classic

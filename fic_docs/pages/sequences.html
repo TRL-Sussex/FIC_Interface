@@ -1,0 +1,248 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Sequences</div>
+<h1>Sequence Programming</h1>
+<p class="subtitle">Waypoint-based motion sequences with looping, hold-time scaling, and tolerance checking.</p>
+
+<h2>Overview</h2>
+<p>Sequences are ordered lists of waypoints that the robot executes one after another.
+Each waypoint can be a joint target, Cartesian pose, or gripper command. The sequence player
+monitors feedback to confirm each waypoint is reached before advancing.</p>
+<p>The panel is provided by the <code>sequences</code> extension (<code>Extensions/sequences/extension.py</code>),
+listed under the <em>Programming</em> sidebar section. Like all optional panels it can be enabled or
+disabled from <a href="#settings" onclick="showPage('settings')">Settings</a> &rarr; Extensions &mdash; see
+<a href="#extensions" onclick="showPage('extensions')">Extensions</a>. Disabling it does not affect the shared joint/EE
+feedback, which lives in the built-in <code>JointStateMixin</code>.</p>
+
+<h2>The web page</h2>
+<p>In the web interface (and the Docker image) Sequences has its own page. The Classic interface keeps the layout
+under <em>Panel Layout</em>.</p>
+<table>
+  <tr><th>Zone</th><th>What it does</th></tr>
+  <tr><td><strong>First row</strong></td><td>Sequence picker (with each one's waypoint count), New and Rename (name typed in place), Delete, Save file and Reload file (<code>~/robot_sequences.yaml</code>)</td></tr>
+  <tr><td><strong>Second row</strong></td><td>Play, Step (the next waypoint), Stop, Loop, the status (Moving to waypoint 3/8&hellip;), and Send to: Simulation or a robot &mdash; marked <em>real robot</em> in red</td></tr>
+  <tr><td><strong>Waypoints</strong></td><td>Each waypoint with its type, values and hold time (edited in place), and Go, &uarr;, &darr;, Edit and Delete. The waypoint playing is highlighted</td></tr>
+  <tr><td><strong>Add a waypoint</strong></td><td>Type the values (joints in degrees; X/Y/Z in metres with an axis and angle; gripper width in mm) and Add, or Capture from robot to add the live position. Edit loads a waypoint here; Update saves it</td></tr>
+  <tr><td><strong>Playback</strong></td><td>Speed (scales the hold times), joint and position tolerance, and the timeout per waypoint</td></tr>
+</table>
+<p>The page asks before Play, Step and Go send a sequence to a real robot. Typed values are checked: joints within
+&plusmn;360&deg;, positions within &plusmn;3&nbsp;m, gripper 0&ndash;80&nbsp;mm.</p>
+
+<h2>Panel Layout</h2>
+<ul>
+  <li><strong>Sequence row</strong> (top) &mdash; sequence dropdown plus <strong>+ NEW</strong>, <strong>RENAME</strong>, <strong>DELETE</strong>, <strong>SAVE TO YAML</strong>, <strong>LOAD FROM YAML</strong>.</li>
+  <li><strong>CAPTURE POSITION</strong> (left) &mdash; <em>Target</em> dropdown (Simulation, Robot 1&ndash;4), <em>Mode</em> dropdown (Joint / Cartesian / Gripper), the input fields for the active mode, <em>Hold Time</em>, and the <strong>READ FROM ROBOT</strong> / <strong>CAPTURE POSITION</strong> buttons.</li>
+  <li><strong>ROBOT MODE (Real Robot Only)</strong> (left) &mdash; <strong>TEACH MODE</strong> and <strong>PLAYBACK MODE</strong> buttons (see below).</li>
+  <li><strong>PLAYBACK</strong> (left) &mdash; Speed Scale, Loop checkbox, tolerances, timeout, and <strong>&#9654; PLAY</strong> / <strong>&#9632; STOP</strong> / <strong>STEP &rarr;</strong>.</li>
+  <li><strong>WAYPOINTS</strong> (right) &mdash; the waypoint list with <strong>&uarr; UP</strong>, <strong>&darr; DOWN</strong>, <strong>UPDATE</strong>, <strong>DELETE</strong>, and <strong>GO TO SELECTED</strong>.</li>
+</ul>
+
+<h2>Creating a Sequence</h2>
+<ol>
+  <li>Open the <strong>Sequences</strong> panel.</li>
+  <li>Click <strong>+ NEW</strong> and enter a name, or pick an existing sequence from the dropdown.</li>
+  <li>Choose the <em>Target</em> (Simulation or Robot&nbsp;1&ndash;4) and the capture <em>Mode</em>:
+    <ul>
+      <li><strong>Joint</strong> &mdash; seven angle spin boxes (degrees, &plusmn;360&deg;)</li>
+      <li><strong>Cartesian</strong> &mdash; X/Y/Z (&plusmn;2&nbsp;m) plus axis&ndash;angle orientation (unit axis + angle in degrees)</li>
+      <li><strong>Gripper</strong> &mdash; width 0.0&ndash;0.08&nbsp;m with OPEN / CLOSE preset buttons and a live % readout</li>
+    </ul>
+  </li>
+  <li>Either type values directly, or click <strong>READ FROM ROBOT</strong> to fill the fields from live feedback
+      (<code>{rid}_q_current</code> for joints, <code>{rid}_ee_current_pose</code> for Cartesian). If no controller
+      feedback has arrived, joint capture falls back to the GUI joint sliders and logs
+      <em>"Read joint positions from sliders (no feedback)"</em>. Gripper capture reads the target robot's gripper slider
+      (not available for the Simulation target &mdash; set the value manually).</li>
+  <li>Set <strong>Hold Time</strong> (0&ndash;60&nbsp;s, seconds to pause at the waypoint after it is reached).</li>
+  <li>Click <strong>CAPTURE POSITION</strong> to append the waypoint to the current sequence.</li>
+  <li>To edit a waypoint: click it in the list (its values load into the capture fields), change values, then click <strong>UPDATE</strong>. Reorder with the <strong>&uarr; UP</strong> / <strong>&darr; DOWN</strong> buttons.</li>
+  <li>Click <strong>SAVE TO YAML</strong> to persist. Edits live only in memory until you save.</li>
+</ol>
+
+<div class="admonition warning"><div class="adm-title">Save explicitly</div>
+<p>Captured and edited waypoints are held in memory only. <strong>SAVE TO YAML</strong> writes all sequences to
+<code>~/robot_sequences.yaml</code>; that file is auto-loaded the next time the panel is built. Deleting or renaming
+a sequence in the panel is also not on disk until you save. The last remaining sequence cannot be deleted.</p></div>
+
+<h2>Waypoint Types</h2>
+<table>
+  <tr><th>Type</th><th>Stored Data</th><th>Published As</th><th>Description</th></tr>
+  <tr><td><strong>Joint</strong></td><td>Angles (degrees) &times; N joints</td><td>Real robot: <code>Float32MultiArray</code> (radians). Simulation: <code>JointState</code> on <code>{rid}_target_joint_angles</code>.</td><td>Move to exact joint configuration</td></tr>
+  <tr><td><strong>Cartesian</strong></td><td><code>position: [x,y,z]</code> (m) + <code>axis_angle: [ax,ay,az,angle_deg]</code></td><td><code>Pose</code></td><td>Move end-effector to target pose. Axis&ndash;angle is converted to a unit quaternion at publish time.</td></tr>
+  <tr><td><strong>Gripper</strong></td><td>Width (m), 0.0&ndash;0.08</td><td><code>Float32</code> (real robot only; logged, not published, for the Simulation target)</td><td>Open/close gripper to specified width</td></tr>
+</table>
+
+<h2>Playback Controls</h2>
+<table>
+  <tr><th>Control</th><th>Shortcut</th><th>Description</th></tr>
+  <tr><td><strong>&#9654; PLAY</strong></td><td><kbd>Ctrl+R</kbd></td><td>Start executing the sequence from the first waypoint</td></tr>
+  <tr><td><strong>&#9632; STOP</strong></td><td><kbd>Escape</kbd></td><td>Halt execution immediately (resets to waypoint 1)</td></tr>
+  <tr><td><strong>STEP &rarr;</strong></td><td>&mdash;</td><td>Select and execute the next waypoint after the current selection, without tolerance monitoring or holds</td></tr>
+  <tr><td><strong>GO TO SELECTED</strong></td><td>Double-click a waypoint</td><td>Execute a single waypoint on demand</td></tr>
+  <tr><td><strong>Loop</strong></td><td>Checkbox</td><td>Automatically restart from the beginning after the last waypoint</td></tr>
+  <tr><td><strong>Speed Scale</strong></td><td>Spin box</td><td>0.1&times; to 3.0&times; &mdash; divides the <em>hold times</em> only. It does not change how fast the robot moves between waypoints; motion speed is set by the planner/controller gains (see <a href="#tuning" onclick="showPage('tuning')">Tuning</a>).</td></tr>
+</table>
+<p>The <kbd>Ctrl+R</kbd> and <kbd>Escape</kbd> bindings are the defaults (<code>play_sequence</code> /
+<code>stop_sequence</code>) and can be rebound in <a href="#settings" onclick="showPage('settings')">Settings</a> &mdash; see
+<a href="#shortcuts" onclick="showPage('shortcuts')">Shortcuts</a>.</p>
+
+<h2>Execution Flow</h2>
+
+<svg viewBox="0 0 700 270" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="Sequence playback loop">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-left { text-anchor: start; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#sequences-arrowhead); }
+    .arrow-green { stroke: #388e3c; marker-end: url(#sequences-arrowhead-green); }
+    .arrow-orange { stroke: #f57c00; marker-end: url(#sequences-arrowhead-orange); }
+    .line { stroke: #bbb; stroke-width: 1; stroke-dasharray: 4,3; }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+    .container-solid { fill: #fafbfd; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; }
+  </style>
+  <defs>
+    <marker id="sequences-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+    <marker id="sequences-arrowhead-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#388e3c"/>
+    </marker>
+    <marker id="sequences-arrowhead-orange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#f57c00"/>
+    </marker>
+  </defs>
+
+  <text x="350" y="18" class="label-title">Sequence playback loop</text>
+
+  <!-- Row 1 -->
+  <rect x="25" y="45" width="150" height="55" class="box box-blue"/>
+  <text x="100" y="65" class="label-bold">Execute waypoint</text>
+  <text x="100" y="82" class="label-sm">publish joint / pose / gripper</text>
+
+  <rect x="255" y="45" width="180" height="55" class="box box-purple"/>
+  <text x="345" y="65" class="label-bold">Monitor feedback</text>
+  <text x="345" y="82" class="label-sm">20 Hz vs tolerance</text>
+
+  <rect x="515" y="45" width="160" height="55" class="box box-orange"/>
+  <text x="595" y="65" class="label-bold">Hold</text>
+  <text x="595" y="82" class="label-code">hold_time / speed</text>
+
+  <!-- Row 2 -->
+  <rect x="515" y="175" width="160" height="55" class="box box-grey"/>
+  <text x="595" y="195" class="label-bold">Advance</text>
+  <text x="595" y="212" class="label-sm">next waypoint (100 ms)</text>
+
+  <rect x="255" y="175" width="180" height="55" class="box box-green"/>
+  <text x="345" y="195" class="label-bold">Complete</text>
+  <text x="345" y="212" class="label-sm">or restart if Loop &#10003;</text>
+
+  <!-- Arrows -->
+  <line x1="175" y1="72" x2="255" y2="72" class="arrow"/>
+  <line x1="435" y1="72" x2="515" y2="72" class="arrow arrow-green"/>
+  <text x="475" y="52" class="label-sm" style="fill:#388e3c">reached /</text>
+  <text x="475" y="63" class="label-sm" style="fill:#388e3c">settled</text>
+  <line x1="595" y1="100" x2="595" y2="175" class="arrow"/>
+  <path d="M 435 90 L 480 140 L 528 175" class="arrow arrow-orange"/>
+  <text x="452" y="135" class="label-sm" style="fill:#f57c00">timeout: warn,</text>
+  <text x="452" y="147" class="label-sm" style="fill:#f57c00">skip hold</text>
+  <line x1="515" y1="202" x2="435" y2="202" class="arrow"/>
+  <text x="475" y="190" class="label-sm">last WP</text>
+  <path d="M 545 230 L 545 252 L 100 252 L 100 100" class="arrow"/>
+  <text x="322" y="242" class="label-sm">more waypoints remain</text>
+  <path d="M 300 175 L 300 130 L 170 100" class="arrow arrow-green" style="stroke-dasharray:4,3"/>
+  <text x="242" y="128" class="label-sm" style="fill:#388e3c">Loop &#10003; restart</text>
+</svg>
+
+<ol>
+  <li>Publish the target joint angles (or Cartesian pose, or gripper width) via the appropriate ROS topic.</li>
+  <li>Monitor position feedback on a 50&nbsp;ms timer (20&nbsp;Hz) from <code>{rid}_q_current</code> or <code>{rid}_ee_current_pose</code>.</li>
+  <li>Check whether the current position is within the configured <strong>tolerance</strong>. Joint waypoints require <em>every</em> joint within the joint tolerance. Cartesian waypoints also have a <em>settled-near-target</em> fallback (see below). Gripper waypoints have no feedback check &mdash; they count as reached 0.3&nbsp;s after publishing.</li>
+  <li>Once reached, wait for the <strong>hold time</strong> (divided by the Speed Scale).</li>
+  <li>Advance to the next waypoint after a 100&nbsp;ms gap. After the last waypoint: restart if Loop is checked, otherwise stop with status <em>Sequence Complete</em>.</li>
+  <li>If the <strong>timeout</strong> expires before the waypoint is reached, log a warning (<code>Timeout at WP N</code>), skip the hold, and advance.</li>
+</ol>
+
+<h2>Tolerances &amp; Timing</h2>
+<table>
+  <tr><th>Setting</th><th>Range</th><th>Default</th><th>Description</th></tr>
+  <tr><td>Joint Tolerance</td><td>0.5&ndash;20.0&deg;</td><td>3.0&deg;</td><td>How close every joint must be to consider the waypoint reached</td></tr>
+  <tr><td>Position Tolerance</td><td>1.0&ndash;50.0 mm</td><td>15.0 mm</td><td>EE distance threshold for Cartesian waypoints. The Cartesian planner often steady-states 5&ndash;10&nbsp;mm off in gravity-loaded poses, so a tighter setting can leave the sequence stuck waiting for a target it cannot quite reach.</td></tr>
+  <tr><td>Timeout</td><td>5.0&ndash;120.0 s</td><td>30.0 s</td><td>Maximum time to wait per waypoint before skipping</td></tr>
+  <tr><td>Hold Time</td><td>0.0&ndash;60.0 s</td><td>1.0 s</td><td>Pause duration at each waypoint after reaching it (per waypoint; divided by Speed Scale during playback)</td></tr>
+</table>
+
+<h2>Settled-near-target advance (Cartesian only)</h2>
+<p>Cartesian waypoints can advance two ways:</p>
+<ol>
+  <li><strong>Strict pass</strong> &mdash; <code>position_error &le; Pos&nbsp;Tol</code>. Logs <code>&#10003; WP N reached (Xs)</code>.</li>
+  <li><strong>Settle pass</strong> &mdash; <code>position_error &le; 3&times; Pos&nbsp;Tol</code> AND the EE has moved less than 1&nbsp;mm for &ge;1.0&nbsp;s. Logs <code>Cartesian waypoint settled at X.Xmm (beyond Ymm tolerance) — advancing</code>, then the usual reached log line. Catches gravity-loaded poses where the planner has stabilised at its best achievable point but cannot quite hit the strict tolerance.</li>
+</ol>
+<p>If a Cartesian waypoint still hits the timeout, the EE never even got within 3&times; tolerance &mdash; that points to a target outside the reachable workspace, the wrong frame, or a singularity, not a tolerance issue. Check the trajectory plot to see where the planner actually went.</p>
+
+<h2>Mode-Aware TEACH / PLAYBACK Buttons</h2>
+<p>The <em>ROBOT MODE (Real Robot Only)</em> group on the left of the panel has two buttons whose behaviour depends on the active capture <em>Mode</em> (Joint / Cartesian / Gripper). Both publish a mode-name string on <code>{rid}_mode_select</code>:</p>
+<table>
+  <tr><th>Capture Mode</th><th>TEACH MODE button</th><th>PLAYBACK MODE button</th></tr>
+  <tr><td>Joint or Gripper</td><td>Publishes <code>"Joint Admittance"</code> (Mode&nbsp;3)</td><td>Publishes <code>"Joint Impedance With Planner"</code> (Mode&nbsp;2)</td></tr>
+  <tr><td>Cartesian</td><td>Publishes <code>"Cartesian Admittance"</code> (Mode&nbsp;7)</td><td>Publishes <code>"Cartesian Planner"</code> (Mode&nbsp;6)</td></tr>
+</table>
+<p>This makes recording a Cartesian-space sequence a one-click flow: switch the capture Mode to <em>Cartesian</em>, click TEACH MODE to put the robot in Cartesian Admittance, hand-guide and capture, then click PLAYBACK MODE before pressing Play. See <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a> for what each mode does. With the Target set to <em>Simulation</em>, both buttons only show an info dialog &mdash; the simulator accepts commands directly without a mode switch.</p>
+
+<h2>File Format</h2>
+<p>Sequences are stored in YAML at <code>~/robot_sequences.yaml</code>:</p>
+<pre><code>sequences:
+  - name: "pick_and_place_v1"
+    waypoints:
+      - type: joint
+        values: [0.0, 45.0, -90.0, 0.0, 0.0, 0.0, 0.0]
+        hold_time: 1.0
+      - type: cartesian
+        position: [0.5, 0.2, 0.3]
+        axis_angle: [0.0, 0.0, 1.0, 0.0]   # ax, ay, az, angle_deg
+        hold_time: 0.5
+      - type: gripper
+        width: 0.0
+        hold_time: 0.5
+        label: "Close gripper"   # optional; written by Teach Mode, preserved on load</code></pre>
+<p>Joint <code>values</code> are stored in degrees and converted to radians at publish time. Unknown keys such as
+<code>label</code> (added by Teach Mode's <em>Save as Sequence</em>) are preserved through save/load but are not
+shown or editable in this panel. The file is loaded automatically when the panel is first built, and
+<strong>LOAD FROM YAML</strong> re-reads it on demand &mdash; replacing all in-memory sequences.</p>
+
+<h2>ROS Topics Used</h2>
+<p><code>{rid}</code> is the target robot's topic prefix, e.g. <code>robot1</code> &mdash; the panel's <em>Target</em>
+dropdown selects it (Robot&nbsp;1 &rarr; <code>robot1</code>; Simulation uses the station's own robot id). See
+<a href="#topics" onclick="showPage('topics')">Topics</a> for the full reference.</p>
+<table>
+  <tr><th>Topic</th><th>Direction</th><th>Type</th><th>Purpose</th></tr>
+  <tr><td><code>{rid}_desired_joint_angles</code></td><td>Publish</td><td>Float32MultiArray</td><td>Joint waypoint targets in radians (real-robot target)</td></tr>
+  <tr><td><code>{rid}_target_joint_angles</code></td><td>Publish</td><td>JointState</td><td>Joint waypoint targets (Simulation target)</td></tr>
+  <tr><td><code>command_ee_position_change_{rid}</code></td><td>Publish</td><td>Pose</td><td>Cartesian waypoint targets</td></tr>
+  <tr><td><code>{rid}_gripper_width</code></td><td>Publish</td><td>Float32</td><td>Gripper commands in metres (real-robot target only)</td></tr>
+  <tr><td><code>{rid}_mode_select</code></td><td>Publish</td><td>String</td><td>Mode change for TEACH / PLAYBACK buttons</td></tr>
+  <tr><td><code>{rid}_q_current</code></td><td>Subscribe</td><td>Float64MultiArray</td><td>Current joint positions for feedback</td></tr>
+  <tr><td><code>{rid}_ee_current_pose</code></td><td>Subscribe</td><td>Pose</td><td>Current EE pose for Cartesian feedback</td></tr>
+</table>
+
+<div class="admonition danger"><div class="adm-title">E-STOP behaviour</div>
+<p>An emergency stop halts a playing sequence immediately (the extension implements the
+<code>on_emergency_stop()</code> hook), and <kbd>Escape</kbd> stops the sequence player at any time.
+Stopping the sequence does not cancel a target the controller is already moving toward &mdash; the robot
+finishes converging on the last published waypoint unless you E-STOP. See
+<a href="#estop" onclick="showPage('estop')">E-STOP</a> and <a href="#safety" onclick="showPage('safety')">Safety</a>.</p></div>
+
+<div class="admonition tip"><div class="adm-title">Teach Mode integration</div>
+<p>Use <a href="#teach-mode" onclick="showPage('teach-mode')">Teach Mode</a> to record waypoints by physically guiding the robot.
+Its <em>Save as Sequence</em> button converts the recording into this panel's schema (joint radians &rarr; degrees,
+quaternions &rarr; axis&ndash;angle), injects it into the sequence dropdown, and auto-saves
+<code>~/robot_sequences.yaml</code> &mdash; ready for immediate playback here. Teach Mode requires the Sequences
+extension to be enabled for this hand-off.</p></div>

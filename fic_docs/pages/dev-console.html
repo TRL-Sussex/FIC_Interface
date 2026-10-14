@@ -1,0 +1,414 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> FIC Dev Console</div>
+<h1>FIC Dev Console</h1>
+<p class="subtitle">Lightweight hardware-focused GUI for direct robot control and teleoperation.</p>
+
+<h2>What is Dev Console?</h2>
+<p>The FIC Dev Console is a stripped-down version of FIC Control Studio designed to run on a
+<strong>second PC sitting next to a real robot</strong>. It removes simulation, scripting, experiments,
+and dashboard panels, keeping only what you need for hands-on hardware work. It is a separate
+entry point (<code>fic_studio.entry_dev</code>) that reuses the same mixins as the full studio &mdash;
+tuning, process management, publishers, settings, safety, and teleoperation.</p>
+
+<table>
+  <tr><th>Feature</th><th>Control Studio (Full)</th><th>Dev Console (Teleop)</th></tr>
+  <tr><td>Dashboard</td><td>&#10004;</td><td>&mdash;</td></tr>
+  <tr><td>Robot Control (Joint / Cartesian / Gripper)</td><td>&#10004;</td><td>&#10004;</td></tr>
+  <tr><td>Live Joint &amp; EE Readout</td><td>&#10004;</td><td>&#10004;</td></tr>
+  <tr><td>Manual Tuning</td><td>&#10004;</td><td>&#10004;</td></tr>
+  <tr><td>Auto-Tuning</td><td>&#10004;</td><td>&mdash;</td></tr>
+  <tr><td>Teleoperation</td><td>&#10004;</td><td>&#10004;</td></tr>
+  <tr><td>VR Relay (headset teleop)</td><td>&#10004;</td><td>&#10004;</td></tr>
+  <tr><td>Sequence Programming</td><td>&#10004;</td><td>&mdash;</td></tr>
+  <tr><td>Teach Mode</td><td>&#10004;</td><td>&mdash;</td></tr>
+  <tr><td>Script Editor</td><td>&#10004;</td><td>&mdash;</td></tr>
+  <tr><td>Experiment Manager</td><td>&#10004;</td><td>&mdash;</td></tr>
+  <tr><td>MuJoCo Simulation</td><td>&#10004;</td><td>&mdash;</td></tr>
+  <tr><td>Topic Monitor</td><td>&#10004;</td><td>&mdash;</td></tr>
+  <tr><td>Settings &amp; Build Tools</td><td>&#10004;</td><td>&#10004;</td></tr>
+  <tr><td>Safety System (zone monitoring + limit broadcast)</td><td>&#10004;</td><td>&#10004;</td></tr>
+  <tr><td>Robot Config editor</td><td>&#10004;</td><td>Read-only (configs loaded, no editor)</td></tr>
+  <tr><td>E-STOP</td><td>&#10004;</td><td>&#10004;</td></tr>
+</table>
+
+<div class="admonition tip"><div class="adm-title">When to use Dev Console</div>
+<p>Use Dev Console when you have a dedicated robot workstation that only needs hardware control
+and teleoperation &mdash; no simulation, no scripting, no experiment logging. It starts faster
+and has a simpler UI that keeps the focus on the real robot.</p>
+</div>
+
+<hr>
+
+<h2>Installation</h2>
+<p>Dev Console is part of the same FIC Studio package. During installation, the installer asks
+which mode to register:</p>
+<ol>
+  <li><strong>FIC Control Studio (Full)</strong> &mdash; the complete interface</li>
+  <li><strong>FIC Dev Console (Teleop)</strong> &mdash; the lightweight hardware GUI</li>
+  <li><strong>Both</strong> &mdash; registers both in your app launcher</li>
+</ol>
+<p>To re-run the installer and change your choice (see <a href="#installation" onclick="showPage('installation')">Installation</a>):</p>
+<pre><code>cd ~/FIC_Interface
+bash install-fic-studio.sh</code></pre>
+<p>If you chose "Both", you will see two entries when you search for "FIC" in your app launcher.</p>
+
+<h3>Running from terminal</h3>
+<pre><code># Via launcher script
+bash ~/FIC_Interface/fic_install/fic-dev-console.sh
+
+# Direct ROS 2 command (workspace must be sourced)
+ros2 run fic_studio fic_dev</code></pre>
+<p>On startup a splash screen loads settings from <code>~/.robot_selector_gui_settings.yaml</code>
+(shared with the full studio). If <code>ROS_DOMAIN_ID</code> is not already set in the environment,
+the value from the settings key <code>network.ros_domain_id</code> is applied before ROS initialises.
+The ROS node is named <code>fic_studio_&lt;hostname&gt;</code>, so two instances on different machines
+in the same domain never collide.</p>
+
+<hr>
+
+<h2>Interface Overview</h2>
+<p>The Dev Console window has a toolbar at the top, four tabs in the centre (Control, Tuning,
+Teleoperation, Settings), and a collapsible <a href="#log-viewer" onclick="showPage('log-viewer')">log viewer</a>
+at the bottom.</p>
+
+<h3>Toolbar</h3>
+<table>
+  <tr><th>Element</th><th>Description</th></tr>
+  <tr><td><strong>Robot</strong> dropdown</td><td>Select the active robot. The list is loaded from <code>fic_studio_robots.yaml</code> (Franka FR3, Kinova Gen3, etc.); switching adjusts the visible joint fields to the robot's DOF and loads its safety limits.</td></tr>
+  <tr><td><strong>Mode</strong> dropdown + <strong>Send</strong></td><td>Choose one of <a href="#control-modes" onclick="showPage('control-modes')">control modes</a> 1&ndash;8 and send it to the controller (published on <code>robot{N}_mode_select</code> and <code>robot{N}_control_mode</code>)</td></tr>
+  <tr><td><strong>&#9654; API</strong></td><td>Start/stop the vendor robot driver. Runs the <code>driver_command</code> from the robot's configuration (e.g. libfranka or Kortex torque-control example)</td></tr>
+  <tr><td><strong>&#9654; FIC</strong></td><td>Start/stop the hardware FIC controller: <code>ros2 launch fic_hardware robot_control_launch.py robot_name:=&lt;robot&gt; station_id:=&lt;N&gt;</code></td></tr>
+  <tr><td><strong>&#9654; BAG</strong></td><td>Start/stop ROS 2 bag recording of <em>all</em> topics (<code>ros2 bag record -a</code>) into <code>experiments/bags/YYYY_MM_DD_session_NNN</code></td></tr>
+  <tr><td><strong>&#9654; PLT</strong></td><td>Start/stop the real-time plotter (<code>ros2 run fic_simulation plotter_node.py</code> with the current station id and joint count)</td></tr>
+  <tr><td><strong>&#9654; VR</strong></td><td>Start/stop the VR relay (<code>VRAPK/tools/vr_relay_node.py</code>) in auto-detect mode; scene configuration arrives from the headset on <code>/vr/scene_config</code>. See <a href="#vr-zed-teleop" onclick="showPage('vr-zed-teleop')">VR / ZED Teleop</a>.</td></tr>
+  <tr><td><strong>E-STOP</strong></td><td>Emergency stop &mdash; kills all spawned processes and holds current position (see <a href="#estop" onclick="showPage('estop')">E-STOP</a>)</td></tr>
+</table>
+<p>Running processes turn <span style="color:#c62828;font-weight:bold">red</span> and show a &#9632; icon.
+Idle processes show <span style="color:#00796b;font-weight:bold">teal</span> (orange for BAG/PLT, blue for VR)
+with a &#9654; icon.</p>
+
+<h3>Status Bar</h3>
+<p>The bottom status bar shows LED indicators for <strong>ROS2</strong>, <strong>FIC</strong>,
+<strong>API</strong>, and <strong>BAGS</strong> processes, plus the currently selected robot name and DOF.</p>
+
+<h3>Process &amp; Topic Flow</h3>
+<p>The diagram below shows what the toolbar buttons launch and which topics the GUI uses.
+<code>N</code> is the station id (default 1) from <code>~/.robot_selector_gui_settings.yaml</code>.</p>
+<svg viewBox="0 0 700 400" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="FIC Dev Console">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#devconsole-arrowhead); }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+  </style>
+  <defs>
+    <marker id="devconsole-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+  </defs>
+
+  <!-- Dev Console container -->
+  <rect class="container" x="10" y="10" width="330" height="380"/>
+  <text class="label-title" x="175" y="30">FIC Dev Console</text>
+
+  <!-- Toolbar buttons -->
+  <rect class="box box-teal" x="30" y="50" width="90" height="34"/>
+  <text class="label" x="75" y="67">&#9654; API</text>
+  <rect class="box box-teal" x="130" y="50" width="90" height="34"/>
+  <text class="label" x="175" y="67">&#9654; FIC</text>
+  <rect class="box box-orange" x="230" y="50" width="90" height="34"/>
+  <text class="label" x="275" y="67">&#9654; BAG / PLT</text>
+
+  <!-- Spawned processes -->
+  <rect class="box box-grey" x="30" y="120" width="130" height="46"/>
+  <text class="label-bold" x="95" y="136">Vendor driver</text>
+  <text class="label-code" x="95" y="152">driver_command</text>
+
+  <rect class="box box-blue" x="180" y="120" width="140" height="46"/>
+  <text class="label-bold" x="250" y="136">Controller launch</text>
+  <text class="label-code" x="250" y="152">ros2 launch fic_hardware</text>
+
+  <line class="arrow" x1="75" y1="84" x2="90" y2="120"/>
+  <line class="arrow" x1="175" y1="84" x2="240" y2="120"/>
+  <line class="arrow" x1="320" y1="143" x2="420" y2="165"/>
+  <text class="label-sm" x="370" y="140">spawns</text>
+
+  <!-- GUI publishers box -->
+  <rect class="box box-purple" x="30" y="200" width="290" height="88"/>
+  <text class="label-bold" x="175" y="216">GUI publishes</text>
+  <text class="label-code" x="175" y="233">robot{N}_mode_select &middot; robot{N}_control_mode</text>
+  <text class="label-code" x="175" y="248">robot{N}_desired_joint_angles &middot; robot{N}_gripper_width</text>
+  <text class="label-code" x="175" y="263">command_ee_position_change_robot{N}</text>
+  <text class="label-code" x="175" y="278">robot{N}_safety/{cartesian,joint,velocity}_limits</text>
+
+  <!-- GUI subscribers box -->
+  <rect class="box box-green" x="30" y="310" width="290" height="62"/>
+  <text class="label-bold" x="175" y="326">GUI subscribes (live readout, 20 Hz)</text>
+  <text class="label-code" x="175" y="343">robot{N}_trajectory_data (Float64MultiArray)</text>
+  <text class="label-code" x="175" y="358">robot{N}_q_current (Float32MultiArray)</text>
+
+  <!-- Right side: controller + robot -->
+  <rect class="box box-blue" x="420" y="150" width="240" height="70"/>
+  <text class="label-bold" x="540" y="172">FIC hardware controller</text>
+  <text class="label-sm" x="540" y="192">1 kHz control loop, zone enforcement</text>
+
+  <rect class="box box-red" x="450" y="290" width="180" height="56"/>
+  <text class="label-bold" x="540" y="310">Real robot</text>
+  <text class="label-sm" x="540" y="328">via vendor API driver</text>
+
+  <!-- Arrows GUI <-> controller <-> robot -->
+  <line class="arrow" x1="320" y1="244" x2="440" y2="220"/>
+  <text class="label-sm" x="385" y="240">targets, mode, limits</text>
+  <line class="arrow" x1="470" y1="220" x2="325" y2="318"/>
+  <text class="label-sm" x="420" y="290">joint + EE state</text>
+  <line class="arrow" x1="540" y1="220" x2="540" y2="290"/>
+  <text class="label-sm" x="580" y="255">torques</text>
+</svg>
+
+<hr>
+
+<h2>Tabs</h2>
+
+<h3>1. Control Tab</h3>
+<p>The main tab for sending commands to the robot.</p>
+
+<h4>Joint Targets</h4>
+<p>One input field per joint (up to seven; fields beyond the selected robot's DOF are hidden),
+in <strong>degrees</strong>. Visible when the active control mode is joint-space (modes 1&ndash;4).</p>
+<ul>
+  <li><strong>SEND JOINTS</strong> &mdash; converts values to radians and publishes to
+      <code>robot{N}_desired_joint_angles</code>.</li>
+  <li><strong>RESET TO HOME</strong> &mdash; fills the fields with the robot's <code>q_home_deg</code>
+      values from <code>fic_studio_robots.yaml</code>.</li>
+</ul>
+
+<h4>Cartesian Targets</h4>
+<p>Six input fields: X, Y, Z (metres) and Rx, Ry, Rz (radians). Visible when the active
+control mode is Cartesian (modes 5&ndash;8).</p>
+<ul>
+  <li><strong>SEND POSE</strong> &mdash; publishes the pose to
+      <code>command_ee_position_change_robot{N}</code>. The Rx/Ry/Rz values are copied raw into the
+      Pose orientation fields (no quaternion conversion in the Dev Console).</li>
+  <li><strong>RESET TO HOME</strong> &mdash; fills the fields with the robot's <code>default_ee_target</code>
+      from <code>fic_studio_robots.yaml</code> (position + orientation).</li>
+</ul>
+
+<div class="admonition note"><div class="adm-title">Automatic visibility</div>
+<p>The joint and Cartesian groups toggle automatically when you change the control mode in the
+toolbar. Joint modes (1&ndash;4) show the joint fields; Cartesian modes (5&ndash;8) show the
+Cartesian fields.</p>
+</div>
+
+<h4>Gripper</h4>
+<p>A width spinner (0&ndash;0.08 m, 0.005 m steps, default 0.04 m) with three buttons.
+All publish to <code>robot{N}_gripper_width</code>:</p>
+<ul>
+  <li><strong>Send</strong> &mdash; publish the current spinner value</li>
+  <li><strong>Open</strong> &mdash; set width to 0.08 m (fully open)</li>
+  <li><strong>Close</strong> &mdash; set width to 0.0 m (fully closed)</li>
+</ul>
+
+<h4>Live Readout</h4>
+<p>Updated at 20 Hz from two station-prefixed ROS 2 topics:</p>
+<table>
+  <tr><th>Topic</th><th>Type</th><th>Data</th></tr>
+  <tr><td><code>robot{N}_trajectory_data</code></td><td>Float64MultiArray</td><td>Full trajectory state (joints + EE position)</td></tr>
+  <tr><td><code>robot{N}_q_current</code></td><td>Float32MultiArray</td><td>Fallback joint positions only</td></tr>
+</table>
+<p>Displays each joint angle in degrees and the end-effector XYZ position in metres. See
+<a href="#topics" onclick="showPage('topics')">Topics</a> for the full topic reference.</p>
+
+<h3>2. Tuning Tab</h3>
+<p>Identical to the <a href="#tuning" onclick="showPage('tuning')">Manual Tuning</a> panel in the full studio.
+Allows real-time adjustment of FIC parameters (stiffness, damping, etc.) per joint and per mode.
+Changes are sent immediately via ROS 2 topics.</p>
+
+<h3>3. Teleoperation Tab</h3>
+<p>Identical to the <a href="#teleoperation" onclick="showPage('teleoperation')">Teleoperation</a> panel in the full
+studio. Supports bilateral master/slave teleoperation over DDS on the shared
+<code>/teleop/</code> topics (<code>/teleop/master_joints</code>, <code>/teleop/master_ee_pose</code>,
+<code>/teleop/slave_wrench</code>, <code>/teleop/latency</code>), with joint mapping, bilateral force
+feedback, motion scaling, velocity limiting, EMA smoothing, and a data-flow connection monitor.</p>
+<p>This is the primary use case for the Dev Console &mdash; place it on the robot's workstation
+as the <strong>slave</strong>, and control from the full studio on a separate
+<strong>master</strong> machine. The role is chosen explicitly with the <strong>Role</strong>
+dropdown (Master / Slave) before starting a session.</p>
+
+<div class="admonition tip"><div class="adm-title">Typical teleop setup</div>
+<p><strong>Machine A</strong> (office/lab) runs <strong>FIC Control Studio</strong> as master.<br>
+<strong>Machine B</strong> (robot cell) runs <strong>FIC Dev Console</strong> as slave.<br>
+Both machines share the same <code>ROS_DOMAIN_ID</code> on the same network.</p>
+</div>
+
+<h3>4. Settings Tab</h3>
+<p>Identical to the <a href="#settings" onclick="showPage('settings')">Settings</a> panel in the full studio.
+Theme selection (Warm Dark / Warm Light), log viewer height, default robot, network settings,
+keyboard shortcuts, and the workspace <a href="#build-tools" onclick="showPage('build-tools')">build tools</a>
+(Rebuild Workspace, Rebuild Package&hellip;, Clean Rebuild).</p>
+
+<hr>
+
+<h2>Typical Workflow</h2>
+
+<h3>Direct Hardware Control</h3>
+<ol>
+  <li>Launch FIC Dev Console on the robot workstation.</li>
+  <li>Select the robot from the toolbar dropdown.</li>
+  <li>Click <strong>&#9654; API</strong> to start the vendor driver &mdash; wait for the API LED to turn green.
+      If a "No Driver Command" dialog appears, set the <code>driver_command</code> for the robot in the
+      full studio's <a href="#robot-config" onclick="showPage('robot-config')">Robot Configuration</a> editor (File Paths tab).</li>
+  <li>Click <strong>&#9654; FIC</strong> to start the hardware controller.</li>
+  <li>Choose a control mode (e.g. <em>1: Joint Impedance</em>) and click <strong>Send</strong>.</li>
+  <li>On the <strong>Control</strong> tab, click <strong>RESET TO HOME</strong> to load the robot's home position, then click <strong>SEND JOINTS</strong>.</li>
+  <li>Adjust FIC parameters on the <strong>Tuning</strong> tab as needed.</li>
+  <li>Use <strong>&#9654; BAG</strong> to record data and <strong>&#9654; PLT</strong> to visualise it.</li>
+</ol>
+
+<h3>Teleoperation (Slave Side)</h3>
+<ol>
+  <li>Ensure the master machine (running full FIC Control Studio) is on the same network with the same <code>ROS_DOMAIN_ID</code>.</li>
+  <li>Launch FIC Dev Console and start the driver + controller as above.</li>
+  <li>Switch to the <strong>Teleoperation</strong> tab.</li>
+  <li>Set the <strong>Role</strong> dropdown to <strong>Slave</strong>, then click <strong>START TELEOP</strong>.
+      The console announces itself and the connection monitor shows the partner's machine ID, latency,
+      and heartbeat once data flows.</li>
+  <li>The master's joint commands are now forwarded to the real robot through the Dev Console.</li>
+  <li>Enable <strong>Bilateral Force Feedback</strong> on the master to receive force feedback from the slave.</li>
+  <li>Click <strong>STOP TELEOP</strong> to end the session.</li>
+</ol>
+
+<hr>
+
+<h2>Safety</h2>
+<p>The Dev Console runs the same safety system as the full studio
+(see <a href="#safety" onclick="showPage('safety')">Safety</a>):</p>
+<ul>
+  <li><strong>Zone limits per robot</strong> &mdash; when you select a robot, its <code>safety_zones</code>
+      section from the robot configuration is loaded and broadcast to the controller on
+      <code>robot{N}_safety/cartesian_limits</code>, <code>robot{N}_safety/joint_limits</code>, and
+      <code>robot{N}_safety/velocity_limits</code>. The C++ control loop enforces Cartesian boundaries
+      as a virtual wall (restoring force) and clamps joint targets at the limits.</li>
+  <li><strong>GUI-side monitoring</strong> &mdash; a 10 Hz check compares the live joint positions and
+      EE position against the loaded limits, warns when within 90% of a limit, and logs violations.
+      As a backstop, an actual violation triggers a debounced graceful controller stop.</li>
+  <li><strong>E-STOP</strong> &mdash; the red button in the toolbar (default keyboard shortcut
+      <kbd>Space</kbd>, configurable under <em>shortcuts</em> in the settings file) stops the
+      controller, driver, bag recorder, and plotter, publishes the current joint positions as a hold
+      command, then force-kills any lingering controller processes.</li>
+  <li><strong>Teleop safety</strong> &mdash; data-flow connection monitor (the slave freezes when the
+      partner's data stops), max joint velocity limiting, EMA smoothing, motion scaling, and latency
+      monitoring with a warning above 100 ms
+      (see <a href="#teleoperation" onclick="showPage('teleoperation')">Teleoperation</a> for details).</li>
+  <li><strong>Process cleanup</strong> &mdash; every spawned process (driver, controller, bags, plotter,
+      VR relay) is killed with its whole process group when the window closes, and children carry
+      <code>PR_SET_PDEATHSIG</code> so they also die if the GUI crashes.</li>
+</ul>
+
+<div class="admonition danger"><div class="adm-title">Always keep E-STOP accessible</div>
+<p>When working with a real robot, keep the E-STOP button visible and your hand near its keyboard
+shortcut. Start with low stiffness and test movements incrementally.</p>
+</div>
+
+<hr>
+
+<h2>Configuration</h2>
+<p>Dev Console reads the same configuration files as the full studio:</p>
+<table>
+  <tr><th>File</th><th>Purpose</th></tr>
+  <tr><td><code>fic_ws/src/fic_studio/fic_studio/fic_studio_robots.yaml</code></td>
+      <td>GUI robot definitions: <code>num_joints</code>, <code>q_home_deg</code>,
+      <code>default_ee_target</code>, <code>driver_command</code>, <code>safety_zones</code></td></tr>
+  <tr><td><code>fic_library/config/config.xml</code></td>
+      <td>FIC tuning parameters per robot per mode (see <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a>).
+      On startup the Dev Console ensures an entry exists for every robot.</td></tr>
+  <tr><td><code>~/.robot_selector_gui_settings.yaml</code></td>
+      <td>Shared GUI settings: theme, default robot, log viewer, <code>station_id</code>,
+      <code>ros_domain_id</code>, keyboard shortcuts</td></tr>
+</table>
+<p>Changes saved in the full studio's <a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a> editor
+are picked up by the Dev Console the next time it starts (robot configs are loaded once at startup).</p>
+
+<hr>
+
+<h2>Network Architecture</h2>
+<p>Bilateral teleoperation over DDS: the master publishes joint targets, the slave returns
+measured wrenches for force feedback.</p>
+<svg viewBox="0 0 700 300" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="Workstation (Machine A)">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#devconsole-net-arrowhead); }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+  </style>
+  <defs>
+    <marker id="devconsole-net-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+  </defs>
+
+  <!-- Machine A -->
+  <rect class="container" x="10" y="10" width="270" height="240"/>
+  <text class="label-title" x="145" y="32">Workstation (Machine A)</text>
+  <rect class="box box-blue" x="35" y="55" width="220" height="60"/>
+  <text class="label-bold" x="145" y="76">FIC Control Studio</text>
+  <text class="label-sm" x="145" y="96">Full &mdash; MASTER</text>
+  <rect class="box box-grey" x="35" y="135" width="220" height="46"/>
+  <text class="label-sm" x="145" y="150">Simulation &middot; Scripting</text>
+  <text class="label-sm" x="145" y="166">Experiments &middot; Dashboard</text>
+
+  <!-- Machine B -->
+  <rect class="container" x="420" y="10" width="270" height="240"/>
+  <text class="label-title" x="555" y="32">Robot PC (Machine B)</text>
+  <rect class="box box-teal" x="445" y="55" width="220" height="60"/>
+  <text class="label-bold" x="555" y="76">FIC Dev Console</text>
+  <text class="label-sm" x="555" y="96">Teleop &mdash; SLAVE</text>
+  <rect class="box box-grey" x="445" y="135" width="220" height="46"/>
+  <text class="label-sm" x="555" y="150">API driver &middot; FIC hardware controller</text>
+  <text class="label-sm" x="555" y="166">Direct robot control</text>
+
+  <!-- Robot under machine B -->
+  <rect class="box box-red" x="475" y="200" width="160" height="36"/>
+  <text class="label-bold" x="555" y="218">Real robot</text>
+  <line class="arrow" x1="555" y1="181" x2="555" y2="200"/>
+
+  <!-- DDS arrows -->
+  <line class="arrow" x1="280" y1="75" x2="420" y2="75"/>
+  <text class="label-code" x="350" y="62">/teleop/master_joints</text>
+  <line class="arrow" x1="420" y1="110" x2="280" y2="110"/>
+  <text class="label-code" x="350" y="124">/teleop/slave_wrench</text>
+  <text class="label-sm" x="350" y="160">DDS &mdash; same LAN / VPN</text>
+  <text class="label-code" x="350" y="176">ROS_DOMAIN_ID identical</text>
+</svg>
+
+<h2>Troubleshooting</h2>
+<table>
+  <tr><th>Problem</th><th>Fix</th></tr>
+  <tr><td>Dev Console not in launcher</td><td>Re-run the installer and choose "FIC Dev Console" or "Both"</td></tr>
+  <tr><td>Robot not responding</td><td>Check API LED is green. Start API before FIC.</td></tr>
+  <tr><td>"No Driver Command" dialog when clicking API</td><td>Set the <code>driver_command</code> field for the robot in the full studio's Robot Configuration editor (File Paths tab). <code>{robot_lib}</code> and <code>{robot_name}</code> placeholders are substituted at launch.</td></tr>
+  <tr><td>Joint fields show for Cartesian mode</td><td>Ensure mode was sent (click <strong>Send</strong> after selecting)</td></tr>
+  <tr><td>Live readout stuck at 0</td><td>Verify the FIC controller is running and publishing to <code>robot{N}_trajectory_data</code> (or <code>robot{N}_q_current</code>). Check the station id in settings matches the controller's.</td></tr>
+  <tr><td>Teleop not connecting</td><td>Check both machines have the same <code>ROS_DOMAIN_ID</code> and can <code>ros2 topic list</code> each other</td></tr>
+  <tr><td>VR relay won't start</td><td>The relay script must exist at <code>VRAPK/tools/vr_relay_node.py</code> next to the FIC_Interface directory; relay output is logged to <code>/tmp/fic_vr_relay_&lt;timestamp&gt;.log</code></td></tr>
+  <tr><td>E-STOP doesn't stop everything</td><td>Check process names. E-STOP also runs <code>pkill -9 -f cartesian_impedance_control</code> as a fallback.</td></tr>
+</table>

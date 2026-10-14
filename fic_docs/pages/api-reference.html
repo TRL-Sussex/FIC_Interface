@@ -1,0 +1,526 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">›</span> Script API</div>
+<h1>Script API Reference</h1>
+<p class="subtitle">All functions available in the <a href="#script-editor" onclick="showPage('script-editor')">Script Editor</a> plus the standalone <code>fic_api</code> package.</p>
+
+<p>There are two Python APIs. The <strong>Script Editor extension</strong> (this page, first half) runs scripts inside the studio process with a <code>robot</code> facade object and flat alias functions that map to every GUI action the studio can perform. The <strong>standalone <code>fic_api</code> package</strong> (second half) provides a <code>Robot</code> class you can use from any Python script, Jupyter notebook, or IDE &mdash; no studio GUI required.</p>
+
+<p>Open the <strong>Script Editor</strong> page from the sidebar (Programming &rsaquo; Script Editor; Ctrl+6 in the Classic interface). Open an example or one of your scripts, edit it, and press <strong>&#9654; Run</strong> (Ctrl+Enter); <strong>&#9632; Stop</strong> ends it. On the web page a run goes to the Studio's own target (Simulation / Hardware / VR in the top bar, shown as <em>Runs on</em> above the editor) and asks first on Hardware; the Classic page has its own <strong>Target</strong> dropdown. Any browser that holds control in the web interface can save and run scripts.</p>
+
+<h2>Editor Layout</h2>
+<p>In the web interface (and the Docker image) the page has two toolbar rows above a full-width editor: the script
+picker with New / Save / Save as&hellip; / Delete and <em>Runs on</em>; then Run / Stop, the run's status, and the
+<strong>Examples</strong> and <strong>API</strong> drawers. The output is under the editor. The API drawer is this
+page's first half, searchable; choosing an entry inserts it at the cursor. The Classic interface keeps its three
+panes (editor and examples tabs, telemetry and API reference, output console) and its <strong>Target Robot</strong>
+combo. See <a href="#script-editor" onclick="showPage('script-editor')">Script Editor</a> for both.</p>
+
+<h2>The <code>robot</code> Object</h2>
+<p>Every script receives a <code>robot</code> variable (a <code>RobotAPI</code> instance) plus flat aliases for the most common calls:</p>
+<p>Properties (Signature: <em>property</em>) are read without brackets: <code>robot.state.joints</code>, not <code>robot.state.joints()</code>.</p>
+<pre><code># Grouped namespace
+joints = robot.state.joints          # list[float], degrees
+robot.motion.move_joints([0, -45, 0, -90, 0, 45, 0], wait=True)
+robot.mode.set(2)                    # Joint Impedance With Planner
+
+# Flat aliases (backward-compatible)
+joints = get_joint_positions()
+move_joints([0, -45, 0, -90, 0, 45, 0], wait=True)
+set_mode(2)</code></pre>
+
+<h2>Thread-Safety Model</h2>
+<table>
+  <tr><th>Operation</th><th>Thread</th></tr>
+  <tr><td><code>node.publish_*</code> (motion, mode, tune, topics)</td><td>Worker thread &mdash; direct call</td></tr>
+  <tr><td><code>JointStateMixin</code> reads (<code>robot.state.*</code>)</td><td>Worker thread &mdash; direct call</td></tr>
+  <tr><td>GUI / subprocess ops (<code>process.*</code>, <code>target.*</code>, tuning save)</td><td>Main thread via <code>marshal()</code></td></tr>
+</table>
+<p>Calling <code>marshal()</code> on a publish method would deadlock &mdash; never do that.</p>
+
+<h2>Cooperative Stop</h2>
+<p>Scripts can be stopped cleanly by pressing <strong>&#9632; Stop</strong> in the toolbar. The <code>is_stopped()</code> predicate returns <code>True</code> once a stop is requested; <code>wait()</code> and <code>move_joints(wait=True)</code> poll it at ~20 Hz and return early. After a 2-second grace period the runner calls <code>terminate()</code> as a last resort.</p>
+<pre><code>for wp in WAYPOINTS:
+    if is_stopped():
+        break
+    robot.motion.move_joints(wp, wait=True, timeout=10.0)
+    robot.wait(0.5)</code></pre>
+
+<hr>
+
+<h2>API Namespaces</h2>
+
+<h3><code>robot.state</code> &mdash; Read-Only Telemetry</h3>
+<p>All reads are thread-safe direct calls to <code>JointStateMixin</code> helpers. Angle values are returned in <strong>degrees</strong>.</p>
+<table>
+  <tr><th>Method / Property</th><th>Signature</th><th>Units</th><th>Description</th></tr>
+  <tr><td><code>robot.state.joints</code></td><td>property</td><td>degrees</td><td>Current joint positions.</td></tr>
+  <tr><td><code>robot.state.joint_velocity</code></td><td>property</td><td>rad/s</td><td>Current joint velocities.</td></tr>
+  <tr><td><code>robot.state.joint_effort</code></td><td>property</td><td>Nm</td><td>Current joint efforts.</td></tr>
+  <tr><td><code>robot.state.joint_commanded</code></td><td>property</td><td>degrees</td><td>Commanded joint positions.</td></tr>
+  <tr><td><code>robot.state.ee_pose</code></td><td>property</td><td>m / &mdash;</td><td>EE pose as <code>[x, y, z, qx, qy, qz, qw]</code> or <code>[]</code>.</td></tr>
+  <tr><td><code>robot.state.wrench</code></td><td>property</td><td>N / Nm</td><td>Tool wrench <code>(Fx, Fy, Fz, Tx, Ty, Tz)</code> or <code>None</code>.</td></tr>
+</table>
+<pre><code>joints = robot.state.joints
+print(f'Joint 1: {joints[0]:.1f} deg')
+
+ee = robot.state.ee_pose
+if ee:
+    print(f'EE: x={ee[0]:.3f} y={ee[1]:.3f} z={ee[2]:.3f} m')</code></pre>
+
+<h3><code>robot.motion</code> &mdash; Joint-Space and Cartesian Motion</h3>
+<p>Publishes directly from the worker thread (thread-safe).</p>
+<table>
+  <tr><th>Method</th><th>Signature</th><th>Units</th><th>Description</th></tr>
+  <tr><td><code>robot.motion.move_joints</code></td>
+      <td><code>(angles_deg, wait=False, timeout=10.0, tolerance=None)</code></td>
+      <td>degrees</td>
+      <td>Publish joint angles; optionally block until reached. <code>tolerance=None</code> means the 2.0&deg; per-joint default. Returns <code>None</code> (no-wait), <code>True</code> (reached), or <code>False</code> (timeout / stop).</td></tr>
+  <tr><td><code>robot.motion.move_cartesian</code></td>
+      <td><code>(x, y, z, rx=0.0, ry=0.0, rz=0.0)</code></td>
+      <td>m / rad</td>
+      <td>Publish a Cartesian pose command.</td></tr>
+  <tr><td><code>robot.motion.home</code></td>
+      <td><code>()</code></td>
+      <td>&mdash;</td>
+      <td>Move to the home position from the robot config (<code>q_home_deg</code>; falls back to the Franka home <code>[0, -45, 0, -90, 0, 45, 0]</code>). Non-blocking.</td></tr>
+  <tr><td><code>robot.motion.set_gripper</code></td>
+      <td><code>(width_m)</code></td>
+      <td>m</td>
+      <td>Set gripper width clamped to <code>[0, 0.08]</code>.</td></tr>
+  <tr><td><code>robot.motion.open_gripper</code></td>
+      <td><code>()</code></td>
+      <td>&mdash;</td>
+      <td>Open gripper fully (0.08 m).</td></tr>
+  <tr><td><code>robot.motion.close_gripper</code></td>
+      <td><code>()</code></td>
+      <td>&mdash;</td>
+      <td>Close gripper fully (0.0 m).</td></tr>
+</table>
+<pre><code># Move to home position and wait up to 10 seconds
+reached = robot.motion.move_joints(
+    [0.0, -45.0, 0.0, -90.0, 0.0, 45.0, 0.0],
+    wait=True,
+    timeout=10.0,
+    tolerance=1.5,
+)
+print('reached:', reached)
+
+# Cartesian move (metres; rx/ry/rz in radians)
+robot.motion.move_cartesian(0.4, 0.0, 0.3, rx=0.0, ry=0.0, rz=0.0)</code></pre>
+
+<div class="admonition tip"><div class="adm-title">Routing and units</div>
+<p>Where the command goes depends on the target: Simulation and VR publish a <code>JointState</code> to <code>{rid}_target_joint_angles</code>; Hardware publishes a <code>Float32MultiArray</code> to <code>{rid}_desired_joint_angles</code>. <code>move_cartesian</code> publishes a <code>Pose</code> to <code>command_ee_position_change_{rid}</code> and only has an effect in a Cartesian mode (5&ndash;8). Orientation is Euler XYZ converted to a quaternion via SciPy; if SciPy is missing, identity orientation is sent. The legacy <code>move_joints(angles, velocity=...)</code> argument is deprecated &mdash; it is ignored and emits a <code>DeprecationWarning</code>.</p></div>
+
+<h3><code>robot.mode</code> &mdash; Control-Mode Publishing</h3>
+<table>
+  <tr><th>Method</th><th>Signature</th><th>Description</th></tr>
+  <tr><td><code>robot.mode.set</code></td><td><code>(mode_int)</code></td><td>Publish integer mode 1&ndash;8 and sync the GUI selector.</td></tr>
+  <tr><td><code>robot.mode.publish_mode</code></td><td><code>(mode_int)</code></td><td>Same as <code>set</code> &mdash; explicit alias.</td></tr>
+  <tr><td><code>robot.mode.postural</code></td><td><code>(enabled)</code></td><td>Enable/disable null-space postural controller.</td></tr>
+  <tr><td><code>robot.mode.elbow</code></td><td><code>(enabled)</code></td><td>Enable/disable null-space elbow constraint.</td></tr>
+  <tr><td><code>robot.mode.hapfic</code></td><td><code>(enabled)</code></td><td>Enable/disable HapFIC hybrid mode (controller engages it only on modes 6&ndash;8).</td></tr>
+  <tr><td><code>robot.mode.desired_wrench</code></td><td><code>(force=(0, 0, 0), torque=(0, 0, 0))</code></td><td>Desired wrench of the Cartesian admittance (modes 7&ndash;8, and HapFIC on them), N and N&middot;m; zero is plain compliance.</td></tr>
+  <tr><td><code>robot.mode.admittance_planner</code></td><td><code>(enabled)</code></td><td>Enable/disable admittance planner (modes 3&ndash;4).</td></tr>
+  <tr><td><code>robot.mode.active_profile</code></td><td><code>(profile_name)</code></td><td>Publish a named parameter profile.</td></tr>
+</table>
+
+<h4>Control Modes</h4>
+<table>
+  <tr><th>Mode</th><th>Published name</th></tr>
+  <tr><td>1</td><td>Joint Impedance</td></tr>
+  <tr><td>2</td><td>Joint Impedance With Planner</td></tr>
+  <tr><td>3</td><td>Joint Admittance</td></tr>
+  <tr><td>4</td><td>Joint Admittance Haptic</td></tr>
+  <tr><td>5</td><td>Cartesian Impedance</td></tr>
+  <tr><td>6</td><td>Cartesian Planner</td></tr>
+  <tr><td>7</td><td>Cartesian Admittance</td></tr>
+  <tr><td>8</td><td>Cartesian Admittance Haptic</td></tr>
+</table>
+<p><code>publish_mode</code> sends both the integer (<code>Int32</code> on <code>robot{N}_control_mode</code>) and the mode-name string (<code>String</code> on <code>{rid}_mode_select</code>). Mode 0 (idle) exists at the controller level but is not published by the script API &mdash; use <code>robot.safety.pause()</code> to park. HapFIC engages only on Cartesian modes 6&ndash;8; see <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a> and <a href="#hapfic" onclick="showPage('hapfic')">HapFIC</a>.</p>
+<pre><code>robot.mode.set(2)            # Joint Impedance With Planner
+robot.mode.postural(True)    # Enable null-space postural
+robot.wait(0.5)
+robot.mode.postural(False)</code></pre>
+
+<h3><code>robot.process</code> &mdash; Subprocess Control</h3>
+<p>All methods are marshalled to the GUI thread (they touch Qt widgets and spawn/kill subprocesses).</p>
+<table>
+  <tr><th>Method</th><th>Description</th></tr>
+  <tr><td><code>robot.process.start_sim()</code></td><td>Start the MuJoCo simulation.</td></tr>
+  <tr><td><code>robot.process.stop_sim()</code></td><td>Stop the MuJoCo simulation.</td></tr>
+  <tr><td><code>robot.process.start_fic()</code></td><td>Start the FIC simulation controller.</td></tr>
+  <tr><td><code>robot.process.stop_fic()</code></td><td>Stop the FIC simulation controller.</td></tr>
+  <tr><td><code>robot.process.start_controller()</code></td><td>Start the hardware FIC controller.</td></tr>
+  <tr><td><code>robot.process.stop_controller()</code></td><td>Stop the hardware FIC controller.</td></tr>
+  <tr><td><code>robot.process.start_driver()</code></td><td>Start the hardware driver.</td></tr>
+  <tr><td><code>robot.process.stop_driver()</code></td><td>Stop the hardware driver.</td></tr>
+  <tr><td><code>robot.process.start_vr()</code></td><td>Start the VR relay.</td></tr>
+  <tr><td><code>robot.process.stop_vr()</code></td><td>Stop the VR relay.</td></tr>
+  <tr><td><code>robot.process.start_bags()</code></td><td>Start <code>ros2 bag record -a</code>.</td></tr>
+  <tr><td><code>robot.process.stop_bags()</code></td><td>Stop the bag recorder.</td></tr>
+  <tr><td><code>robot.process.start_plotter()</code></td><td>Launch the live plotter.</td></tr>
+  <tr><td><code>robot.process.stop_plotter()</code></td><td>Stop the live plotter.</td></tr>
+</table>
+<pre><code>robot.process.start_bags()
+robot.wait(0.5)
+robot.motion.move_joints([0.0, -45.0, 0.0, -90.0, 0.0, 45.0, 0.0], wait=True)
+robot.process.stop_bags()</code></pre>
+
+<h3><code>robot.target</code> &mdash; Sim / Hardware / VR Target</h3>
+<table>
+  <tr><th>Method / Property</th><th>Description</th></tr>
+  <tr><td><code>robot.target.current</code></td><td>Read current target string: <code>'simulation'</code>, <code>'hardware'</code>, or <code>'vr'</code>.</td></tr>
+  <tr><td><code>robot.target.set_target(target)</code></td><td>Change target (marshalled to GUI thread).</td></tr>
+</table>
+<pre><code>print(f'Target: {robot.target.current}')
+robot.target.set_target('simulation')</code></pre>
+
+<h3><code>robot.tune</code> &mdash; Parameter Tuning</h3>
+<table>
+  <tr><th>Method</th><th>Signature</th><th>Description</th></tr>
+  <tr><td><code>robot.tune.param_update</code></td><td><code>(param_type, value)</code></td><td>Ask the controller to re-read the tuning in <code>config.xml</code>. The value is not applied directly: save the tuning first (<code>robot.tune.save</code>).</td></tr>
+  <tr><td><code>robot.tune.save</code></td><td><code>(robot_name=None, joint_id=1, mode=1, params=None)</code></td><td>Save tuning to XML via XMLManager (marshalled).</td></tr>
+</table>
+<p>On the wire, <code>param_update</code> publishes a <code>String</code> of the form <code>robotN:&lt;param_type&gt;:&lt;value&gt;</code> on <code>robot{N}_param_update</code>. See <a href="#tuning" onclick="showPage('tuning')">Tuning</a> for the parameter types and <a href="#config-xml" onclick="showPage('config-xml')">Config XML</a> for where <code>tune.save</code> writes.</p>
+<pre><code># Ask the controller to re-read config.xml (after robot.tune.save)
+robot.tune.param_update(0, 0)
+robot.wait(0.2)</code></pre>
+
+<h3><code>robot.safety</code> &mdash; Emergency Stop</h3>
+<table>
+  <tr><th>Method</th><th>Description</th></tr>
+  <tr><td><code>robot.safety.estop()</code></td><td>Publish mode 1 (park) and trigger GUI emergency stop.</td></tr>
+  <tr><td><code>robot.safety.broadcast_stop()</code></td><td>Send stop to every active robot (marshalled).</td></tr>
+  <tr><td><code>robot.safety.pause()</code></td><td>Publish mode 1 to park this robot (direct publish).</td></tr>
+</table>
+<pre><code># Abort if force exceeds threshold
+wrench = robot.state.wrench
+if wrench and abs(wrench[2]) > 20.0:   # Fz > 20 N
+    robot.safety.estop()</code></pre>
+
+<h3><code>robot.topics</code> &mdash; Generic ROS Topics</h3>
+<table>
+  <tr><th>Method</th><th>Signature</th><th>Description</th></tr>
+  <tr><td><code>robot.topics.list_topics</code></td><td><code>()</code></td><td>Return <code>[(name, type_str), ...]</code> from the ROS graph.</td></tr>
+  <tr><td><code>robot.topics.subscribe</code></td><td><code>(topic_name)</code></td><td>Subscribe to a topic (auto-discovers type).</td></tr>
+  <tr><td><code>robot.topics.unsubscribe</code></td><td><code>(topic_name)</code></td><td>Destroy the subscription and clear cache.</td></tr>
+  <tr><td><code>robot.topics.get</code></td><td><code>(topic_name)</code></td><td>Return the latest message for the topic <strong>as a plain dict</strong>, or <code>None</code>.</td></tr>
+  <tr><td><code>robot.topics.cleanup</code></td><td><code>()</code></td><td>Destroy all subscriptions (called at teardown).</td></tr>
+</table>
+<p>Messages are serialised to dicts, not returned as ROS objects. Known types (<code>Float64MultiArray</code>, <code>Float32MultiArray</code>, <code>JointState</code>, <code>Pose</code>, <code>Wrench</code>, <code>WrenchStamped</code>, scalar <code>std_msgs</code>) get structured keys; anything else falls back to <code>{'type': ..., 'data'/'raw': ...}</code>. A <code>Pose</code> arrives as <code>{'type': 'Pose', 'position': {'x','y','z'}, 'orientation': {'x','y','z','w'}}</code>.</p>
+<pre><code>topics = robot.topics.list_topics()
+print(f'Found {len(topics)} topics')
+
+robot.topics.subscribe('/robot1_ee_current_pose')
+robot.wait(0.2)
+msg = robot.topics.get('/robot1_ee_current_pose')   # dict or None
+if msg:
+    print(f"EE: {msg['position']['x']:.3f}")</code></pre>
+
+<h3><code>robot</code> &mdash; Top-Level Helpers</h3>
+<table>
+  <tr><th>Method / Property</th><th>Signature</th><th>Description</th></tr>
+  <tr><td><code>robot.rid</code></td><td>property</td><td>Robot-id string (e.g. <code>'robot1'</code>).</td></tr>
+  <tr><td><code>robot.target_mode</code></td><td>property</td><td>Current target string.</td></tr>
+  <tr><td><code>robot.wait</code></td><td><code>(seconds)</code></td><td>Sleep, honouring cooperative stop at ~20 Hz.</td></tr>
+  <tr><td><code>robot.is_stopped</code></td><td><code>()</code></td><td>Return <code>True</code> if a stop has been requested.</td></tr>
+</table>
+
+<hr>
+
+<h2>Flat Aliases (Backward Compatibility)</h2>
+<p>These names are injected directly into the script's global namespace so existing scripts run without modification.</p>
+<table>
+  <tr><th>Alias</th><th>Maps to</th></tr>
+  <tr><td><code>move_joints(angles_deg, wait=False, ...)</code></td><td><code>robot.motion.move_joints</code></td></tr>
+  <tr><td><code>move_cartesian(x, y, z, rx, ry, rz)</code></td><td><code>robot.motion.move_cartesian</code></td></tr>
+  <tr><td><code>home()</code></td><td><code>robot.motion.home</code></td></tr>
+  <tr><td><code>set_gripper(width_m)</code></td><td><code>robot.motion.set_gripper</code></td></tr>
+  <tr><td><code>open_gripper()</code></td><td><code>robot.motion.open_gripper</code></td></tr>
+  <tr><td><code>close_gripper()</code></td><td><code>robot.motion.close_gripper</code></td></tr>
+  <tr><td><code>get_joint_positions()</code></td><td><code>robot.state.joints</code></td></tr>
+  <tr><td><code>get_cartesian_pose()</code></td><td><code>robot.state.ee_pose</code></td></tr>
+  <tr><td><code>get_ee_position()</code></td><td><code>robot.state.ee_pose[:3]</code></td></tr>
+  <tr><td><code>get_force_torque()</code></td><td><code>robot.state.wrench</code></td></tr>
+  <tr><td><code>get_joint_velocity()</code></td><td><code>robot.state.joint_velocity</code></td></tr>
+  <tr><td><code>get_joint_effort()</code></td><td><code>robot.state.joint_effort</code></td></tr>
+  <tr><td><code>set_mode(mode)</code></td><td><code>robot.mode.publish_mode</code></td></tr>
+  <tr><td><code>list_topics()</code></td><td><code>robot.topics.list_topics</code></td></tr>
+  <tr><td><code>subscribe(topic)</code></td><td><code>robot.topics.subscribe</code></td></tr>
+  <tr><td><code>unsubscribe(topic)</code></td><td><code>robot.topics.unsubscribe</code></td></tr>
+  <tr><td><code>get_topic(topic)</code></td><td><code>robot.topics.get</code></td></tr>
+  <tr><td><code>wait(seconds)</code></td><td><code>robot.wait</code></td></tr>
+  <tr><td><code>sleep(seconds)</code></td><td><code>time.sleep</code></td></tr>
+  <tr><td><code>is_stopped()</code></td><td><code>robot.is_stopped</code></td></tr>
+  <tr><td><code>stop()</code></td><td><code>robot.safety.estop</code></td></tr>
+  <tr><td><code>get_target_mode()</code></td><td><code>robot.target_mode</code></td></tr>
+  <tr><td><code>is_moving()</code></td><td>Legacy stub &mdash; always returns <code>False</code> in the editor API. Use <code>move_joints(wait=True)</code> or check <code>robot.state.joint_velocity</code> instead.</td></tr>
+  <tr><td><code>wait_until_stopped(timeout=10.0)</code></td><td>Legacy stub &mdash; simply calls <code>robot.wait(timeout)</code>; it does <em>not</em> watch joint velocities. (The standalone <code>fic_api</code> version below does.)</td></tr>
+</table>
+<p>The modules <code>math</code> and <code>time</code> are pre-imported into the script namespace; anything else must be imported explicitly.</p>
+
+<hr>
+
+<h2>Examples</h2>
+<p>These five scripts are seeded into <code>~/.fic_studio_scripts/examples/</code> the first time the extension loads (existing files are never overwritten) and appear in the <strong>Examples</strong> tab of the editor. The versions below are abridged; the seeded files carry extra prints and comments.</p>
+
+<h3>Example 01 &mdash; Read State</h3>
+<pre><code>"""01_read_state.py — Read robot state using the new API."""
+print('=== Read State Example ===')
+
+joints = robot.state.joints          # list[float], degrees
+print(f'Joint positions (deg): {[f"{j:.1f}" for j in joints]}')
+
+ee = robot.state.ee_pose             # [x, y, z, qx, qy, qz, qw] or []
+if ee:
+    print(f'EE position (m): x={ee[0]:.3f}  y={ee[1]:.3f}  z={ee[2]:.3f}')
+
+wrench = robot.state.wrench
+if wrench:
+    print(f'Wrench (N/Nm): Fx={wrench[0]:.2f}  Fy={wrench[1]:.2f}  Fz={wrench[2]:.2f}')</code></pre>
+
+<h3>Example 02 &mdash; Joint Trajectory</h3>
+<pre><code>"""02_joint_trajectory.py — Move through a simple joint-space trajectory."""
+WAYPOINTS_DEG = [
+    [0.0,  -45.0,  0.0, -90.0, 0.0,  45.0, 0.0],
+    [30.0, -30.0, 20.0, -60.0, 0.0,  60.0, 0.0],
+    [0.0,  -45.0,  0.0, -90.0, 0.0,  45.0, 0.0],
+]
+
+for idx, wp in enumerate(WAYPOINTS_DEG):
+    if is_stopped():
+        print('Stopped by user.')
+        break
+    print(f'Moving to waypoint {idx + 1}/{len(WAYPOINTS_DEG)}...')
+    reached = robot.motion.move_joints(wp, wait=True, timeout=15.0, tolerance=1.5)
+    print(f'  {"Reached" if reached else "Timeout/stopped"}')
+    robot.wait(0.3)</code></pre>
+
+<h3>Example 03 &mdash; Cartesian Circle</h3>
+<pre><code>"""03_cartesian_circle.py — Sweep a small circle in Cartesian space."""
+import math
+
+RADIUS_M = 0.05
+N_STEPS = 24
+CENTRE = (0.4, 0.0, 0.3)
+
+for i in range(N_STEPS + 1):
+    if is_stopped():
+        break
+    angle = 2 * math.pi * i / N_STEPS
+    x = CENTRE[0] + RADIUS_M * math.cos(angle)
+    y = CENTRE[1] + RADIUS_M * math.sin(angle)
+    robot.motion.move_cartesian(x, y, CENTRE[2])
+    robot.wait(0.08)</code></pre>
+
+<h3>Example 04 &mdash; Mode and Tune</h3>
+<pre><code>"""04_mode_and_tune.py — Switch control modes and adjust parameters."""
+print(f'Target: {robot.target_mode}')
+
+robot.mode.set(1)          # Joint Impedance
+robot.wait(0.5)
+
+robot.mode.postural(True)
+robot.wait(0.3)
+
+robot.tune.param_update(0, 0)    # the controller re-reads config.xml
+robot.wait(0.2)
+
+robot.mode.postural(False)
+print('Done.')</code></pre>
+
+<h3>Example 05 &mdash; Record and Plot</h3>
+<pre><code>"""05_record_and_plot.py — Start bags and plotter, run a trajectory, then stop."""
+robot.process.start_bags()
+robot.wait(0.5)
+robot.process.start_plotter()
+robot.wait(0.5)
+
+WAYPOINTS_DEG = [
+    [0.0,  -45.0, 0.0, -90.0, 0.0, 45.0, 0.0],
+    [20.0, -30.0, 10.0, -70.0, 0.0, 50.0, 0.0],
+    [0.0,  -45.0, 0.0, -90.0, 0.0, 45.0, 0.0],
+]
+
+for idx, wp in enumerate(WAYPOINTS_DEG):
+    if is_stopped():
+        break
+    reached = robot.motion.move_joints(wp, wait=True, timeout=12.0)
+    robot.wait(0.3)
+
+robot.process.stop_bags()
+print('Recording done. Plotter remains open.')</code></pre>
+
+<hr>
+
+<h2>Standalone <code>fic_api</code> Package</h2>
+<p>The <code>fic_api/</code> directory at the repo root is a pip-installable package with a <code>Robot</code> class that talks to the same ROS topics as the studio &mdash; from plain Python, Jupyter, or any IDE. It creates a lightweight ROS 2 node spun by a <code>SingleThreadedExecutor</code> in a background daemon thread.</p>
+
+<svg viewBox="0 0 700 350" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="FIC Control Studio (one process)">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#apiref-arrowhead); }
+    .arrow-green { stroke: #388e3c; marker-end: url(#apiref-arrowhead-green); }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+  </style>
+  <defs>
+    <marker id="apiref-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+    <marker id="apiref-arrowhead-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#388e3c"/>
+    </marker>
+  </defs>
+
+  <!-- Left: studio process -->
+  <rect x="20" y="10" width="315" height="195" class="container"/>
+  <text x="177" y="28" class="label-title">FIC Control Studio (one process)</text>
+  <rect x="65" y="42" width="225" height="28" class="box box-purple"/>
+  <text x="177" y="56" class="label">Script &mdash; worker thread</text>
+  <rect x="65" y="88" width="225" height="40" class="box box-blue"/>
+  <text x="177" y="100" class="label-bold">RobotAPI facade</text>
+  <text x="177" y="116" class="label-code">state motion mode tune safety topics</text>
+  <rect x="40" y="152" width="150" height="40" class="box box-green"/>
+  <text x="115" y="165" class="label">FicStudioNode</text>
+  <text x="115" y="180" class="label-sm">direct publish</text>
+  <rect x="205" y="152" width="115" height="40" class="box box-orange"/>
+  <text x="262" y="165" class="label">GUI thread</text>
+  <text x="262" y="180" class="label-sm">via marshal()</text>
+  <path class="arrow" d="M 177 70 L 177 88"/>
+  <path class="arrow" d="M 140 128 L 122 152"/>
+  <path class="arrow" d="M 225 128 L 250 152"/>
+
+  <!-- Right: standalone -->
+  <rect x="425" y="10" width="255" height="195" class="container"/>
+  <text x="552" y="28" class="label-title">Any Python process</text>
+  <rect x="450" y="42" width="205" height="28" class="box box-purple"/>
+  <text x="552" y="56" class="label">Script / notebook / IDE</text>
+  <rect x="450" y="88" width="205" height="40" class="box box-blue"/>
+  <text x="552" y="100" class="label-bold">fic_api.Robot</text>
+  <text x="552" y="116" class="label-code">from fic_api import Robot</text>
+  <rect x="450" y="152" width="205" height="40" class="box box-green"/>
+  <text x="552" y="165" class="label">_RobotNode</text>
+  <text x="552" y="180" class="label-sm">background executor thread</text>
+  <path class="arrow" d="M 552 70 L 552 88"/>
+  <path class="arrow" d="M 552 128 L 552 152"/>
+
+  <!-- Topics bar -->
+  <rect x="110" y="232" width="480" height="42" class="box box-grey"/>
+  <text x="350" y="245" class="label-bold">ROS 2 topics</text>
+  <text x="350" y="262" class="label-code">{rid}_desired_joint_angles &#183; robot{N}_control_mode &#183; command_ee_position_change_{rid}</text>
+  <path class="arrow" d="M 115 192 L 145 232"/>
+  <path class="arrow" d="M 552 192 L 552 232"/>
+
+  <!-- Controller -->
+  <rect x="230" y="304" width="240" height="34" class="box box-teal"/>
+  <text x="350" y="321" class="label-bold">FIC controller &mdash; 1 kHz loop</text>
+  <path class="arrow" d="M 300 274 L 300 304"/>
+  <path class="arrow arrow-green" d="M 400 304 L 400 274"/>
+  <text x="255" y="289" class="label-sm">commands</text>
+  <text x="497" y="289" class="label-sm">trajectory_data &#183; joint_states</text>
+</svg>
+
+<h3>Install</h3>
+<pre><code># Source ROS 2 and the workspace first
+source /opt/ros/$ROS_DISTRO/setup.bash        # humble / jazzy / kilted
+source ~/FIC_Interface/fic_ws/install/setup.bash
+
+cd ~/FIC_Interface/fic_api
+pip install -e .</code></pre>
+
+<h3>Quick Start</h3>
+<pre><code>from fic_api import Robot
+
+# Connect to simulation (default); also works as a context manager
+with Robot(target='simulation', num_joints=7) as r:
+    r.set_mode(2)                     # Joint Impedance With Planner
+    r.home()
+    r.wait_until_stopped()
+    q = r.get_current_joints()        # RADIANS, from /robot1_trajectory_data
+    print(r.get_joint_positions())    # degrees convenience wrapper</code></pre>
+
+<h4>Constructor</h4>
+<table>
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td><code>target</code></td><td><code>'simulation'</code></td><td><code>'simulation'</code>, <code>'hardware'</code>, or <code>'vr'</code>; anything else raises <code>ValueError</code>.</td></tr>
+  <tr><td><code>num_joints</code></td><td><code>7</code></td><td>Joint count &mdash; 7 for Franka FR3, Kinova Gen3, and KUKA IIWA 14; match your robot.</td></tr>
+  <tr><td><code>node_name</code></td><td><code>'fic_api_api'</code></td><td>ROS 2 node name.</td></tr>
+  <tr><td><code>home_angles_deg</code></td><td><code>None</code></td><td>Home position in degrees; defaults to <code>[0, -45, 0, -90, 0, 45, 0]</code>.</td></tr>
+  <tr><td><code>robot_id</code></td><td><code>1</code></td><td>Int <code>N</code> (becomes <code>robotN</code>) or a full <code>'robotN'</code> string.</td></tr>
+</table>
+<p>Call <code>close()</code> (or exit the <code>with</code> block) to destroy the node and executor cleanly. The joint-states source depends on the target: <code>/robot{sid}_simulation/joint_states</code> (simulation), <code>/joint_states</code> (hardware), <code>/vr/joint_states</code> (VR).</p>
+
+<h3>Trajectory Data Readers (radians / metres)</h3>
+<p>These parse <code>/robot{N}_trajectory_data</code> (a <code>Float64MultiArray</code> published by the FIC controller at the 1 kHz loop rate). The parser auto-detects the joint-mode block layout vs the Cartesian-mode strided layout. All angles are <strong>radians</strong>.</p>
+<table>
+  <tr><th>Method</th><th>Returns</th><th>Notes</th></tr>
+  <tr><td><code>get_trajectory()</code></td><td><code>dict</code></td><td>Full parsed dict (<code>is_cartesian</code>, <code>q_current</code>, <code>raw</code>, &hellip;).</td></tr>
+  <tr><td><code>get_current_joints()</code></td><td><code>[rad, ...]</code></td><td>Current joint positions from the controller.</td></tr>
+  <tr><td><code>get_target_joints()</code></td><td><code>[rad, ...]</code></td><td>Joint targets.</td></tr>
+  <tr><td><code>get_joint_errors()</code></td><td><code>[rad, ...]</code></td><td>Per-joint position error.</td></tr>
+  <tr><td><code>get_control_effort()</code></td><td><code>[Nm, ...]</code></td><td>Torque command per joint (joint modes).</td></tr>
+  <tr><td><code>get_planner_targets()</code></td><td><code>[rad, ...]</code></td><td>Planner output (joint modes).</td></tr>
+  <tr><td><code>get_admittance_targets()</code></td><td><code>[rad, ...]</code></td><td>Admittance target (modes 3&ndash;4).</td></tr>
+  <tr><td><code>get_desired_effort()</code></td><td><code>[Nm, ...]</code></td><td>Desired/gravity effort (modes 3&ndash;4).</td></tr>
+  <tr><td><code>get_measured_effort()</code></td><td><code>[Nm, ...]</code></td><td>Measured torque (modes 3&ndash;4).</td></tr>
+  <tr><td><code>get_ee_position()</code></td><td><code>[x,y,z]</code> or <code>None</code></td><td>Cartesian modes only; <code>None</code> in joint modes.</td></tr>
+  <tr><td><code>get_ee_desired()</code></td><td><code>[x,y,z]</code> or <code>None</code></td><td>Desired EE position.</td></tr>
+  <tr><td><code>get_ee_error()</code></td><td><code>[dx,dy,dz]</code> or <code>None</code></td><td>Translational error.</td></tr>
+  <tr><td><code>get_ee_admittance_target()</code></td><td><code>[x,y,z]</code> or <code>None</code></td><td>Admittance target pose.</td></tr>
+  <tr><td><code>get_rotation_error()</code></td><td><code>[rx,ry,rz,angle]</code> or <code>None</code></td><td>Axis-angle rotation error.</td></tr>
+</table>
+
+<h3>Movement, Status, Gripper, Topics</h3>
+<table>
+  <tr><th>Method</th><th>Description</th></tr>
+  <tr><td><code>move_joints(angles_deg, velocity=0.5)</code></td><td>Move to joint angles in <strong>degrees</strong>. Raises <code>ValueError</code> on wrong length. <code>velocity</code> is informational only &mdash; FIC uses its own planner. Non-blocking.</td></tr>
+  <tr><td><code>move_cartesian(x, y, z, rx=0, ry=0, rz=0)</code></td><td>Move EE (metres; Euler XYZ radians). Same SciPy fallback as the editor API.</td></tr>
+  <tr><td><code>home()</code></td><td>Move to <code>home_angles_deg</code>.</td></tr>
+  <tr><td><code>stop()</code></td><td>Republish the current joint positions as the target &mdash; a hold, <strong>not</strong> a studio E-STOP.</td></tr>
+  <tr><td><code>set_mode(mode)</code></td><td>Mode 1&ndash;8. Simulation/VR publish <code>Int32</code> on <code>robot{N}_control_mode</code>; hardware publishes the mode-name <code>String</code> on <code>robot{N}_mode_select</code>.</td></tr>
+  <tr><td><code>get_joint_positions()</code></td><td>Joints in <strong>degrees</strong> (convenience wrapper over JointState).</td></tr>
+  <tr><td><code>get_joint_velocities()</code></td><td><code>[rad/s]</code> from JointState.</td></tr>
+  <tr><td><code>get_cartesian_pose()</code></td><td><code>[x, y, z, qx, qy, qz]</code> from <code>robot{N}_ee_current_pose</code> (6 elements &mdash; no <code>qw</code>).</td></tr>
+  <tr><td><code>is_moving(threshold=0.01)</code></td><td><code>True</code> if any joint velocity exceeds <code>threshold</code> rad/s.</td></tr>
+  <tr><td><code>wait_until_stopped(timeout=10.0, threshold=0.01)</code></td><td>Block until velocities settle or timeout; returns <code>True</code>/<code>False</code>.</td></tr>
+  <tr><td><code>set_gripper(width)</code> / <code>open_gripper()</code> / <code>close_gripper()</code></td><td>Width clamped to <code>[0, 0.08]</code> m.</td></tr>
+  <tr><td><code>list_topics()</code> / <code>subscribe(t)</code> / <code>unsubscribe(t)</code> / <code>get_topic(t)</code></td><td>Generic topic access; <code>get_topic</code> returns a serialised dict like the editor API.</td></tr>
+  <tr><td><code>get_force_torque()</code></td><td>Auto-subscribes <code>/robot{N}_simulation/force_torque</code> and returns the latest Wrench dict.</td></tr>
+  <tr><td><code>get_torque_commands()</code></td><td>Auto-subscribes <code>/robot{N}_fic_torque_commands</code>.</td></tr>
+  <tr><td><code>target</code> / <code>num_joints</code></td><td>Read-only properties.</td></tr>
+</table>
+
+<div class="admonition warning"><div class="adm-title">fic_api safety caveats</div>
+<p><code>fic_api</code> bypasses the studio: there is no cooperative Stop button, no GUI E-STOP integration, and <code>stop()</code> only holds the current position. Keep the hardware E-STOP within reach when scripting a real robot, and see <a href="#safety" onclick="showPage('safety')">Safety</a>. On the Newton GPU backend the simulation <code>force_torque</code> topic publishes empty messages, so <code>get_force_torque()</code> is not meaningful there (see <a href="#simulation" onclick="showPage('simulation')">Simulation</a>).</p></div>
+
+<h3>Editor API vs fic_api at a Glance</h3>
+<table>
+  <tr><th></th><th>Script Editor <code>robot</code></th><th>Standalone <code>fic_api.Robot</code></th></tr>
+  <tr><td>Runs in</td><td>Studio process (worker thread)</td><td>Any Python process</td></tr>
+  <tr><td>Joint state source</td><td>Studio JointStateMixin (degrees)</td><td><code>trajectory_data</code> + JointState (radians; degree wrappers)</td></tr>
+  <tr><td>Blocking moves</td><td><code>move_joints(wait=True)</code> with tolerance</td><td><code>wait_until_stopped()</code> on velocities</td></tr>
+  <tr><td>Process control (sim, bags, plotter)</td><td>Yes (<code>robot.process.*</code>)</td><td>No &mdash; start processes from the studio or CLI</td></tr>
+  <tr><td>E-STOP integration</td><td><code>robot.safety.estop()</code> + Stop button</td><td>None (<code>stop()</code> = position hold)</td></tr>
+  <tr><td>Controller internals (efforts, planner, errors)</td><td>Via <code>robot.topics</code> subscriptions</td><td>First-class <code>get_*</code> trajectory readers</td></tr>
+</table>
+
+<hr>
+
+<h2>Safety Notes</h2>
+<ul>
+  <li><strong>E-STOP:</strong> Press Space or the &#9632; toolbar button at any time. From a script, call <code>robot.safety.estop()</code> or the flat alias <code>stop()</code>. See <a href="#estop" onclick="showPage('estop')">E-STOP</a> for the graceful torque-ramp behaviour.</li>
+  <li><strong>Degrees:</strong> The API uses degrees for joint angles throughout. The conversion to radians (for ROS publishes) is handled internally.</li>
+  <li><strong>Blocking waits:</strong> <code>move_joints(wait=True)</code> polls at 20 Hz; a tight Python loop with no cooperative check cannot be interrupted by the Stop button until the current iteration completes. Add <code>if is_stopped(): break</code> inside loops.</li>
+  <li><strong>Sandboxing:</strong> Scripts run in the same Python process as the studio. Avoid file system writes to paths outside <code>~/.fic_studio_scripts/</code>.</li>
+</ul>

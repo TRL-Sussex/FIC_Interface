@@ -1,0 +1,253 @@
+<h1>FIC Control Studio</h1>
+<p class="subtitle">A ROS 2-based GUI for controlling robotic arms using Fractal Impedance Control with MuJoCo simulation and real hardware support.</p>
+
+<div class="card-grid">
+  <a href="#dashboard" class="card" onclick="showPage('dashboard')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><rect x='3' y='3' width='18' height='18' rx='2'/><path d='M3 9h18M9 9v12'/></svg><div class="card-title">Dashboard</div><div class="card-desc">System overview — per-joint DualTrack, EE trajectory, session processes, safety status, quick actions.</div></a>
+  <a href="#installation-macos" class="card" onclick="showPage('installation-macos')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M12 6.5c0-2 1.6-3.5 3.6-3.5'/><path d='M12 21c-3.9 0-6.5-3.4-6.5-7.6C5.5 9.6 8.2 7 12 8c3.8-1 6.5 1.6 6.5 5.4C18.5 17.6 15.9 21 12 21z'/></svg><div class="card-title">Installation (macOS)</div><div class="card-desc">Native Apple Silicon simulation install via RoboStack — no Linux binaries or CUDA.</div></a>
+  <a href="#installation" class="card" onclick="showPage('installation')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z'/><path d='M3 7.5 12 12l9-4.5M12 12v9'/></svg><div class="card-title">Installation (Linux)</div><div class="card-desc">Ubuntu one-click installer handles all deps, or install manually. Not for macOS.</div></a>
+  <a href="#installation-docker" class="card" onclick="showPage('installation-docker')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><rect x='3' y='9' width='18' height='11'/><path d='M7 9V5h4v4M13 9V5h4v4M7 14h10'/></svg><div class="card-title">Installation (Docker)</div><div class="card-desc">Windows, macOS or Linux with only Docker installed. Simulation in the browser.</div></a>
+  <a href="#quickstart" class="card" onclick="showPage('quickstart')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M5 19l3-3'/><path d='M13.5 3.5c3.6 0 7 3.4 7 7-2.4 5-6.2 8-11.6 9.4l-4.8-4.8C6.5 9.7 9.5 5.9 13.5 3.5z'/><circle cx='14.5' cy='9.5' r='2'/></svg><div class="card-title">Quick Start</div><div class="card-desc">Simulation in 5 minutes. Hardware in 10.</div></a>
+  <a href="#dev-console" class="card" onclick="showPage('dev-console')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M15.5 3.5a5 5 0 0 0-5.9 6.4L3 16.5 7.5 21l6.6-6.6a5 5 0 0 0 6.4-5.9l-3.2 3.2-2.8-.7-.7-2.8z'/></svg><div class="card-title">Dev Console</div><div class="card-desc">Lightweight hardware GUI for a robot workstation — control, tuning, and teleoperation.</div></a>
+  <a href="#control-modes" class="card" onclick="showPage('control-modes')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M4 6h16M4 12h16M4 18h16'/><circle cx='9' cy='6' r='2'/><circle cx='15' cy='12' r='2'/><circle cx='7' cy='18' r='2'/></svg><div class="card-title">Control Modes</div><div class="card-desc">All 8 modes — impedance, planner, admittance, haptic — plus Postural, Elbow, Hapfic, and Admittance Planner overlays.</div></a>
+  <a href="#simulation" class="card" onclick="showPage('simulation')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M9.5 3v6.2L4.6 18a2 2 0 0 0 1.7 3h11.4a2 2 0 0 0 1.7-3l-4.9-8.8V3'/><path d='M8 3h8M7.8 14h8.4'/></svg><div class="card-title">Simulation</div><div class="card-desc">MuJoCo physics, fic_simulation node, ROS 2 topic interface.</div></a>
+  <a href="#control-panel" class="card" onclick="showPage('control-panel')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><rect x='4' y='8' width='16' height='12' rx='2'/><path d='M12 4v4M2 13h2M20 13h2'/><path d='M9 13h.01M15 13h.01'/></svg><div class="card-title">Hardware Control</div><div class="card-desc">Real robot control via shared memory, vendor drivers, safety system.</div></a>
+  <a href="#safety" class="card" onclick="showPage('safety')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M12 3l8 3v6c0 4.6-3.2 8.2-8 9.6-4.8-1.4-8-5-8-9.6V6z'/><path d='m8.8 12 2.2 2.2 4.2-4.4'/></svg><div class="card-title">Safety</div><div class="card-desc">Joint + Cartesian safety zones with live feedback, graceful E-STOP ramp, output torque guard.</div></a>
+  <a href="#api-reference" class="card" onclick="showPage('api-reference')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><rect x='2.5' y='6' width='19' height='12' rx='2'/><path d='M6 9.5h.01M9.5 9.5h.01M13 9.5h.01M16.5 9.5h.01M8 13.5h8'/></svg><div class="card-title">Script API</div><div class="card-desc">Complete Python Script Control API for the built-in script editor.</div></a>
+  <a href="#extensions" class="card" onclick="showPage('extensions')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M12 3v5M12 16v5M3 12h5M16 12h5'/><path d='M12 8.5 15.5 12 12 15.5 8.5 12z'/></svg><div class="card-title">Writing Extensions</div><div class="card-desc">Author your own toggleable Studio pages — manifest, host API, Hello-World walkthrough.</div></a>
+</div>
+
+<div class="admonition tip" style="margin-top:24px">
+  <div class="adm-title">What's new in v5.6.0</div>
+  <ul style="margin:6px 0 4px 0">
+    <li><strong>Teach Mode and Sequences in the web interface</strong> &mdash; each has its own page, like the Script
+      Editor's: teach by hand and record waypoints, then play, step, edit and type them, with the page asking before the
+      robot moves and again on the real robot.</li>
+    <li><strong>Desired wrench for the Cartesian admittance</strong> &mdash; modes 7 and 8, and Hapfic on them, move
+      the goal until the measured wrench equals a desired one (zero at start-up). Set it from the Cart options, the
+      web interface, the Script Editor or <code>robot{N}_desired_wrench</code>. See
+      <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>.</li>
+    <li><strong>The Kinova Gen3 simulation starts at home</strong> &mdash; instead of with every joint at 0.</li>
+    <li><strong>Faster, easier Kinova Gen3 simulation</strong> &mdash; large moves settle about three times faster and
+      the joint admittance is easier to move by hand; hardware is unchanged.</li>
+  </ul>
+</div>
+
+<div class="admonition tip" style="margin-top:24px">
+  <div class="adm-title">What's new in v5.5.0</div>
+  <ul style="margin:6px 0 4px 0">
+    <li><strong>The Script Editor in the web interface</strong> &mdash; its own page: a full-width editor with
+      Python colouring and code-editor keys, the output under it, and Examples and API drawers. Scripts are saved,
+      run and stopped from any browser that holds control; a run goes to the Studio's own target and asks first on
+      Hardware.</li>
+    <li><strong>Docker opens the web interface</strong> &mdash; the desktop session starts the Studio's web
+      interface; the Classic interface stays in the menu.</li>
+  </ul>
+</div>
+
+
+<h2>Overview</h2>
+<p>FIC Control Studio provides a complete pipeline for torque-controlled robotics: a nonlinear impedance control algorithm (FIC), a MuJoCo physics simulator, real hardware drivers, an automated parameter tuner, and a professional PyQt5 interface that ties it all together.</p>
+
+<p>The Studio comprises <strong>9 built-in pages</strong> — Dashboard, Multi-Robot, Tuning, Safety, Settings, Robot Config, Topic Monitor, Logs, and this Help viewer — plus the control bar docked to the bottom of every one of them — plus a growing library of optional <strong>Extensions</strong> that add capabilities such as Auto-Tuning, Sequences, Teach Mode, Script Editor, Teleoperation, Trackers, VR teleop, Experiments, and more. Extensions are enabled individually in <strong>Settings → Extensions</strong> and each adds its own sidebar entry without modifying the core application. There is also a standalone <strong>Python API</strong> (<code>fic_api/</code> at the repo root, <code>pip install -e .</code>) for driving FIC-controlled robots from plain Python scripts or notebooks without the GUI — see <a href="#api-reference" onclick="showPage('api-reference')">Script API</a> for the shared command surface.</p>
+
+<svg viewBox="0 0 700 420" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="FIC Control Studio">
+
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-left { text-anchor: start; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#home-arrowhead); }
+    .arrow-blue { stroke: #1976d2; }
+    .arrow-green { stroke: #388e3c; }
+    .arrow-orange { stroke: #f57c00; }
+    .line { stroke: #bbb; stroke-width: 1; stroke-dasharray: 4,3; }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+    .container-solid { fill: #fafbfd; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; }
+  </style>
+  <defs>
+    <marker id="home-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+    <marker id="home-arrowhead-blue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#1976d2"/>
+    </marker>
+    <marker id="home-arrowhead-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#388e3c"/>
+    </marker>
+    <marker id="home-arrowhead-orange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#f57c00"/>
+    </marker>
+  </defs>
+
+  <!-- FIC Control Studio container -->
+  <rect x="20" y="10" width="660" height="195" class="container-solid" style="fill:#f8faff"/>
+  <text x="350" y="30" class="label-title">FIC Control Studio</text>
+
+  <!-- GUI panels -->
+  <rect x="50" y="50" width="95" height="44" class="box box-blue"/>
+  <text x="97" y="72" class="label">Dashboard</text>
+
+  <rect x="160" y="50" width="95" height="44" class="box box-blue"/>
+  <text x="207" y="72" class="label">Multi-Robot</text>
+
+  <rect x="270" y="50" width="95" height="44" class="box box-blue"/>
+  <text x="317" y="72" class="label">Tuning</text>
+
+  <rect x="380" y="50" width="95" height="44" class="box box-blue"/>
+  <text x="427" y="72" class="label">Script Editor</text>
+
+  <rect x="490" y="50" width="95" height="44" class="box box-blue"/>
+  <text x="537" y="72" class="label">Sequences</text>
+
+  <rect x="600" y="50" width="60" height="44" class="box box-blue"/>
+  <text x="630" y="72" class="label-sm">…</text>
+
+  <!-- Connector line from panels down -->
+  <line x1="97" y1="94" x2="97" y2="120" class="line"/>
+  <line x1="207" y1="94" x2="207" y2="120" class="line"/>
+  <line x1="317" y1="94" x2="317" y2="120" class="line"/>
+  <line x1="427" y1="94" x2="427" y2="120" class="line"/>
+  <line x1="537" y1="94" x2="537" y2="120" class="line"/>
+  <line x1="630" y1="94" x2="630" y2="120" class="line"/>
+
+  <!-- Horizontal connector -->
+  <line x1="97" y1="120" x2="630" y2="120" style="stroke:#bbb; stroke-width:1.5"/>
+
+  <!-- Down to ROS node -->
+  <line x1="350" y1="120" x2="350" y2="140" style="stroke:#bbb; stroke-width:1.5"/>
+
+  <!-- FicStudioNode -->
+  <rect x="200" y="140" width="300" height="40" class="box box-purple"/>
+  <text x="350" y="155" class="label-bold" style="fill:#4a148c">FicStudioNode</text>
+  <text x="350" y="170" class="label-sm" style="fill:#7b1fa2">ROS 2 Python Node</text>
+
+  <!-- Arrow down from node -->
+  <line x1="350" y1="205" x2="350" y2="240" style="stroke:#666; stroke-width:2"/>
+  <text x="350" y="225" class="label-sm" style="fill:#999">ROS 2 Topics</text>
+
+  <!-- Horizontal split line -->
+  <line x1="120" y1="250" x2="580" y2="250" style="stroke:#ddd; stroke-width:1"/>
+
+  <!-- Three bottom boxes -->
+  <line x1="350" y1="240" x2="140" y2="270" class="arrow"/>
+  <line x1="350" y1="240" x2="350" y2="270" class="arrow"/>
+  <line x1="350" y1="240" x2="560" y2="270" class="arrow"/>
+
+  <rect x="55" y="270" width="170" height="55" class="box box-green"/>
+  <text x="140" y="290" class="label-bold" style="fill:#1b5e20">fic_simulation</text>
+  <text x="140" y="308" class="label-sm" style="fill:#388e3c">ROS 2 topics</text>
+
+  <rect x="265" y="270" width="170" height="55" class="box box-orange"/>
+  <text x="350" y="290" class="label-bold" style="fill:#e65100">fic_hardware</text>
+  <text x="350" y="308" class="label-sm" style="fill:#f57c00">POSIX shared memory</text>
+
+  <rect x="475" y="270" width="170" height="55" class="box box-teal"/>
+  <text x="560" y="290" class="label-bold" style="fill:#004d40">MuJoCo</text>
+  <text x="560" y="308" class="label-sm" style="fill:#00897b">Physics + 3D viewer</text>
+
+  <!-- Bottom targets -->
+  <line x1="140" y1="325" x2="140" y2="365" class="arrow arrow-green" style="marker-end:url(#home-arrowhead-green)"/>
+  <line x1="350" y1="325" x2="350" y2="365" class="arrow arrow-orange" style="marker-end:url(#home-arrowhead-orange)"/>
+
+  <rect x="55" y="368" width="170" height="40" class="box box-grey"/>
+  <text x="140" y="388" class="label">MuJoCo Sim</text>
+
+  <rect x="265" y="368" width="170" height="40" class="box box-grey"/>
+  <text x="350" y="382" class="label">Vendor Driver</text>
+  <text x="350" y="397" class="label-sm">(Franka / Kinova)</text>
+</svg>
+
+<h2>Built-in Pages</h2>
+<table>
+  <tr><th>Page</th><th>Description</th></tr>
+  <tr><td><strong>Dashboard</strong></td><td>Grouped numeric monitor after Kinova's Monitoring page: Base / Joints / End effector / Safety across Overview and Detailed tabs. Read-only; commanding lives on the control bar. Updates at 20 Hz, visible tab only.</td></tr>
+  <tr><td><strong>Control bar</strong> (not a page)</td><td>Docked to the bottom of every screen. Joint and Cart menus carrying the eight modes four apiece, each with its own modifiers and config selector; a shared control surface with click-to-type and drag-to-scrub inputs; Gripper, Home, Snapshot and Quick Actions; and a live mode/target/rate indicator. Replaced the Robot Control page in v4.2.0.</td></tr>
+  <tr><td><strong>Multi-Robot</strong></td><td>The &#65291; Add Robot cards for commanding up to four stations at once, each with its own station, robot type, mode, config and joint targets.</td></tr>
+  <tr><td><strong>Tuning</strong></td><td>Per-mode FIC parameter editing with interactive force-profile canvas, MetricField params, breakpoint strips, collapsible Planner/Admittance section, and live tracking-error/effort/wrench strip. Saves to <code>config.xml</code> with hot-reload.</td></tr>
+  <tr><td><strong>Safety</strong></td><td>Joint and Cartesian safety zones with per-axis / per-joint bounds, an enabled/disabled banner, and a live position-vs-limit readout. Edits publish to the controller live. Added in v3.9.5; see <a href="#safety" onclick="showPage('safety')">Safety</a> and <a href="#estop" onclick="showPage('estop')">E-STOP</a>.</td></tr>
+  <tr><td><strong>Settings</strong></td><td>Single-scroll collapsible cards: Appearance, Startup, Network, Simulation, Playback Tolerances, Shortcuts, Extensions, Gamepad, Developer.</td></tr>
+  <tr><td><strong>Robot Config</strong></td><td>Add, edit, and delete robot definitions via an 8-tab form (Basic Info, File Paths, Build, Frame Names, Joint Names, Default Pose, Joint Limits, Safety Zones); <strong>Deploy to Controller</strong> syncs to <code>fic_library/config/robots_config.yaml</code>.</td></tr>
+  <tr><td><strong>Topic Monitor</strong></td><td>Live ROS 2 topic list with message types and current values.</td></tr>
+  <tr><td><strong>Help (this page)</strong></td><td>Built-in documentation viewer — all pages load as SPA fragments into the content area.</td></tr>
+</table>
+
+<h2>Supported Robots</h2>
+<table>
+  <tr><th>Robot</th><th>Joints</th><th>Simulation</th><th>Hardware</th><th>Gripper</th></tr>
+  <tr><td><strong>Franka FR3</strong></td><td>7</td><td><span class="mark-yes" aria-label="Yes">✓</span></td><td><span class="mark-yes" aria-label="Yes">✓</span> (libfranka)</td><td>Franka Hand</td></tr>
+  <tr><td><strong>Kinova Gen3 7DOF</strong></td><td>7</td><td><span class="mark-yes" aria-label="Yes">✓</span></td><td><span class="mark-yes" aria-label="Yes">✓</span> (Kortex API)</td><td>Robotiq 2F-85</td></tr>
+  <tr><td><strong>KUKA iiwa 14</strong></td><td>7</td><td><span class="mark-yes" aria-label="Yes">✓</span></td><td><span class="mark-partial" aria-label="Partial">◐</span> Config only</td><td>—</td></tr>
+  <tr><td><strong>Simple Pendulum</strong></td><td>1</td><td><span class="mark-yes" aria-label="Yes">✓</span></td><td><span class="mark-partial" aria-label="Partial">◐</span> Config only</td><td>—</td></tr>
+</table>
+<p>To add your own robot, use the <a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a> page, which reads and deploys <code>fic_library/config/robots_config.yaml</code>.</p>
+
+<h2>Requirements</h2>
+<table>
+  <tr><th>Component</th><th>Supported</th></tr>
+  <tr><td>OS</td><td>Ubuntu 22.04 or 24.04</td></tr>
+  <tr><td>ROS 2</td><td>Humble (Ubuntu 22.04) or Jazzy (Ubuntu 24.04)</td></tr>
+  <tr><td>Physics (simulator)</td><td>MuJoCo from the pip <code>mujoco</code> wheel (the Docker image pins 3.10.0), in <code>fic_ws/src/mujoco_native</code> — Linux x86-64/arm64 and macOS; publishes joint states and gravity torques at 1&nbsp;kHz</td></tr>
+  <tr><td>Physics (optional GPU backend)</td><td>Newton 1.3.0 stack via pip: <code>mujoco-warp</code> 3.8.1, <code>mujoco</code> 3.8.1, <code>warp-lang</code> 1.14.0 — requires an NVIDIA GPU; 500&nbsp;Hz physics, 200&nbsp;Hz publish. The two backends intentionally run different MuJoCo versions — see <a href="#simulation" onclick="showPage('simulation')">Simulation</a></td></tr>
+  <tr><td>GUI / dynamics</td><td>PyQt5, Pinocchio (<code>ros-$ROS_DISTRO-pinocchio</code>)</td></tr>
+</table>
+
+<h2>Launching</h2>
+<p>After <a href="#installation" onclick="showPage('installation')">installation</a>, launch from a sourced workspace:</p>
+<pre><code>cd ~/FIC_Interface/fic_ws
+source /opt/ros/$ROS_DISTRO/setup.bash
+source install/setup.bash
+
+ros2 run fic_studio fic_studio_pro   # FIC Control Studio (full GUI)
+ros2 run fic_studio fic_dev          # FIC Dev Console (lightweight hardware GUI)</code></pre>
+<p>The one-click installer also registers desktop launcher entries for both apps. The controller (<code>fic_simulation</code> / <code>fic_hardware</code>) runs its loop at 1&nbsp;kHz; start and stop it from the toolbar or the <a href="#processes" onclick="showPage('processes')">Processes</a> page.</p>
+
+<h2>Documentation Map</h2>
+<table>
+  <tr><th>Topic</th><th>Pages</th></tr>
+  <tr><td>Getting started</td><td><a href="#installation" onclick="showPage('installation')">Installation</a> · <a href="#quickstart" onclick="showPage('quickstart')">Quick Start</a> · <a href="#first-motion" onclick="showPage('first-motion')">First Motion</a> · <a href="#glossary" onclick="showPage('glossary')">Glossary</a></td></tr>
+  <tr><td>Concepts</td><td><a href="#architecture" onclick="showPage('architecture')">Architecture</a> · <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Sim vs Hardware</a> · <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a> · <a href="#hapfic" onclick="showPage('hapfic')">Hapfic</a></td></tr>
+  <tr><td>Tuning</td><td><a href="#tuning" onclick="showPage('tuning')">Tuning</a> · <a href="#autotuning" onclick="showPage('autotuning')">Auto-Tuning</a> · <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a></td></tr>
+  <tr><td>Programming</td><td><a href="#sequences" onclick="showPage('sequences')">Sequences</a> · <a href="#teach-mode" onclick="showPage('teach-mode')">Teach Mode</a> · <a href="#script-editor" onclick="showPage('script-editor')">Script Editor</a> · <a href="#api-reference" onclick="showPage('api-reference')">Script API</a></td></tr>
+  <tr><td>Teleoperation</td><td><a href="#gamepad" onclick="showPage('gamepad')">Gamepad</a> · <a href="#teleoperation" onclick="showPage('teleoperation')">Teleoperation</a> · <a href="#tracker" onclick="showPage('tracker')">Trackers</a> · <a href="#vr-zed-teleop" onclick="showPage('vr-zed-teleop')">VR ZED Teleop</a></td></tr>
+  <tr><td>Safety</td><td><a href="#safety" onclick="showPage('safety')">Safety Zones</a> · <a href="#estop" onclick="showPage('estop')">E-STOP</a></td></tr>
+  <tr><td>Tools &amp; debugging</td><td><a href="#topics" onclick="showPage('topics')">Topics</a> · <a href="#topic-monitor" onclick="showPage('topic-monitor')">Topic Monitor</a> · <a href="#log-viewer" onclick="showPage('log-viewer')">Logs</a> · <a href="#build-tools" onclick="showPage('build-tools')">Build Tools</a> · <a href="#troubleshooting" onclick="showPage('troubleshooting')">Troubleshooting</a> · <a href="#shortcuts" onclick="showPage('shortcuts')">Shortcuts</a></td></tr>
+</table>
+
+<h2>Project Structure</h2>
+<pre><code>FIC_Interface/
+├── README.md                       # Project overview & quick start
+├── Install_FIC_Studio.desktop      # One-click installer (double-clickable bash script)
+├── fic_install/                    # Installer helpers + desktop integration (launchers, icon)
+├── Extensions/                     # Optional Studio extensions (manifest.json + extension.py each)
+├── fic_api/                        # Standalone Python API (pip install -e ., no GUI required)
+├── fic_docs/                       # This documentation site (SPA fragments in pages/)
+├── docs/                           # Developer docs — design specs/plans, safety, scripting notes
+├── fic_library/                    # FIC algorithm headers + shared config files
+│   ├── config/
+│   │   ├── config.xml              # FIC tuning parameters (per robot, per mode)
+│   │   └── robots_config.yaml      # Robot definitions
+│   └── include/fic/                # C++ headers (FIC.cpp, fic_control.h, filters, loaders)
+├── fic_ws/                         # ROS 2 workspace
+│   └── src/
+│       ├── communication/          # Custom ROS messages & services
+│       ├── fic_hardware/           # Hardware control node (shared memory)
+│       ├── fic_simulation/         # Simulation control node (ROS topics)
+│       ├── fic_studio/             # PyQt5 GUI application
+│       ├── menagerie/              # Robot models (URDF + MuJoCo XML)
+│       ├── mujoco_native/          # MuJoCo simulator node (CPU, the default)
+│       └── mujoco_newton/          # Optional Newton GPU physics node (pip stack)
+├── experiments/                    # Recorded experiment data (EXPERIMENTS_ROOT)
+└── robot_library/                  # Vendor driver binaries (Franka, Kinova)</code></pre>
+
+<div class="doc-footer">FIC Control Studio v4.1.0 · Built with PyQt5, ROS 2, MuJoCo, Pinocchio, and the FIC Library</div>

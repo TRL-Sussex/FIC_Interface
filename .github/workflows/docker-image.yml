@@ -1,0 +1,184 @@
+# Builds the FIC Studio Docker image for amd64 and arm64 on native runners,
+# runs its self-test on each, and publishes one multi-arch image to
+#
+#     ghcr.io/trl-sussex/fic_interface
+#     ghcr.io/trl-sussex/fic-studio     (the same image, under the name the
+#                                        ROSCon UK 2026 workshop handed out)
+#
+# When: every push to main (the public repository gets one per release),
+# version tags (v5.6.0), every Monday, and on demand (Actions > Docker image >
+# Run workflow).
+#
+# Tags: `latest` (main), the branch name, `sha-<commit>`, and the version for
+# v* tags. Pull requests that touch the image build and test without pushing,
+# and so does every copy of the repository other than TRL-Sussex/FIC_Interface:
+# only that one publishes.
+#
+# For users to pull without logging in, both packages must be public: GitHub >
+# the organisation's Packages > fic_interface (and fic-studio) > Package
+# settings > Change visibility. fic-studio was created by an older repository,
+# so it must also give this one write access: Package settings > Manage
+# Actions access.
+
+name: Docker image
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    paths:
+      - 'docker/**'
+      - '!docker/README.md'
+      - '!docker/fic-studio.*'
+      - '!docker/compose.yaml'
+      - '!docker/build.sh'
+      - '.dockerignore'
+      - '.github/workflows/docker-image.yml'
+  schedule:
+    - cron: '0 3 * * 1'   # Mondays, 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # GHCR names must be lowercase.
+  IMAGE: ghcr.io/trl-sussex/fic_interface
+  # The workshop name; it gets every tag IMAGE gets.
+  WORKSHOP_IMAGE: ghcr.io/trl-sussex/fic-studio
+
+jobs:
+  build:
+    name: Build and test (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/.ghcup /usr/lib/jvm /usr/share/swift /opt/hostedtoolcache \
+                      /usr/local/share/powershell "${AGENT_TOOLSDIRECTORY:-/nonexistent}"
+          docker system prune -af >/dev/null || true
+          df -h /
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request' && github.repository == 'TRL-Sussex/FIC_Interface'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          tags: fic-studio:test
+          cache-from: type=gha,scope=fic-studio-${{ matrix.arch }}
+          cache-to: type=gha,scope=fic-studio-${{ matrix.arch }},ignore-error=true
+
+      - name: Self-test
+        run: docker run --rm --shm-size 2g fic-studio:test fic-selftest
+
+      - name: Push by digest
+        id: push
+        if: github.event_name != 'pull_request' && github.repository == 'TRL-Sussex/FIC_Interface'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=fic-studio-${{ matrix.arch }}
+
+      - name: Record the digest
+        if: github.event_name != 'pull_request' && github.repository == 'TRL-Sussex/FIC_Interface'
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.push.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v7
+        if: github.event_name != 'pull_request' && github.repository == 'TRL-Sussex/FIC_Interface'
+        with:
+          name: digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 3
+
+  publish:
+    name: Publish multi-arch image
+    needs: build
+    if: github.event_name != 'pull_request' && github.repository == 'TRL-Sussex/FIC_Interface'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            ${{ env.IMAGE }}
+            ${{ env.WORKSHOP_IMAGE }}
+          # `latest` is the workshop image, never moved by a version tag.
+          flavor: latest=false
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+
+      - name: Create the manifest list and push it
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          # shellcheck disable=SC2046  # the tag and digest lists are meant to split
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "${DOCKER_METADATA_OUTPUT_JSON}") \
+            --annotation "index:org.opencontainers.image.description=FIC Control Studio with MuJoCo simulation, shown in the browser. Simulation only." \
+            --annotation "index:org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            $(printf '${{ env.IMAGE }}@sha256:%s ' *)
+
+      - name: Inspect
+        run: docker buildx imagetools inspect "${{ env.IMAGE }}:${{ steps.meta.outputs.version }}"

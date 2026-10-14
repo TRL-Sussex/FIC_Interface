@@ -1,0 +1,71 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Dashboard</div>
+<h1>Dashboard</h1>
+<p class="subtitle">Grouped numeric monitoring &mdash; the instrument panel, not the controls.</p>
+
+<h2>Overview</h2>
+<p>The Dashboard is the default landing page (stack index 0, <code>Ctrl+0</code>). As of <strong>v4.2.0</strong> it is a dense, read-only numeric readout modelled on the KINOVA Kortex Web App's Monitoring page: data grouped into <strong>Base &middot; Joints &middot; End effector &middot; Safety</strong>, split across <strong>Overview</strong> and <strong>Detailed</strong> tabs.</p>
+<p>It carries no robot-driving controls. Commanding lives on the <a href="#control-panel" onclick="showPage('control-panel')">control bar</a> docked beneath it, which is present on this page as on every other.</p>
+<div class="admonition note"><div class="adm-title">Nothing here is invented</div>
+<p>Any channel with no live source renders <code>--</code>. The Dashboard never falls back to a last-known value presented as live, and never shows a fabricated zero.</p></div>
+
+<h2>Header</h2>
+<table>
+  <tr><th>Element</th><th>Description</th></tr>
+  <tr><td><strong>Status pill</strong></td><td><code>&#9679; running</code> when the simulator, FIC controller or hardware controller is up; <code>&#9679; idle</code> otherwise. Process state, not loop health.</td></tr>
+  <tr><td><strong>Identity line</strong></td><td><code>robot &middot; Robot N &middot; target &middot; mode</code>.</td></tr>
+  <tr><td><strong>Active modifiers</strong></td><td><code>POST</code>, <code>ELB</code>, <code>HAP</code>, <code>ADM</code> badges for engaged toggles.</td></tr>
+  <tr><td><strong>Health readout</strong></td><td><code>&#9679; live &middot; 998 Hz &middot; 16 ms</code> in green, amber when stale (older than 500&nbsp;ms), grey when offline. Shares <code>JointStateMixin.telemetry_health()</code> with the control bar's indicator, so the two cannot disagree.</td></tr>
+</table>
+
+<h2>Overview tab</h2>
+
+<h3>BASE</h3>
+<p>Kinova's Base group answers &ldquo;what state is the system in&rdquo;. Here that is which processes are up &mdash; and the rows keep their &#9654;/&#9632; controls, so nothing you could do from the old session card is lost.</p>
+<table>
+  <tr><th>Row</th><th>Content</th></tr>
+  <tr><td><strong>operating mode</strong></td><td>simulator / fic controller / driver, each with start &amp; stop and a running / stopped state.</td></tr>
+  <tr><td><strong>control mode</strong></td><td>Active <a href="#control-modes" onclick="showPage('control-modes')">control mode</a> plus engaged modifiers.</td></tr>
+  <tr><td><strong>target</strong></td><td>simulation / hardware / vr.</td></tr>
+  <tr><td><strong>profile</strong></td><td>Active tuning config.</td></tr>
+  <tr><td><strong>telemetry</strong></td><td>Rate and message age, coloured by liveness.</td></tr>
+</table>
+
+<h3>JOINTS</h3>
+<p>One row per joint, in degrees:</p>
+<table>
+  <tr><th>Column</th><th>Source</th></tr>
+  <tr><td><strong>commanded</strong></td><td><code>joint_commanded_for(rid)</code></td></tr>
+  <tr><td><strong>position</strong></td><td><code>joint_positions_for(rid)</code> &larr; <code>{rid}_q_current</code></td></tr>
+  <tr><td><strong>error</strong></td><td>commanded &minus; position</td></tr>
+  <tr><td><strong>velocity</strong></td><td><code>joint_velocity_for(rid)</code></td></tr>
+  <tr><td><strong>torque</strong></td><td><code>joint_effort_for(rid)</code></td></tr>
+</table>
+<p>Rows are addressed by <em>name</em>, not index, so a robot reporting more than its actuated joints &mdash; the CSPM's passive and platform joints &mdash; tables correctly rather than being truncated to the first seven.</p>
+
+<h3>END EFFECTOR</h3>
+<p>Rows <strong>commanded / pose / error / velocity</strong> across <code>x y z</code> and the <code>&theta;x &theta;y &theta;z</code> triple. The Euler convention is x-y-z <strong>extrinsic</strong>, matching what the Kinova Web App reports; the conversion clamps before <code>asin</code> so a pitch at &plusmn;90&deg; cannot raise a domain error.</p>
+<p>Beneath it, the tool wrench: force and torque per axis, <code>|F|</code> and <code>|&tau;|</code> magnitudes, and a contact indicator that trips above 5&nbsp;N.</p>
+<div class="admonition note"><div class="adm-title">Commanded pose reads <code>--</code></div>
+<p>No publisher carries a commanded end-effector pose yet, so that row stays blank rather than echoing the actual pose back as though it were a target. The row exists so it populates the day a source appears.</p></div>
+
+<h3>SAFETY</h3>
+<p>Joint limits, velocity limits and force/torque indicators. Joint proximity warns within 5% of the configured range; torque within 10% of the limit. Velocity has no limit source yet and always reads OK.</p>
+
+<h2>Detailed tab</h2>
+<p>Kinova's Detailed view adds motor currents, voltages and temperatures. <strong>FIC publishes none of those</strong>, so rather than print a group of dashes this tab shows what this stack genuinely knows:</p>
+<table>
+  <tr><th>Card</th><th>Content</th></tr>
+  <tr><td><strong>JOINTS &middot; limits and headroom</strong></td><td>The Overview columns plus <code>&tau; max</code>, <code>% &tau;</code>, <code>limit lo</code>, <code>limit hi</code> and <code>% range</code> &mdash; how much headroom each joint has against its configured ceilings.</td></tr>
+  <tr><td><strong>END EFFECTOR</strong></td><td>Pose, commanded, error and velocity at four decimals, plus a <strong>quaternion</strong> row alongside the Euler triple.</td></tr>
+  <tr><td><strong>TOOL WRENCH</strong></td><td>Force and torque per axis with magnitudes.</td></tr>
+  <tr><td><strong>ROBOT</strong></td><td>Model, joint count, gripper and range, EE frame, elbow frame, torque sign, gravity compensation, wrench source and URDF path &mdash; all from <a href="#robot-config" onclick="showPage('robot-config')">robots_config.yaml</a>.</td></tr>
+  <tr><td><strong>TELEMETRY CHANNELS</strong></td><td>Which channels carry data, plus the admittance deadbands (<code>&tau; 2.0 &middot; F 4.0 &middot; M 0.2</code>).</td></tr>
+</table>
+<div class="admonition tip"><div class="adm-title">Presence, not a fabricated age</div>
+<p>Only joint state is timestamped in <code>JointStateMixin</code>. That row reports a real sample count and age; the others report <code>streaming</code> or <code>no data</code> rather than an age nothing measures.</p></div>
+
+<h2>Refresh</h2>
+<p>A 20&nbsp;Hz timer drives the page, and <strong>only the visible tab refreshes</strong>. Off the Dashboard the refresh returns on a single integer comparison, so the cost of the timer while you are elsewhere is negligible.</p>
+
+<h2>What changed in v4.2.0</h2>
+<p>The previous Dashboard was a three-zone hub of graphical widgets &mdash; commanded-vs-actual dual-track bars, effort bars, a trajectory sparkline and wrench bars. Those are replaced by the grouped numeric tables above. <code>DualTrack</code> was removed as unused; <code>LimitBar</code> and <code>TrajectoryPlot</code> remain and are still used by the <a href="#topic-monitor" onclick="showPage('topic-monitor')">Topic Monitor</a>.</p>

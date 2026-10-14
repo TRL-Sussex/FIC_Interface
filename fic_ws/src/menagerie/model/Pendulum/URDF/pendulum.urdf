@@ -1,0 +1,60 @@
+<robot name="pendulum">
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <cylinder radius="0.021" length="0.06"/>
+      </geometry>
+      <origin xyz="0 0 0.03" rpy="0 0 0"/>
+    </visual>
+  </link>
+
+  <link name="pole">
+    <inertial>
+      <origin xyz="0 0 0.25"/>
+      <mass value="0.5"/>
+      <inertia ixx="0.0001" iyy="0.0001" izz="0.0001" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder radius="0.02" length="0.5"/>
+      </geometry>
+      <origin xyz="0 0 0.25" rpy="0 0 0"/>
+    </visual>
+  </link>
+
+  <link name="mass">
+    <inertial>
+      <origin xyz="0 0 0.5"/>
+      <mass value="1.0"/>
+      <inertia ixx="0.0002" iyy="0.0002" izz="0.0002" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <sphere radius="0.05"/>
+      </geometry>
+      <origin xyz="0 0 0.5"/>
+    </visual>
+  </link>
+
+  <joint name="hinge" type="revolute">
+    <parent link="base_link"/>
+    <child link="pole"/>
+    <origin xyz="0 0 0.03"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-3.14" upper="3.14" effort="1.0" velocity="1.0"/>
+  </joint>
+
+  <joint name="ee_link" type="fixed">
+    <parent link="pole"/>
+    <child link="mass"/>
+    <origin xyz="0 0 0.5"/>
+  </joint>
+
+  <transmission type="SimpleTransmission">
+    <joint name="hinge"/>
+    <actuator name="motor">
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+</robot>
+

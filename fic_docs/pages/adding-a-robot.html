@@ -1,0 +1,256 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> <a href="#robot-config" onclick="showPage('robot-config')">Robot Configuration</a><span class="bc-sep">&rsaquo;</span> Adding a Robot</div>
+<h1>Adding a Robot from its URDF</h1>
+<p class="subtitle">Drop a robot's URDF on the Robot Configuration page and it is ready to simulate a minute later: MuJoCo model, config entry and tuning built for you, no rebuild. Parallel (closed-loop) robots too.</p>
+
+<h2>The short version</h2>
+<ol>
+  <li>Open <strong>Robot Configuration</strong> in the Studio's sidebar.</li>
+  <li>Drag the robot's <code>.urdf</code> (or <code>.xacro</code>, its description-package folder, or a <code>.zip</code> of that folder) onto <strong>Add a robot</strong> under the robot list. Or click it to browse. <strong>The URDF is required</strong>: the controllers read it. If you also have the robot's <strong>MuJoCo model</strong> (<code>.xml</code> and its meshes), drop it together with the URDF or keep it in the same folder &mdash; it is then used for simulation (see <em>Your own MuJoCo model</em> below).</li>
+  <li>Check the one review screen. Everything on it was read from the robot's own files; fix the name if you like, and the end effector if the guess is wrong.</li>
+  <li>Click <strong>Create robot</strong>, then <strong>Try in simulation</strong>. The Studio starts the MuJoCo simulator and the FIC controller for it, and the arm moves to its home pose.</li>
+</ol>
+<p>The new robot joins the list, the toolbar's robot selector and the <em>Robot&nbsp;&rarr;&nbsp;Select Robot</em> menu straight away. Everything it needs is written in the same layout as the robots that ship with FIC (see <em>What gets written</em> below).</p>
+
+<figure>
+<svg viewBox="0 0 700 150" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:16px 0;" role="img" aria-label="Import flow: drop, review, create, simulate">
+  <style>
+    .ar-box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .ar-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .ar-green { fill: #e8f5e9; stroke: #388e3c; }
+    .ar-orange { fill: #fff3e0; stroke: #f57c00; }
+    .ar-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .ar-t { font: 600 13px system-ui, sans-serif; fill: #222; text-anchor: middle; }
+    .ar-s { font: 11px system-ui, sans-serif; fill: #555; text-anchor: middle; }
+    .ar-arrow { stroke: #666; stroke-width: 1.6; fill: none; marker-end: url(#ar-head); }
+  </style>
+  <defs><marker id="ar-head" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#666"/></marker></defs>
+  <rect class="ar-box ar-blue" x="10" y="30" width="150" height="80"/>
+  <text class="ar-t" x="85" y="62">Drop</text>
+  <text class="ar-s" x="85" y="82">.urdf · .xacro · folder · .zip</text>
+  <rect class="ar-box ar-purple" x="190" y="30" width="150" height="80"/>
+  <text class="ar-t" x="265" y="62">Review</text>
+  <text class="ar-s" x="265" y="82">what came from where</text>
+  <rect class="ar-box ar-green" x="370" y="30" width="150" height="80"/>
+  <text class="ar-t" x="445" y="62">Create</text>
+  <text class="ar-s" x="445" y="82">model, config, checked</text>
+  <rect class="ar-box ar-orange" x="550" y="30" width="140" height="80"/>
+  <text class="ar-t" x="620" y="62">Simulate</text>
+  <text class="ar-s" x="620" y="82">MuJoCo + FIC controller</text>
+  <path class="ar-arrow" d="M160,70 L188,70"/>
+  <path class="ar-arrow" d="M340,70 L368,70"/>
+  <path class="ar-arrow" d="M520,70 L548,70"/>
+</svg>
+</figure>
+
+<h2>What your URDF needs</h2>
+<p>Most vendor URDFs work as they are. The importer tells you on the review screen when something is missing, and whether it could work around it (! a note) or not (✕ an error that stops the import).</p>
+<table>
+  <tr><th>Requirement</th><th>Why</th><th>If it is missing</th></tr>
+  <tr><td><strong>One tree with one base link</strong></td><td>URDF's own rule; the base is fixed to the world in simulation.</td><td>✕ Not importable. Fix the URDF.</td></tr>
+  <tr><td><strong>The arm's joints are <code>revolute</code> or <code>continuous</code></strong></td><td>The simulator and the controllers drive rotating joints.</td><td>✕ A sliding (<code>prismatic</code>) joint on the arm stops the import. Sliding <em>gripper fingers</em> are fine.</td></tr>
+  <tr><td><strong>At most 12 arm joints</strong></td><td>The Studio's joint editor handles 1&ndash;12.</td><td>✕ Pick an end effector nearer the base, or split the robot.</td></tr>
+  <tr><td><strong><code>&lt;limit lower upper effort velocity&gt;</code> on each arm joint</strong></td><td>Limits become the robot's joint limits, <code>effort</code> its torque limits, <code>velocity</code> caps its speed limit.</td><td>! A missing <code>effort</code> becomes 50&nbsp;N&middot;m, flagged <em>(default)</em>; set the real value before using hardware. A missing <code>velocity</code> is written as 2&nbsp;rad/s in the controllers' copy, which needs one.</td></tr>
+  <tr><td><strong><code>&lt;inertial&gt;</code> with <code>mass &gt; 0</code> on every moving link</strong></td><td>Gravity compensation and the simulation's dynamics come from the masses.</td><td>! MuJoCo estimates the mass from the mesh; the arm then droops or pushes in simulation. Real values fix it.</td></tr>
+  <tr><td><strong>Meshes the importer can find, as <code>.stl</code>, <code>.obj</code> or <code>.dae</code></strong></td><td>MuJoCo draws and collides with them.</td><td>! <code>.dae</code> is converted to <code>.obj</code>. Other formats, and files not found, are left out &mdash; except a missing display mesh when the link has a collision mesh, which is simply drawn instead.</td></tr>
+  <tr><td><strong>Loops written somewhere, for a closed-loop robot</strong></td><td>A URDF is a tree, so a parallel mechanism's URDF has its loops cut (the CSPM's platform floats free).</td><td>✕ &ldquo;Looks like a closed-loop mechanism, but no loops were found&rdquo;: add its MuJoCo model, or add the loops on the review screen (<em>Closed-loop robots</em> below).</td></tr>
+</table>
+
+<h3>Where the meshes may be</h3>
+<p>The importer looks for every mesh the URDF names, in this order:</p>
+<ol>
+  <li>a <code>package://pkg/&hellip;</code> path in a ROS package inside what you dropped (a folder with a <code>package.xml</code>), then in an installed package;</li>
+  <li>a path relative to the URDF;</li>
+  <li>an absolute path; one written on another machine (<code>/root/ws/install/pkg/share/pkg/meshes/&hellip;</code>, common in exported URDFs) is found again in the same package here;</li>
+  <li>failing all of those, a file of the same name anywhere in what you dropped (case-insensitive, since CAD exporters write <code>LINK1.STL</code>).</li>
+</ol>
+<p>So dropping the whole description package (or the folder above it) almost always finds everything. The review screen says how many meshes were found.</p>
+
+<h3>xacro files</h3>
+<p>A <code>.xacro</code> is expanded with ROS's <code>xacro</code> tool. Its <code>$(find pkg)</code> finds packages inside the folder you dropped as well as installed ones, so an unbuilt description package works. Many xacro files need <em>arguments</em> (a robot variant, a prefix); the importer cannot guess those and says which one is missing. Expand it yourself then, and drop the result:</p>
+<pre><code>xacro gen3.xacro dof:=7 &gt; gen3.urdf</code></pre>
+<p>When a folder holds several robot descriptions (Kinova's <code>ros2_kortex</code> has 28), the review screen lists them at the top: pick the one you mean.</p>
+
+<h2>Your own MuJoCo model</h2>
+<p>Without one, the Studio builds the simulation model from the URDF. With one, it uses yours: someone tuned its contacts, damping and solver, and it can hold what a URDF cannot, above all the constraints that close a parallel robot's loops. It is found when</p>
+<ul>
+  <li>you drop it together with the URDF (select both, or drop the folder that holds both);</li>
+  <li>it is in the folder you dropped, or beside a dropped URDF (its folder or the one above, as <code>menagerie/model/&lt;robot&gt;/URDF</code> and <code>xml/</code> sit), and shares at least half the URDF's moving joints;</li>
+  <li>or you pick it on the review screen (<em>Add yours&hellip;</em>). <em>Don't use it</em> goes back to a model built from the URDF.</li>
+</ul>
+<p>It is copied into the robot's <code>xml/</code> folder with its meshes, and changed only where FIC needs it to be:</p>
+<table>
+  <tr><th>Change</th><th>Why</th></tr>
+  <tr><td>The actuator on driven joint <em>k</em> becomes the motor <code>torq_j</code><em>k</em>; a position or velocity servo there is replaced by a torque motor with the same force limit.</td><td>The FIC controller commands torque, joint by joint, through actuators of those names.</td></tr>
+  <tr><td>A <code>force_torque_site</code> with <code>force_sensor</code> and <code>torque_sensor</code> on the end effector, if the model has none.</td><td>The simulated wrench readout.</td></tr>
+  <tr><td>A <code>home</code> keyframe at the home pose, loops closed.</td><td>The viewer opens there.</td></tr>
+</table>
+<p>Everything else &mdash; damping, solver settings, contacts, a gripper actuator named <code>gripper</code> &mdash; is kept. Before anything is written the importer checks that the model and the URDF describe the same robot: every shared joint must have the same axis through the same point at the zero pose. If not, the review screen names the joints (the controllers use the URDF and the simulator the MuJoCo model, so they would fight).</p>
+
+<h2>Closed-loop robots</h2>
+<p>A parallel mechanism &mdash; the CSPM, a five-bar, a delta &mdash; is a tree with some links joined again. Each join is a <em>loop closure</em>: a point on one link held to a point on another. FIC stores them as <code>loop_closures</code> (<code>bodyA</code>, <code>posA</code>, <code>bodyB</code>, <code>posB</code>, each point in its link's frame); the controllers' <code>pinocchio_closed_loop</code> solver closes them itself, and the simulator closes them with MuJoCo <code>connect</code> constraints. The importer takes the loops from, in order:</p>
+<ol>
+  <li><strong>the robot's MuJoCo model</strong>: its <code>&lt;equality&gt;&lt;connect&gt;</code> constraints (by sites or by bodies), turned into the URDF's link frames &mdash; each point is taken to world coordinates at the reference pose and brought back into the matching link, so it does not matter where either file puts its frames;</li>
+  <li><strong>markup in the URDF</strong>: Drake's ball constraint, or onshape-to-robot's closing frames &mdash;
+<pre><code>&lt;robot name="five_bar" xmlns:drake="http://drake.mit.edu"&gt;
+  &hellip;
+  &lt;drake:ball_constraint name="tip"&gt;
+    &lt;drake:ball_constraint_body_A name="l_dist"/&gt;
+    &lt;drake:ball_constraint_p_AP value="0.1 0.15 0"/&gt;
+    &lt;drake:ball_constraint_body_B name="r_dist"/&gt;
+    &lt;drake:ball_constraint_p_BQ value="-0.1 0.15 0"/&gt;
+  &lt;/drake:ball_constraint&gt;
+&lt;/robot&gt;</code></pre>
+  or two frames (fixed links) named <code>closing_&lt;name&gt;_1</code> and <code>closing_&lt;name&gt;_2</code> at the two ends of the cut;</li>
+  <li><strong>you</strong>, on the review screen: <em>Add a loop&hellip;</em>, pick link A, the point on it (in its frame) and link B. The point on B is where the point on A is in the URDF's zero pose, since a URDF is cut with its loops still assembled.</li>
+</ol>
+<p>With the loops known, the importer works out the rest on a MuJoCo model of the mechanism (yours, or a quick one built from the URDF):</p>
+<table>
+  <tr><th>Setting</th><th>How</th></tr>
+  <tr><td>End effector</td><td>A free body the loops hold (the CSPM's platform); else a link sitting where a loop closes, preferably one named like an end effector (a five-bar's <code>tip</code>).</td></tr>
+  <tr><td>Driven joints</td><td>Your MuJoCo model's actuators; else the joints nearest the base, taken one by one until the end effector cannot move &mdash; parallel robots mount their motors on the base, and a redundant arm keeps all its joints. Untick or tick them in the <em>Driven</em> column. They become <code>joint_names</code>, in that order.</td></tr>
+  <tr><td>Degrees of freedom</td><td>How the end effector can move with the loops closed, checked at a pose that is not special (reference poses are often singular). The review screen refuses a set of driven joints that leaves it free to move.</td></tr>
+  <tr><td>Orientation only</td><td>Set when no motion the loops allow moves the end effector's origin &mdash; a spherical mechanism &mdash; so Cartesian control steers orientation only (<code>ee_orientation_only</code>).</td></tr>
+  <tr><td>Shown joints</td><td>Every joint of the mechanism in <code>view_joint_names</code>, passive ones greyed; a ball joint as its roll / pitch / yaw.</td></tr>
+  <tr><td>Home</td><td>Driven joints at home, the rest moved to close the loops (the keyframe and the default target use that assembled pose).</td></tr>
+</table>
+<p>Joints that are not part of the mechanism (a gripper, say) are held fixed as for any robot. The controllers' URDF keeps every mechanism joint, including a floating platform's; in a MuJoCo model built from the URDF a free body below the base gets three slides and a ball, since MuJoCo frees only top-level bodies, and passive joints are damped like the driven ones.</p>
+<p>Imported from its folder, the CSPM comes out with the <code>joint_names</code>, end effector, solver, <code>ee_orientation_only</code>, <code>view_joint_names</code> and <code>loop_closures</code> of its hand-written config, and the Kinova + CSPM wrist picks exactly <code>Actuator1&hellip;7, phi1_1&hellip;3</code> as its driven joints.</p>
+
+<h2>Filled in for you</h2>
+<p>The review screen shows each of these with the file it came from. All of them can be changed afterwards on the robot's tabs.</p>
+<table>
+  <tr><th>Setting</th><th>Taken from</th></tr>
+  <tr><td>Name, Robot ID</td><td>The URDF's <code>&lt;robot name&gt;</code>, or its file name when the robot name is CAD noise like <code>GEN3_7DOF_NOVISION_FOR_URDF_ARM_V12</code>. The ID is made unique among your robots.</td></tr>
+  <tr><td>Joints, limits, torques, speeds</td><td>Every moving joint from the base to the end effector, in order. Continuous joints get &plusmn;360&deg; (as the shipped Kinova config does).</td></tr>
+  <tr><td>End effector</td><td>A MoveIt SRDF's <code>&lt;end_effector parent_link&gt;</code> or the tip of its arm <code>&lt;chain&gt;</code>, when the robot has one (see below). Otherwise the arm is followed from the base, always into the branch with the most arm joints &mdash; gripper fingers never extend it &mdash; and a frame after the last joint named like <code>tcp</code>, <code>tool0</code>, <code>flange</code> or <code>end_effector</code> is preferred.</td></tr>
+  <tr><td>Elbow</td><td>The link after the middle arm joint (Kinova: <code>ForeArm_Link</code>, FR3: <code>fr3_link4</code>).</td></tr>
+  <tr><td>Home pose</td><td>A MoveIt SRDF <code>&lt;group_state&gt;</code> named <code>home</code>, <code>ready</code>, <code>default</code>&hellip; if there is one; else the <code>initial_value</code>s in the URDF's <code>&lt;ros2_control&gt;</code> block; else 0&deg; (or mid-range where 0 is outside the limits). Always clamped to the joint limits.</td></tr>
+  <tr><td>Default Cartesian target</td><td>The end effector's pose at the home pose, computed by MuJoCo from the model it just built (and identical to Pinocchio's).</td></tr>
+  <tr><td>Gripper</td><td>Sliding (<code>prismatic</code>) finger joints named like a gripper become one simulated gripper: it opens to the width the Studio's gripper slider asks for, fingers coupled as the URDF's <code>&lt;mimic&gt;</code> says. <em>Has gripper</em> is switched on and the opening range is the fingers' travel. Grippers with rotating knuckles (Robotiq) are held fixed in simulation.</td></tr>
+  <tr><td>Speed limit</td><td>FIC's gentle 1&nbsp;rad/s, or the URDF's slowest joint if that is slower. Never faster.</td></tr>
+  <tr><td>Safety values</td><td>Joint safety limits 5&deg; inside the joint limits, and a workspace box around the arm's reach. Filled in but <strong>switched off</strong>: limits that stop the robot are your call (Safety tab).</td></tr>
+  <tr><td>Everything else</td><td>Simulation defaults: <em>Hardware driver</em> off, torque sign +1, gravity flags off, standard deadbands, <code>kinematics_solver: pinocchio</code>, and default tuning in <code>config.xml</code>.</td></tr>
+</table>
+
+<h3>Finding the SRDF</h3>
+<p>A robot's ROS packages often come with a <code>*_moveit_config</code> package beside the description. The importer uses its SRDF when the SRDF names the joints of the URDF you are importing:</p>
+<ul>
+  <li>dropping a folder or zip: any <code>.srdf</code> / <code>.srdf.xacro</code> inside it;</li>
+  <li>dropping one file from a description package: the SRDFs in the sibling packages named like it (<code>franka_description</code> &rarr; <code>franka_moveit_config</code>).</li>
+</ul>
+
+<h2>What gets written</h2>
+<p>Everything goes into <code>fic_ws/src/menagerie/model/&lt;Robot ID&gt;/</code>, the layout every FIC robot uses:</p>
+<pre><code>menagerie/model/&lt;Robot ID&gt;/
+  URDF/
+    &lt;Robot ID&gt;.urdf           the controllers' copy (Pinocchio: FK, IK, gravity)
+    &lt;Robot ID&gt;.original.urdf  the URDF exactly as imported (xacro expanded)
+    meshes/                   the original mesh files
+  xml/
+    &lt;Robot ID&gt;.xml            the MuJoCo robot
+    scene.xml                 floor, light and sky around it &mdash; what the simulator loads
+    assets/                   meshes MuJoCo reads (.dae converted to .obj)
+  import_report.md            what was found and done (Overview &rarr; Import report)</code></pre>
+<p>It is built in a hidden staging folder and moved into place only once the model has loaded and passed its checks, so a failed import never leaves half a robot behind. The robot is then added to <em>both</em> robot lists (<code>fic_studio_robots.yaml</code> and <code>fic_library/config/robots_config.yaml</code>) and to <code>config.xml</code>.</p>
+
+<h3>The MuJoCo model</h3>
+<p>MuJoCo imports the URDF itself (bodies, joints, limits, inertias, meshes); the importer then adds what FIC's simulator expects, as the hand-made models have it:</p>
+<ul>
+  <li>a <code>&lt;motor&gt;</code> per arm joint named <code>torq_j1</code>&hellip;<code>torq_jN</code> in joint order, limited to the joint's torque;</li>
+  <li><code>force_torque_site</code> on the end effector with <code>force_sensor</code> and <code>torque_sensor</code>, for the simulated wrench;</li>
+  <li>a 1&nbsp;kHz <code>implicitfast</code> integrator and a little joint armature;</li>
+  <li>joint damping scaled to each joint's torque (1.15&nbsp;&times;&nbsp;effort, at most 45&nbsp;N&middot;m&middot;s/rad, as the Kinova and Franka models use), so full torque still moves a joint at about 0.9&nbsp;rad/s and the arm settles instead of falling in the seconds before the controller starts;</li>
+  <li>self-collision off (exported meshes overlap at every joint and would make the arm shake) &mdash; the robot still collides with the floor and with objects;</li>
+  <li>a <code>home</code> keyframe, and for a sliding-finger gripper an actuator named <code>gripper</code>.</li>
+</ul>
+<p>Before it is saved, the model is loaded and held at its home pose for half a second under gravity compensation. An arm with sensible masses and joint axes does not move; if it drifts, the review screen says so.</p>
+
+<h3>The controllers' URDF</h3>
+<p><code>URDF/&lt;Robot ID&gt;.urdf</code> differs from the original in three ways, all so the controllers load exactly the configured joints:</p>
+<ul>
+  <li>joints off the arm (fingers, wheels, a pan-tilt head) are <code>fixed</code>;</li>
+  <li><code>continuous</code> joints are written as <code>revolute</code> without bounds, FIC's way of marking a continuous joint (see <a href="#robot-config" onclick="showPage('robot-config')">Joint Continuity</a>). Pinocchio then gives each one position coordinate rather than a cos/sin pair, which the controllers need;</li>
+  <li>a missing <code>effort</code> or <code>velocity</code> is filled in &mdash; urdfdom, which Pinocchio uses, refuses a joint without them.</li>
+</ul>
+<p>When Pinocchio is installed for Python, the importer also loads this URDF the way the controllers will and warns if it cannot.</p>
+
+<h2>No rebuild needed</h2>
+<p>A new robot runs as soon as it is created because nothing it needs is compiled in or installed:</p>
+<ul>
+  <li>the controllers read <code>robots_config.yaml</code> and the URDF from the source tree every time a robot is loaded;</li>
+  <li>the Studio starts the simulator with <code>model_file:=</code> the robot's scene, so the simulators' launch files need no entry for it (any <code>simulation_launch.py</code> takes it: <code>mujoco_native</code> and <code>mujoco_newton</code>);</li>
+  <li><code>config.xml</code> is installed as a link to <code>fic_library/config/config.xml</code> by <code>colcon build --symlink-install</code>, which this workspace uses. (A copy install would need <code>colcon build --packages-select fic_simulation</code> to see a new robot's tuning.)</li>
+</ul>
+
+<h2>After importing</h2>
+<table>
+  <tr><th>To&hellip;</th><th>Go to</th></tr>
+  <tr><td>check the robot</td><td><strong>Overview</strong>: <em>Ready to simulate?</em> lists what was checked (URDF joints and frames, the MuJoCo motors and sensors). <em>Open in MuJoCo viewer</em> shows the model on its own; <em>Import report</em> shows everything the importer did.</td></tr>
+  <tr><td>give it a better home pose</td><td><strong>Joints</strong> &rarr; Home pose, then <strong>Frames</strong> &rarr; <em>Set from home pose</em> so Cartesian control starts where the arm is.</td></tr>
+  <tr><td>tune its controller</td><td>The <a href="#tuning" onclick="showPage('tuning')">Tuning</a> page: the robot starts with <code>config.xml</code>'s defaults.</td></tr>
+  <tr><td>switch on safety limits</td><td><strong>Safety</strong>: the values are already filled in.</td></tr>
+  <tr><td>drive the real robot</td><td><strong>Hardware</strong>: drop its driver library on <em>Add the driver library</em> (see <em>Real robot</em> below), set the torque sign, gravity and wrench flags, then tick <em>This robot has a hardware driver</em>. Check the torque limits first &mdash; defaults are marked on the review screen.</td></tr>
+  <tr><td>re-import after changing the URDF</td><td>Delete the robot (&hellip; menu), answering <em>Yes</em> to deleting its files, and drop the URDF again. Or import under a new ID.</td></tr>
+</table>
+
+<h2>Real robot: the driver library</h2>
+<p>A real robot runs through a <strong>driver</strong>: a program built from the vendor's SDK that talks to the robot on one side and to FIC on the other, through the shared-memory segment <code>/robot_feedback_memory</code> (<code>fic_library/include/fic/shared_params.h</code>). The FIC hardware node writes the commanded torques there; the driver sends them to the robot and writes back the measured joint positions, torques and tool wrench. The shipped robots keep their libraries in <code>FIC_Interface/robot_library/</code> &mdash; <code>{robot_lib}</code> in the commands:</p>
+<table>
+  <tr><th>Library</th><th>Driver source</th><th>Built by</th></tr>
+  <tr><td><code>Kinova</code> (Kortex <code>api_cpp</code>)</td><td><code>api_cpp/examples/01-torque-control/00-Torque_Controller.cpp</code></td><td><code>./scripts/build-gcc.sh</code> in <code>api_cpp/examples</code></td></tr>
+  <tr><td><code>libfranka</code></td><td><code>examples/cartesian_impedance_control.cpp</code></td><td>CMake, in <code>libfranka/build</code></td></tr>
+</table>
+
+<h3>Adding one</h3>
+<ol>
+  <li>Select the robot, open its <strong>Hardware</strong> tab.</li>
+  <li>Drop the library's folder, or a <code>.zip</code> of it, on <strong>Add the driver library</strong> (or click it to browse).</li>
+  <li>Check the one review screen: the folder name it gets in <code>robot_library</code>, how it builds, the driver program and, if the driver needs them, its arguments (the robot's IP address, say). <em>The robot will run</em> shows the exact driver command.</li>
+  <li>Click <strong>Set up</strong>. The library is copied into <code>robot_library/&lt;name&gt;</code> (nothing is copied when it is already in <code>robot_library</code>), the build and driver commands are saved, and the build runs with its output on screen. Afterwards the Studio finds the program the build made and points the driver command at it.</li>
+  <li>Check the torque sign and limits, tick <em>This robot has a hardware driver</em> and <strong>Save</strong>. Until then the hardware node refuses to control the robot &mdash; setting up a driver does not tick it for you. The <strong>API</strong> button in the toolbar then starts the driver.</li>
+</ol>
+<p>Only the driver fields are saved by <em>Set up</em>; other edits on the page stay unsaved, as you left them. A library another robot uses is named on the review screen before you can replace it. The copy goes into a hidden folder first and is renamed into place when complete, so a cancelled copy leaves nothing behind.</p>
+
+<h3>What the Studio looks for</h3>
+<table>
+  <tr><th>What</th><th>How it is found</th></tr>
+  <tr><td><strong>The driver</strong></td><td>Source files that mention <code>shared_params.h</code>, <code>/robot_feedback_memory</code> or <code>SharedFeedback</code> and have a <code>main()</code> (or a Python <code>__main__</code>). Names with <em>stub</em>, <em>mock</em>, <em>test</em>, <em>sim</em>, <em>example</em> or <em>demo</em> are offered last.</td></tr>
+  <tr><td><strong>The build</strong></td><td>A <code>build*.sh</code> script (one in <code>scripts/</code> runs from the folder above it, as Kinova's does); the top CMake project (<code>cmake .. -DCMAKE_BUILD_TYPE=Release &amp;&amp; make</code> in <code>&lt;project&gt;/build</code>); a Makefile; a Python package (<code>pip install --user -e .</code>, not run for you). The one containing the driver's source comes first, a script before the CMake project it wraps.</td></tr>
+  <tr><td><strong>The program</strong></td><td>Already built (in a <code>build*</code> folder): used as it is. Otherwise the build names it, so the review screen shows a guess from the source's name, and after the first build the program named after the driver's source is used &mdash; Kinova's build turns <code>00-Torque_Controller.cpp</code> into <code>01-torque-control_00-Torque_Controller</code>. A build that made a single program is trusted too.</td></tr>
+</table>
+<p>A library in <code>robot_library/&lt;name&gt;</code> finds FIC's header at <code>../../fic_library/include</code>, as the CSPM build does, and the driver is started with <code>FIC_ROOT</code> set to the <code>FIC_Interface</code> folder.</p>
+<div class="admonition warning"><div class="adm-title">A vendor SDK alone is not a driver</div>
+<p style="margin:0.3em 0">If nothing in the library uses FIC's shared memory, the review screen says so: the SDK talks to the robot, but nothing passes FIC's torques to it. Write the bridge &mdash; a program that maps <code>/robot_feedback_memory</code>, sends <code>commanded_torque[]</code> to the robot each cycle and writes back <code>joint_positions[]</code>, <code>torque[]</code> and <code>tool_wrench[]</code> &mdash; into the library and drop it again. CSPM's <code>src/cspm_fic_bridge.cpp</code> shows the whole loop, and its <code>src/fic_shm_stub.cpp</code> stands in for the hardware node so a bridge can be tested alone.</p></div>
+
+<h2>Troubleshooting</h2>
+<table>
+  <tr><th>Message</th><th>What to do</th></tr>
+  <tr><td><em>This xacro needs the ROS package &hellip;</em></td><td>Drop the folder that holds that package too (the one with its <code>package.xml</code>), or install it.</td></tr>
+  <tr><td><em>This xacro file needs the argument &hellip;</em></td><td>Expand it yourself with the argument set (<code>xacro file.xacro name:=value &gt; robot.urdf</code>) and drop the <code>.urdf</code>.</td></tr>
+  <tr><td><em>A URDF is required</em></td><td>A MuJoCo model on its own was dropped. Drop the URDF with it, or the folder holding both.</td></tr>
+  <tr><td><em>&hellip; looks like a closed-loop mechanism, but no loops were found</em></td><td>Add the robot's MuJoCo model (<em>Add yours&hellip;</em>), or its loops (<em>Add a loop&hellip;</em>).</td></tr>
+  <tr><td><em>With &hellip; driven, &hellip; can still move</em></td><td>Tick more joints in the <em>Driven</em> column &mdash; the ones nearest the base are best.</td></tr>
+  <tr><td><em>The loops are N mm open at the reference pose</em></td><td>A loop point is wrong, or the URDF's zero pose is not assembled.</td></tr>
+  <tr><td><em>The MuJoCo model and the URDF disagree about &hellip;</em></td><td>A joint's axis differs between the two files. Fix whichever is wrong and drop them again.</td></tr>
+  <tr><td><em>The MuJoCo model's weld constraint &hellip; is simulated, but the controllers only model point (connect) loops</em></td><td>The controllers' solver closes point loops; express a weld as three points, or accept that only the simulator enforces it.</td></tr>
+  <tr><td><em>&hellip; slides (prismatic)</em></td><td>A linear axis on the arm: not supported by the controllers.</td></tr>
+  <tr><td><em>No moving joints lead to &hellip;</em></td><td>The end effector guess is wrong: pick the arm's last link in the <em>End effector</em> list.</td></tr>
+  <tr><td><em>N mesh files not found</em></td><td>Drop the folder that contains them (or the one above it).</td></tr>
+  <tr><td><em>&hellip; has no mass in the URDF</em></td><td>Fine for a first look; for realistic simulation add <code>&lt;inertial&gt;</code> values to the URDF and re-import.</td></tr>
+  <tr><td><em>At the home pose the arm is stretched straight out</em></td><td>All-zero homes often point the arm straight up, a singularity. Bend a joint or two in the home pose, then <em>Set from home pose</em>.</td></tr>
+  <tr><td><em>&hellip; drifted N&deg; in half a second</em></td><td>Masses, inertias or joint axes in the URDF disagree with the robot. Check the link inertials.</td></tr>
+  <tr><td><em>menagerie/model/&hellip; already exists</em></td><td>A folder from an earlier import: tick <em>Replace it</em>, or choose another ID.</td></tr>
+  <tr><td>The arm swings or faults when the simulator starts</td><td>Check the Overview: a hand-edited model may have lost the damping or the <code>torq_j</code> motors. Re-importing regenerates it.</td></tr>
+  <tr><td><em>Nothing here uses FIC's shared memory</em> (driver library)</td><td>The library has no FIC bridge yet: see <em>A vendor SDK alone is not a driver</em> above.</td></tr>
+  <tr><td><em>Driver program not found</em> after a build</td><td>The build made several programs and none is named after the driver's source. Set the driver command to the right one (<code>cd {robot_lib}/&lt;name&gt;/&lt;folder&gt; &amp;&amp; ./&lt;program&gt;</code>).</td></tr>
+  <tr><td><em>The build did not finish</em></td><td>The commands are saved; fix what the build output shows (often a missing dependency) and press <strong>Compile driver</strong>.</td></tr>
+</table>
+
+<div class="admonition warning"><div class="adm-title">Not covered by the importer</div>
+<ul style="margin:0.3em 0">
+  <li><strong>Sliding drives</strong> (a linear actuator on the arm or in a mechanism): the controllers drive rotating joints.</li>
+  <li><strong>Loops other than point loops</strong>: weld constraints and joint couplings in a MuJoCo model are simulated, but the controllers model only point loops.</li>
+  <li><strong>Legged and mobile robots</strong>: a floating base is fixed so the robot stays mounted; legged robots use the <a href="#legged-locomotion" onclick="showPage('legged-locomotion')">locomotion</a> setup instead.</li>
+  <li><strong>Rotating-knuckle grippers</strong> are held fixed in simulation.</li>
+  <li><strong>Writing the driver</strong>: an imported robot is set up for simulation. The Hardware tab copies, builds and runs a driver library, but the FIC bridge inside it is written for each robot (see <em>Real robot</em>).</li>
+</ul></div>

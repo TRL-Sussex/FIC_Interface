@@ -1,0 +1,364 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Script Editor</div>
+<h1>Script Editor</h1>
+<p class="subtitle">Python scripting with the <code>robot.*</code> control API for automated sequences, live telemetry, and full programmatic access to everything the GUI can do.</p>
+
+<h2>Overview</h2>
+<p>The redesigned Script Editor (v3.9.2, "Complete Script Control API") is a three-zone layout that gives you a complete programmatic control layer over the robot. Scripts run in a background thread (<code>ScriptRunner</code>, a QThread) so the GUI remains responsive. A cooperative stop mechanism replaces the old hard-kill, so in-flight moves unwind cleanly. Joint angles are in <strong>degrees</strong> throughout the API; the only radians you will see are the <code>rx/ry/rz</code> Euler arguments of <code>move_cartesian</code> and the values returned by the legacy trajectory helpers.</p>
+<p>The extension lives in <code>Extensions/script_editor/</code> (<code>extension.py</code> for the UI and runner, <code>robot_api.py</code> for the <code>RobotAPI</code> facade) and appears in the <strong>Programming</strong> sidebar section when enabled in <a href="#settings" onclick="showPage('settings')">Settings &rarr; Extensions</a>.</p>
+
+<h2>The web page</h2>
+<p>In the web interface (and the Docker image) the Script Editor has its own page: a full-width editor, the output
+under it, and Examples and API drawers. The Classic interface keeps the layout under <em>The Classic page</em>.</p>
+<table>
+  <tr><th>Zone</th><th>What it does</th></tr>
+  <tr><td><strong>First row</strong></td><td>Script picker (your scripts in <code>~/.fic_studio_scripts/</code>, or Untitled), a dot while there are unsaved changes, New, Save, Save as&hellip; (name typed inline), Delete (confirmed inline), and <em>Runs on</em>: the Studio's target and robot</td></tr>
+  <tr><td><strong>Second row</strong></td><td>Run (Ctrl+Enter), Stop, the run's status (Running &middot; 12 s, Finished, Failed at line 7, Stopped), and the Examples and API buttons</td></tr>
+  <tr><td><strong>Editor</strong></td><td>Line numbers and Python colouring, with <code>robot.*</code> calls in the accent colour. Tab and Shift+Tab indent and dedent, Enter keeps the indent (one more after a <code>:</code>), Ctrl+S saves. After a failed run the failing line is marked. Unsaved edits are kept by the browser across page changes and reloads</td></tr>
+  <tr><td><strong>Output</strong></td><td>Timestamped <code>print()</code> output, errors and tracebacks; it follows new lines unless you scroll up. A <code>File "&lt;script&gt;", line N</code> line jumps to that line. Clear empties it</td></tr>
+  <tr><td><strong>Examples drawer</strong></td><td>The starter scripts with a line each; choosing one opens a copy as Untitled</td></tr>
+  <tr><td><strong>API drawer</strong></td><td>The robot API, searchable and grouped; choosing an entry inserts the call at the cursor</td></tr>
+</table>
+
+<h3>The Classic page</h3>
+<table>
+  <tr><th>Zone</th><th>Element</th><th>Description</th></tr>
+  <tr><td><strong>Header</strong></td><td>Target Robot combo</td><td>Selects which robot (<code>robot1</code>, <code>robot2</code>, &hellip;) this extension acts on. Per-extension and independent of the Multi-Robot card order.</td></tr>
+  <tr><td rowspan="3"><strong>Left</strong></td><td>File bar</td><td>Script dropdown, New, Open, Save, Save As&hellip;, Delete</td></tr>
+  <tr><td>Toolbar</td><td>Run, Stop, Step (placeholder &mdash; disabled, single-step not yet implemented), Target dropdown (Simulation / Hardware / VR), Install API</td></tr>
+  <tr><td>Editor / Examples tabs</td><td><strong>Editor tab</strong> &mdash; Python editor with syntax highlighting, line numbers, monospace font. <strong>Examples tab</strong> &mdash; gallery of example scripts from <code>~/.fic_studio_scripts/examples/</code>; double-click loads one into the editor</td></tr>
+  <tr><td><strong>Right-top</strong></td><td>Live Telemetry panel</td><td>Always-on (~10 Hz) display of joint angles, EE pose, and wrench &mdash; works even with no script running</td></tr>
+  <tr><td><strong>Right-bottom</strong></td><td>Searchable API Reference</td><td>Generated with <code>inspect</code> from the live <code>RobotAPI</code> signatures and docstrings, so it never drifts from the implementation. Case-insensitive filter; double-click inserts the call name at the editor cursor</td></tr>
+  <tr><td><strong>Bottom</strong></td><td>Output Console</td><td>Shows <code>print()</code> output, errors, and full tracebacks. Clear button empties it</td></tr>
+</table>
+
+<h2>Syntax Highlighting</h2>
+<table>
+  <tr><th>Category</th><th>Colour</th><th>Examples</th></tr>
+  <tr><td>Python keywords</td><td style="color:#cc7832"><strong>Orange (bold)</strong></td><td><code>if</code>, <code>for</code>, <code>while</code>, <code>def</code>, <code>class</code>, <code>import</code></td></tr>
+  <tr><td>Built-in functions</td><td style="color:#8888ff">Blue-violet</td><td><code>print</code>, <code>range</code>, <code>len</code>, <code>list</code></td></tr>
+  <tr><td>Robot API functions</td><td style="color:#56c8d8"><strong>Cyan (bold)</strong></td><td><code>move_joints</code>, <code>home</code>, <code>set_gripper</code>, <code>robot</code></td></tr>
+  <tr><td>Function names after <code>def</code></td><td style="color:#ffc66d">Yellow</td><td><code>def my_routine(...)</code></td></tr>
+  <tr><td>Strings</td><td style="color:#6a8759">Green</td><td><code>"hello"</code>, <code>'world'</code></td></tr>
+  <tr><td>Numbers</td><td style="color:#6897bb">Blue</td><td><code>3.14</code>, <code>42</code></td></tr>
+  <tr><td>Comments</td><td style="color:#808080">Grey (italic)</td><td><code># this is a comment</code></td></tr>
+</table>
+
+<h2>Target Routing</h2>
+<p>On the web page a run goes to the Studio's own target (the top bar; shown as <em>Runs on</em>), and Run asks first when it is Hardware. The Classic page's Target dropdown chooses for the Classic page's runs. The <strong>Target</strong> dropdown determines where commands are sent. <code>move_joints</code> automatically picks the right publisher based on the active target (VR routes like Simulation):</p>
+<table>
+  <tr><th>Target</th><th>Publisher used by <code>move_joints</code></th><th>Joint feedback topic</th></tr>
+  <tr><td><strong>Simulation</strong></td><td><code>publish_joint_angles</code></td><td><code>/robot{N}_simulation/joint_states</code></td></tr>
+  <tr><td><strong>Hardware</strong></td><td><code>publish_real_joint_angles</code></td><td><code>/joint_states</code></td></tr>
+  <tr><td><strong>VR</strong></td><td><code>publish_joint_angles</code></td><td><code>/robot{N}_simulation/joint_states</code></td></tr>
+</table>
+<p>Blocking waits (<code>wait=True</code>) do not subscribe to these topics themselves &mdash; they read the Studio's built-in joint-state cache (<code>JointStateMixin</code>) for the target robot. Switch target from a script with <code>robot.target.set_target('simulation'|'hardware'|'vr')</code> (marshalled to the GUI thread, so the dropdown follows); read it back with <code>robot.target.current</code> or <code>robot.target_mode</code>. See <a href="#topics" onclick="showPage('topics')">Topics</a> for the full multi-robot topic map.</p>
+
+<div class="admonition warning"><div class="adm-title">Hardware target</div>
+<p>With Target = Hardware, <code>move_joints</code> publishes directly to the real-robot command path. The web page asks before running on Hardware; the Classic page does not. Test every script against Simulation first, and keep the <a href="#estop" onclick="showPage('estop')">E-STOP</a> reachable &mdash; it also signals a running script to stop.</p></div>
+
+<div class="admonition warning"><div class="adm-title">Who can run scripts</div>
+<p>Any browser that holds control in the web interface can save and run scripts, and a script is ordinary Python
+with the Studio's rights &mdash; it can also switch the target itself. Keep sign-in on whenever the web interface is
+open to a network (<a href="#web-remote" onclick="showPage('web-remote')">Web Remote</a> &rsaquo; Signing in). The
+Docker image serves it to this computer only; started with <code>--lan</code>, it serves your network with sign-in on.</p></div>
+
+<h2>The <code>robot</code> API &mdash; Grouped Namespaces</h2>
+<p>Every script receives a <code>robot</code> object with eight grouped sub-APIs (<code>state</code>, <code>motion</code>, <code>mode</code>, <code>process</code>, <code>target</code>, <code>tune</code>, <code>safety</code>, <code>topics</code>), plus the top-level helpers <code>robot.wait(seconds)</code>, <code>robot.is_stopped()</code>, <code>robot.rid</code>, and <code>robot.target_mode</code>. Joint angles are in <strong>degrees</strong>, distances in <strong>metres</strong>.</p>
+
+<h3>robot.state &mdash; Live Telemetry (read-only)</h3>
+<table>
+  <tr><th>Property</th><th>Returns</th><th>Description</th></tr>
+  <tr><td><code>robot.state.joints</code></td><td>list[float] (deg)</td><td>Current joint positions</td></tr>
+  <tr><td><code>robot.state.joint_velocity</code></td><td>list[float] (rad/s)</td><td>Per-joint velocities</td></tr>
+  <tr><td><code>robot.state.joint_effort</code></td><td>list[float] (Nm)</td><td>Per-joint torque/effort</td></tr>
+  <tr><td><code>robot.state.joint_commanded</code></td><td>list[float] (deg)</td><td>Last commanded joint angles</td></tr>
+  <tr><td><code>robot.state.ee_pose</code></td><td>list <code>[x, y, z, qx, qy, qz, qw]</code></td><td>End-effector pose (metres + quaternion); empty list <code>[]</code> when unknown</td></tr>
+  <tr><td><code>robot.state.wrench</code></td><td>tuple <code>(Fx, Fy, Fz, Tx, Ty, Tz)</code></td><td>Tool wrench in N / Nm; <code>None</code> when unavailable</td></tr>
+</table>
+<p>State reads are thread-safe direct calls into the Studio's joint-state cache &mdash; no marshalling, so they are cheap to poll in a loop. There is no <code>robot.state.mode</code> or <code>.target</code>; use <code>robot.target_mode</code> for the target, and the legacy trajectory helpers (below) for controller internals.</p>
+
+<h3>robot.motion &mdash; Move Commands</h3>
+<table>
+  <tr><th>Method</th><th>Description</th></tr>
+  <tr><td><code>robot.motion.move_joints(angles_deg, wait=False, timeout=10.0, tolerance=None)</code></td><td>Publish a joint-angle command (degrees; converted to radians internally). With <code>wait=True</code>, blocks until all joints are within <code>tolerance</code> degrees (default <strong>2.0&deg;</strong>) and returns <code>True</code>, or returns <code>False</code> on timeout / cooperative stop. Returns <code>None</code> when <code>wait=False</code>. The old <code>velocity=</code> argument is deprecated &mdash; it is ignored with a <code>DeprecationWarning</code>.</td></tr>
+  <tr><td><code>robot.motion.move_cartesian(x, y, z, rx=0.0, ry=0.0, rz=0.0)</code></td><td>Publish a Cartesian pose command (metres; <code>rx/ry/rz</code> are XYZ Euler angles in <strong>radians</strong>, converted to a quaternion via SciPy). Fire-and-forget &mdash; there is <strong>no</strong> <code>wait=</code> option; see below for a polling pattern. Requires an active Cartesian mode (5&ndash;8).</td></tr>
+  <tr><td><code>robot.motion.home()</code></td><td>Move to the home configuration (<code>q_home_deg</code> from the <a href="#robot-config" onclick="showPage('robot-config')">robot config</a>). Non-blocking; follow with <code>move_joints(home_deg, wait=True)</code> if you need to block.</td></tr>
+  <tr><td><code>robot.motion.set_gripper(width_m)</code></td><td>Set gripper width, clamped to [0, 0.08] m.</td></tr>
+  <tr><td><code>robot.motion.open_gripper()</code></td><td>Open gripper fully (0.08 m).</td></tr>
+  <tr><td><code>robot.motion.close_gripper()</code></td><td>Close gripper fully (0.0 m).</td></tr>
+</table>
+
+<h3>robot.mode &mdash; Control Mode</h3>
+<table>
+  <tr><th>Method</th><th>Description</th></tr>
+  <tr><td><code>robot.mode.set(mode_int)</code></td><td>Publish control mode 1&ndash;8 and synchronise the GUI mode selector. Modes 5&ndash;8 are Cartesian. See <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>.</td></tr>
+  <tr><td><code>robot.mode.postural(bool)</code></td><td>Enable/disable the postural (null-space) controller.</td></tr>
+  <tr><td><code>robot.mode.elbow(bool)</code></td><td>Enable/disable the elbow-up null-space constraint.</td></tr>
+  <tr><td><code>robot.mode.hapfic(bool)</code></td><td>Enable/disable the <a href="#hapfic" onclick="showPage('hapfic')">HapFIC</a> hybrid Cartesian+joint helper. The toggle is layered on Cartesian modes, but the controller only engages in modes 6&ndash;8.</td></tr>
+  <tr><td><code>robot.mode.desired_wrench(force, torque)</code></td><td>Set the desired wrench of the Cartesian admittance (modes 7&ndash;8, and HapFIC on them): the goal moves until the measured wrench equals it. Zero, the default, is plain compliance. See <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>.</td></tr>
+  <tr><td><code>robot.mode.admittance_planner(bool)</code></td><td>Enable/disable the admittance planner inside admittance modes.</td></tr>
+  <tr><td><code>robot.mode.active_profile(name)</code></td><td>Publish a named tuning profile on the transient-local <code>active_profile</code> topic. See <a href="#tuning" onclick="showPage('tuning')">Tuning</a>.</td></tr>
+</table>
+
+<h3>robot.process &mdash; Start/Stop Subsystems</h3>
+<p>All process calls are marshalled to the GUI thread (they spawn/kill subprocesses and touch Qt widgets).</p>
+<table>
+  <tr><th>Method</th><th>Description</th></tr>
+  <tr><td><code>robot.process.start_sim()</code> / <code>.stop_sim()</code></td><td>Start/stop the MuJoCo simulation.</td></tr>
+  <tr><td><code>robot.process.start_fic()</code> / <code>.stop_fic()</code></td><td>Start/stop the FIC <em>simulation</em> controller.</td></tr>
+  <tr><td><code>robot.process.start_controller()</code> / <code>.stop_controller()</code></td><td>Start/stop the <em>hardware</em> FIC controller.</td></tr>
+  <tr><td><code>robot.process.start_driver()</code> / <code>.stop_driver()</code></td><td>Start/stop the hardware driver.</td></tr>
+  <tr><td><code>robot.process.start_vr()</code> / <code>.stop_vr()</code></td><td>Start/stop the VR relay.</td></tr>
+  <tr><td><code>robot.process.start_bags()</code> / <code>.stop_bags()</code></td><td>Start/stop the ROS bag recorder.</td></tr>
+  <tr><td><code>robot.process.start_plotter()</code> / <code>.stop_plotter()</code></td><td>Start/stop the signal plotter.</td></tr>
+</table>
+
+<h3>robot.target &mdash; Switch Active Target</h3>
+<pre><code>robot.target.set_target('simulation')   # switch to sim (updates the GUI dropdown too)
+robot.target.set_target('hardware')     # switch to hardware
+robot.target.set_target('vr')           # switch to VR
+
+print(robot.target.current)             # 'simulation' | 'hardware' | 'vr'
+print(robot.target_mode)                # same, as a top-level property</code></pre>
+<p><code>robot.target</code> is an object, not a function &mdash; calling <code>robot.target('simulation')</code> raises <code>TypeError</code>.</p>
+
+<h3>robot.tune &mdash; Tuning Parameters</h3>
+<table>
+  <tr><th>Method</th><th>Description</th></tr>
+  <tr><td><code>robot.tune.param_update(param_type, value)</code></td><td>Publish a parameter-update string via <code>node.publish_param_update</code> (thread-safe direct publish).</td></tr>
+  <tr><td><code>robot.tune.save(robot_name=None, joint_id=1, mode=1, params=None)</code></td><td>Save a parameter dict to the tuning XML via <code>XMLManager.save_joint_params</code> (marshalled). See <a href="#config-xml" onclick="showPage('config-xml')">Config XML</a>.</td></tr>
+</table>
+<p>Profile selection lives on <code>robot.mode.active_profile(name)</code>, not on <code>robot.tune</code>.</p>
+
+<h3>robot.safety &mdash; Emergency Stop</h3>
+<table>
+  <tr><th>Method</th><th>Description</th></tr>
+  <tr><td><code>robot.safety.estop()</code></td><td>Publish mode 1 directly (parks the robot), then trigger the GUI <code>broadcast_stop</code> handler on the main thread for process cleanup.</td></tr>
+  <tr><td><code>robot.safety.broadcast_stop()</code></td><td>Send stop to every active robot (marshalled).</td></tr>
+  <tr><td><code>robot.safety.pause()</code></td><td>Publish mode 1 only &mdash; park without triggering GUI cleanup.</td></tr>
+</table>
+
+<h3>robot.topics &mdash; Raw Topic Access</h3>
+<table>
+  <tr><th>Method</th><th>Description</th></tr>
+  <tr><td><code>robot.topics.list_topics()</code></td><td>Return <code>(topic_name, type_string)</code> tuples from the ROS graph.</td></tr>
+  <tr><td><code>robot.topics.subscribe(name)</code></td><td>Subscribe by name; the message type is auto-discovered from the graph. Common <code>std_msgs</code>/<code>sensor_msgs</code>/<code>geometry_msgs</code> types are built in; other types are imported dynamically from the type string.</td></tr>
+  <tr><td><code>robot.topics.get(name)</code></td><td>Latest message as a plain dict (or <code>None</code> if nothing received yet).</td></tr>
+  <tr><td><code>robot.topics.unsubscribe(name)</code></td><td>Destroy the subscription and clear the cached value.</td></tr>
+</table>
+<p>There is no generic <code>publish()</code> &mdash; publishing goes through the typed <code>robot.motion</code> / <code>robot.mode</code> / <code>robot.tune</code> methods. All script subscriptions are cleaned up automatically when the script finishes or is stopped. Use the <a href="#topic-monitor" onclick="showPage('topic-monitor')">Topic Monitor</a> to explore what is on the graph.</p>
+
+<h2>Flat Aliases (Script Namespace)</h2>
+<p>These names are injected directly into every script's namespace, so common operations require no <code>robot.</code> prefix. Existing scripts that used the old flat API continue to work unchanged.</p>
+<table>
+  <tr><th>Alias</th><th>Maps to</th></tr>
+  <tr><td><code>move_joints</code>, <code>move_cartesian</code>, <code>home</code>, <code>set_gripper</code>, <code>open_gripper</code>, <code>close_gripper</code></td><td><code>robot.motion.*</code></td></tr>
+  <tr><td><code>get_joint_positions()</code></td><td><code>robot.state.joints</code> (degrees)</td></tr>
+  <tr><td><code>get_cartesian_pose()</code></td><td><code>robot.state.ee_pose</code></td></tr>
+  <tr><td><code>get_ee_position()</code></td><td>First three elements of <code>ee_pose</code>, or <code>None</code></td></tr>
+  <tr><td><code>get_force_torque()</code></td><td><code>robot.state.wrench</code></td></tr>
+  <tr><td><code>get_joint_velocity()</code>, <code>get_joint_effort()</code></td><td><code>robot.state.joint_velocity</code> / <code>.joint_effort</code></td></tr>
+  <tr><td><code>set_mode(mode_int)</code></td><td><code>robot.mode.publish_mode</code></td></tr>
+  <tr><td><code>list_topics</code>, <code>subscribe</code>, <code>unsubscribe</code>, <code>get_topic</code></td><td><code>robot.topics.*</code></td></tr>
+  <tr><td><code>wait(seconds)</code></td><td><code>robot.wait</code> &mdash; interruptible sleep; polls the cooperative-stop flag at ~20 Hz</td></tr>
+  <tr><td><code>sleep(seconds)</code></td><td>Plain <code>time.sleep</code> &mdash; <strong>not</strong> interruptible</td></tr>
+  <tr><td><code>is_stopped()</code></td><td><code>robot.is_stopped</code> &mdash; True once Stop / E-STOP was pressed</td></tr>
+  <tr><td><code>stop()</code></td><td><code>robot.safety.estop()</code></td></tr>
+  <tr><td><code>get_target_mode()</code></td><td><code>robot.target_mode</code></td></tr>
+  <tr><td><code>wait_until_stopped(timeout=10.0)</code></td><td>Interruptible wait for <code>timeout</code> seconds (legacy shim)</td></tr>
+  <tr><td><code>is_moving()</code></td><td>Legacy stub &mdash; always returns <code>False</code></td></tr>
+  <tr><td><code>robot</code>, <code>math</code>, <code>time</code></td><td>The full <code>RobotAPI</code> object; Python <code>math</code> / <code>time</code> modules</td></tr>
+</table>
+<p>There is no flat <code>estop</code> alias &mdash; use <code>stop()</code> or <code>robot.safety.estop()</code>. There are no <code>get_joints</code> / <code>get_pose</code> shorthands &mdash; the getters are the full <code>get_joint_positions()</code> / <code>get_cartesian_pose()</code> names.</p>
+
+<h3>Legacy Trajectory Helpers</h3>
+<p>Scripts also receive read-only helpers that lazily subscribe to the controller's <code>{rid}_trajectory_data</code> stream and return controller-internal signals in <strong>radians</strong> / Nm: <code>get_trajectory()</code> (full parsed dict), <code>get_current_joints()</code>, <code>get_target_joints()</code>, <code>get_joint_errors()</code>, <code>get_control_effort()</code>, <code>get_planner_targets()</code>, <code>get_admittance_targets()</code>, <code>get_desired_effort()</code>, <code>get_measured_effort()</code>, <code>get_ee_desired()</code>, <code>get_ee_error()</code>, <code>get_ee_admittance_target()</code>, <code>get_rotation_error()</code>, <code>get_torque_commands()</code>, and <code>get_gripper_width()</code>. These only return live data while a FIC controller is running. <code>set_velocity()</code> is deprecated and only logs a message.</p>
+
+<h2>Blocking Move-and-Wait</h2>
+<p>Pass <code>wait=True</code> to <code>move_joints</code> to block until the robot reaches the target:</p>
+<pre><code># Block until joints reach target (within the 2.0 deg default tolerance)
+reached = move_joints([0, -45, 0, -90, 0, 45, 0], wait=True, timeout=10.0)
+
+# Tighter tolerance
+reached = move_joints([0, -30, 0, -60, 0, 60, 0], wait=True, tolerance=0.5, timeout=15.0)
+print('reached' if reached else 'timeout or stopped')</code></pre>
+<p>The wait polls <code>robot.state.joints</code> at ~20 Hz. It returns <code>True</code> when every joint is within <code>tolerance</code> degrees, <code>False</code> on timeout or cooperative stop.</p>
+<p><code>move_cartesian</code> has <strong>no</strong> <code>wait=</code> option. To block on a Cartesian target, poll the EE pose yourself:</p>
+<pre><code>move_cartesian(0.4, 0.0, 0.5)
+deadline = time.monotonic() + 15.0
+while time.monotonic() &lt; deadline and not is_stopped():
+    ee = robot.state.ee_pose
+    if ee and abs(ee[0]-0.4) &lt; 0.005 and abs(ee[1]) &lt; 0.005 and abs(ee[2]-0.5) &lt; 0.005:
+        print('EE target reached')
+        break
+    wait(0.05)</code></pre>
+
+<h2>Cooperative Stop</h2>
+<p>Clicking <strong>Stop</strong> sets a per-run <code>threading.Event</code>. Calls that poll it &mdash; <code>move_joints(wait=True)</code>, <code>wait()</code>, <code>wait_until_stopped()</code>, and your own <code>is_stopped()</code> checks &mdash; abort cleanly. The Studio then waits up to a <strong>2-second grace period</strong>; if the thread is still alive, <code>terminate()</code> is used as a last resort and the console prints <code>[FORCE TERMINATED — grace period expired]</code> instead of <code>[Stopped cooperatively]</code>. Pressing the global <a href="#estop" onclick="showPage('estop')">E-STOP</a> sets the same event and additionally fires <code>robot.safety.estop()</code>. When the extension is torn down, latched flags (<code>admittance_planner</code>, <code>hapfic</code>) are restored to safe defaults.</p>
+<div class="admonition warning"><div class="adm-title">sleep() is not interruptible</div>
+<p><code>sleep()</code> is plain <code>time.sleep</code> &mdash; it does <strong>not</strong> poll the stop flag. A loop built on <code>sleep()</code> (or a tight <code>while True: pass</code>) can only be killed by the hard <code>terminate()</code> fallback. Use <code>wait()</code> for delays and check <code>is_stopped()</code> in loop conditions so Stop works cooperatively.</p></div>
+
+<h2>Run / Stop Lifecycle</h2>
+<svg viewBox="0 0 700 360" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="ScriptRunner (QThread)">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#se-arrowhead); }
+    .arrow-red { stroke: #c62828; marker-end: url(#se-arrowhead-red); }
+    .arrow-green { stroke: #388e3c; marker-end: url(#se-arrowhead-green); }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+  </style>
+  <defs>
+    <marker id="se-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+    <marker id="se-arrowhead-red" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#c62828"/>
+    </marker>
+    <marker id="se-arrowhead-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#388e3c"/>
+    </marker>
+  </defs>
+
+  <rect class="box box-green" x="40" y="30" width="130" height="44"/>
+  <text class="label-bold" x="105" y="46">&#9654; Run</text>
+  <text class="label-sm" x="105" y="62">fresh stop_event + namespace</text>
+
+  <rect class="box box-red" x="530" y="30" width="130" height="44"/>
+  <text class="label-bold" x="595" y="46">&#9632; Stop / E-STOP</text>
+  <text class="label-sm" x="595" y="62">stop_event.set()</text>
+
+  <rect class="box box-blue" x="240" y="120" width="220" height="70"/>
+  <text class="label-title" x="350" y="140">ScriptRunner (QThread)</text>
+  <text class="label-code" x="350" y="158">exec(code, namespace)</text>
+  <text class="label-sm" x="350" y="174">polls is_stopped() in wait / move_joints(wait=True)</text>
+
+  <path class="arrow arrow-green" d="M 150 74 Q 220 100 250 122"/>
+  <path class="arrow arrow-red" d="M 550 74 Q 480 100 450 122"/>
+  <text class="label-sm" x="530" y="102">2 s grace &#8594; terminate()</text>
+
+  <rect class="box box-teal" x="40" y="260" width="185" height="60"/>
+  <text class="label-bold" x="132" y="278">ROS node publishers</text>
+  <text class="label-code" x="132" y="294">publish_joint_angles()</text>
+  <text class="label-sm" x="132" y="308">direct &mdash; thread-safe</text>
+
+  <rect class="box box-orange" x="260" y="260" width="185" height="60"/>
+  <text class="label-bold" x="352" y="278">GUI thread via marshal()</text>
+  <text class="label-code" x="352" y="294">process.start_sim() &hellip;</text>
+  <text class="label-sm" x="352" y="308">queued to main thread</text>
+
+  <rect class="box box-grey" x="480" y="260" width="185" height="60"/>
+  <text class="label-bold" x="572" y="278">Output Console</text>
+  <text class="label-code" x="572" y="294">print() &#8594; routed stdout</text>
+  <text class="label-sm" x="572" y="308">only this thread is captured</text>
+
+  <path class="arrow" d="M 290 190 Q 200 225 150 258"/>
+  <path class="arrow" d="M 350 190 L 352 258"/>
+  <path class="arrow" d="M 410 190 Q 500 225 550 258"/>
+</svg>
+<p>State reads and motion/mode publishes go straight to the ROS node from the worker thread (thread-safe); anything that touches Qt widgets or subprocesses (<code>robot.process.*</code>, <code>robot.target.set_target</code>, <code>robot.tune.save</code>) is queued to the GUI thread via <code>marshal()</code>. stdout is intercepted per-thread, so only the script's own <code>print()</code> calls land in the Output Console.</p>
+
+<h2>Example Scripts</h2>
+<p>The <strong>Examples tab</strong> lists example scripts seeded into <code>~/.fic_studio_scripts/examples/</code> on first launch (existing files are never overwritten, so your edits survive):</p>
+<table>
+  <tr><th>File</th><th>Demonstrates</th></tr>
+  <tr><td><code>01_read_state.py</code></td><td>Reading live telemetry from <code>robot.state</code> (no motion)</td></tr>
+  <tr><td><code>02_joint_trajectory.py</code></td><td>Waypoint sequence with <code>move_joints(wait=True)</code> and cooperative stop</td></tr>
+  <tr><td><code>03_cartesian_circle.py</code></td><td>Incremental <code>move_cartesian</code> circle sweep (needs a Cartesian mode 5&ndash;8)</td></tr>
+  <tr><td><code>04_mode_and_tune.py</code></td><td><code>robot.mode.set</code>, <code>robot.mode.postural</code>, <code>robot.tune.param_update</code></td></tr>
+  <tr><td><code>05_record_and_plot.py</code></td><td><code>robot.process.start_bags</code>/<code>stop_bags</code> and <code>start_plotter</code> around a trajectory</td></tr>
+</table>
+
+<h3>Example: Pick-and-Place with Blocking Moves</h3>
+<pre><code># Pick-and-place using blocking move-and-wait
+home()
+wait(2.0)
+
+# Move to pick position
+move_joints([0, 30, -60, 0, 90, 0, 0], wait=True, tolerance=1.0)
+close_gripper()
+wait(0.5)
+
+# Move to place position
+move_joints([45, 30, -60, 0, 90, 0, 0], wait=True, tolerance=1.0)
+open_gripper()
+wait(0.5)
+
+home()
+print("Done. Joints:", get_joint_positions())</code></pre>
+
+<h3>Example: Read Live State</h3>
+<pre><code># Print live telemetry
+print("Joints (deg):", robot.state.joints)
+print("EE pose [x,y,z,qx,qy,qz,qw]:", robot.state.ee_pose)
+print("Wrench (Fx,Fy,Fz,Tx,Ty,Tz):", robot.state.wrench)
+print("Target:", robot.target_mode)
+print("Robot id:", robot.rid)</code></pre>
+
+<h3>Example: Change Mode and Enable HapFIC</h3>
+<pre><code># Switch to Cartesian planner mode 6 and enable HapFIC
+robot.mode.set(6)
+wait(0.2)
+robot.mode.hapfic(True)
+print("HapFIC toggle sent (engages in modes 6-8)")</code></pre>
+
+<h3>Example: E-Stop on Force Threshold</h3>
+<pre><code># Emergency stop if measured Fz exceeds a threshold
+while not is_stopped():
+    w = robot.state.wrench          # (Fx, Fy, Fz, Tx, Ty, Tz) or None
+    if w and abs(w[2]) &gt; 20.0:
+        print("Force threshold exceeded - issuing E-stop")
+        robot.safety.estop()
+        break
+    wait(0.05)</code></pre>
+
+<h2>Script Storage</h2>
+<p>User scripts are saved as <code>.py</code> files in <code>~/.fic_studio_scripts/</code>; the script dropdown lists them by name (without the extension), and <strong>Save As&hellip;</strong> replaces spaces in the name with underscores. Example scripts live in the <code>examples/</code> sub-directory:</p>
+<pre><code>~/.fic_studio_scripts/
+├── pick_and_place.py
+├── calibration_routine.py
+├── wave_demo.py
+└── examples/
+    ├── 01_read_state.py
+    ├── 02_joint_trajectory.py
+    ├── 03_cartesian_circle.py
+    ├── 04_mode_and_tune.py
+    └── 05_record_and_plot.py</code></pre>
+<p><strong>Open</strong> can load any <code>.py</code> file from anywhere on disk into the editor; use <strong>Save As&hellip;</strong> to bring it into the managed folder.</p>
+
+<h2>Install API Button</h2>
+<p>The toolbar's <strong>Install API</strong> button installs the standalone <code>fic_api</code> Python package in editable mode from <code>&lt;FIC_Interface&gt;/fic_api/</code> (resolved via <code>FIC_API_DIR</code> in <code>fic_studio/config.py</code>), running the command in a build dialog so you can watch the pip output. Once installed, you can drive the robot from <strong>any Python environment</strong> &mdash; terminals, Jupyter notebooks, IDEs, or CI pipelines &mdash; without the GUI:</p>
+<pre><code># What the Install API button runs:
+python3 -m pip install --break-system-packages -e ~/FIC_Interface/fic_api</code></pre>
+
+<div class="admonition tip"><div class="adm-title">Standalone Python API</div>
+<p>The standalone package exposes a flat <code>Robot</code> class (its surface differs from the in-editor <code>robot.*</code> namespaces &mdash; e.g. <code>home()</code> takes no arguments and there is no <code>wait=True</code>):</p>
+<pre><code>from fic_api import Robot
+
+with Robot(target='simulation') as r:
+    r.home()
+    print(r.get_joint_positions())   # degrees</code></pre>
+<p>See <a href="#api-reference" onclick="showPage('api-reference')">Script API / Python API</a> for the full standalone reference, including constructor parameters, generic topic subscription, and advanced examples.</p></div>
+
+<h2>Execution</h2>
+<ul>
+  <li>Scripts run in a <strong>separate thread</strong> (<code>ScriptRunner</code>, a QThread) so the GUI stays responsive; each run gets a fresh namespace and stop event.</li>
+  <li>All Robot API functions and flat aliases are injected into the script's namespace automatically.</li>
+  <li>Use <code>print()</code> to send output to the console &mdash; stdout is routed per-thread, so background threads you spawn will print to the terminal, not the console.</li>
+  <li>Exceptions are caught and displayed with full tracebacks; the run ends with a <code>=== Script completed/failed ===</code> line.</li>
+  <li>Click <strong>Stop</strong> to cooperatively terminate a running script (2-second grace, then hard kill). Any topic subscriptions the script created are cleaned up on finish or stop.</li>
+  <li>Full builtins are available &mdash; sandboxing is intentionally omitted for research use.</li>
+</ul>
+
+<p>For fixed waypoint playback without writing code, see <a href="#sequences" onclick="showPage('sequences')">Sequences</a> and <a href="#teach-mode" onclick="showPage('teach-mode')">Teach Mode</a>. See <a href="#api-reference" onclick="showPage('api-reference')">Script API / Python API</a> for the complete method list with signatures &mdash; Part 1 covers Script Editor injection functions, Part 2 covers the standalone <code>fic_api</code> package.</p>

@@ -1,0 +1,218 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> E-Stop</div>
+<h1>Emergency Stop</h1>
+<p class="subtitle">Graceful torque ramp-down, position lock, then full process teardown.</p>
+
+<h2>Triggering E-STOP</h2>
+<table>
+  <tr><th>Method</th><th>How</th></tr>
+  <tr><td>Keyboard</td><td>Press <kbd>Space</kbd> at any time (default binding in both Full Studio and Dev Console; configurable under <code>shortcuts.estop</code> in <code>~/.robot_selector_gui_settings.yaml</code>)</td></tr>
+  <tr><td>Button</td><td>Click the red <strong>&#11035; E-STOP</strong> button in the toolbar</td></tr>
+  <tr><td>Menu</td><td><strong>Robot &rsaquo; Emergency Stop</strong> (Full Studio)</td></tr>
+  <tr><td>Dashboard</td><td><strong>&#9632; E-STOP</strong> in the Quick actions card</td></tr>
+  <tr><td>Gamepad</td><td><strong>B</strong> button (default mapping, remappable) &mdash; see <a href="#gamepad" onclick="showPage('gamepad')">Gamepad</a></td></tr>
+</table>
+
+<div class="admonition tip"><div class="adm-title">Escape does not E-STOP</div>
+<p><kbd>Escape</kbd> is bound to <em>Stop sequence</em> (<code>shortcuts.stop_sequence</code>), not to E-STOP.
+It halts sequence playback but leaves controllers and processes running. Use <kbd>Space</kbd> for the full emergency stop.</p></div>
+
+<h2>What E-STOP Does (Full Studio)</h2>
+<p>Since the June 2026 safety remediation, E-STOP stops <em>gracefully first, kills second</em>.
+The old behaviour killed the controller process outright, which could leave the last commanded
+torque frozen on the robot. The current sequence (<code>_emergency_stop</code> in
+<code>main_window_pro.py</code>) is:</p>
+<ol>
+  <li><strong>Extension fan-out</strong> &mdash; every loaded extension's <code>on_emergency_stop()</code>
+      hook is called, so sequences, scripts, teach mode, and teleop halt their own activity (see table below).</li>
+  <li><strong>Graceful stop command</strong> &mdash; <code>broadcast_stop()</code> publishes
+      <code>"Stop Controller"</code> on every active robot's <code>robot{N}_mode_select</code> topic.
+      The hardware controller (<code>fic_hardware</code>) switches to mode 0 and ramps its output
+      torques down exponentially inside the 1&nbsp;kHz loop (decay factor 0.995 per cycle,
+      &asymp;200&nbsp;ms time constant) toward the idle baseline &mdash; gravity compensation for robots
+      whose driver does not compensate gravity internally, zero for those that do. When every joint's
+      residual drops below 0.05&nbsp;Nm, the controller signals the vendor driver via shared memory
+      (<code>stop_torque_mode</code>) to exit torque mode.</li>
+  <li><strong>Position lock</strong> &mdash; each robot's last-known joint angles are published to its
+      <code>robot{N}_desired_joint_angles</code> topic, a redundant hold while nodes are still alive.
+      On a multi-robot station every active robot is locked at its <em>own</em> last pose.</li>
+  <li><strong>Ramp window</strong> &mdash; the GUI waits 250&nbsp;ms (<code>_ESTOP_RAMP_MS</code>) so the
+      ramp can actually run before teardown.</li>
+  <li><strong>Process teardown</strong> &mdash; every Studio-launched process is stopped
+      (SIGTERM to the whole process group, SIGKILL after a short timeout):
+    <ul>
+      <li>FIC hardware controller (<code>ros2 launch fic_hardware robot_control_launch.py</code>)</li>
+      <li>Robot driver (per-robot <code>driver_command</code>, e.g. the libfranka
+          <code>cartesian_impedance_control</code> binary)</li>
+      <li>FIC simulation controller (<code>ros2 launch fic_simulation fic_launch.py</code>)</li>
+      <li>MuJoCo / Newton simulation</li>
+      <li>ROS bag recording (stopped with SIGINT so the bag is finalized)</li>
+      <li>Plotter</li>
+    </ul>
+  </li>
+  <li><strong>OS-level backstop</strong> &mdash; <code>pkill -9 -f "ros2 launch"</code> and
+      <code>pkill -9 -f cartesian_impedance_control</code> catch anything that survived the
+      per-process teardown.</li>
+  <li><strong>UI feedback</strong> &mdash; the status bar shows
+      <strong>"E-STOP ACTIVE - ALL PROCESSES KILLED"</strong> in red.</li>
+</ol>
+
+<svg viewBox="0 0 700 470" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="E-STOP sequence (Full Studio)">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#estop-arrowhead); }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+  </style>
+  <defs>
+    <marker id="estop-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+  </defs>
+
+  <text x="350" y="18" class="label-title">E-STOP sequence (Full Studio)</text>
+
+  <!-- Triggers -->
+  <rect x="20" y="38" width="122" height="34" class="box box-grey"/>
+  <text x="81" y="55" class="label">Space key</text>
+  <rect x="152" y="38" width="122" height="34" class="box box-grey"/>
+  <text x="213" y="55" class="label">Toolbar / menu</text>
+  <rect x="284" y="38" width="122" height="34" class="box box-grey"/>
+  <text x="345" y="55" class="label">Dashboard</text>
+  <rect x="416" y="38" width="122" height="34" class="box box-grey"/>
+  <text x="477" y="55" class="label">Gamepad B</text>
+  <rect x="548" y="38" width="132" height="34" class="box box-grey"/>
+  <text x="614" y="55" class="label">Zone violation stop</text>
+
+  <line x1="81"  y1="72" x2="330" y2="98" class="arrow"/>
+  <line x1="213" y1="72" x2="340" y2="98" class="arrow"/>
+  <line x1="345" y1="72" x2="350" y2="98" class="arrow"/>
+  <line x1="477" y1="72" x2="360" y2="98" class="arrow"/>
+  <line x1="614" y1="72" x2="370" y2="98" class="arrow"/>
+
+  <!-- Step 1: extensions -->
+  <rect x="200" y="100" width="300" height="44" class="box box-purple"/>
+  <text x="350" y="115" class="label-bold">1. Extension fan-out</text>
+  <text x="350" y="131" class="label-code">on_emergency_stop() on every loaded extension</text>
+  <line x1="350" y1="144" x2="350" y2="160" class="arrow"/>
+
+  <!-- Step 2: graceful ramp -->
+  <rect x="130" y="162" width="440" height="58" class="box box-green"/>
+  <text x="350" y="177" class="label-bold">2. Graceful stop &mdash; broadcast_stop()</text>
+  <text x="350" y="193" class="label-code">"Stop Controller" &rarr; robot{N}_mode_select</text>
+  <text x="350" y="208" class="label-sm">fic_hardware mode 0: torque decay &times;0.995/ms (&asymp;200 ms), then driver exits torque mode</text>
+  <line x1="350" y1="220" x2="350" y2="236" class="arrow"/>
+
+  <!-- Step 3: hold pose -->
+  <rect x="180" y="238" width="340" height="44" class="box box-blue"/>
+  <text x="350" y="253" class="label-bold">3. Position lock (per robot)</text>
+  <text x="350" y="269" class="label-code">last joint pose &rarr; robot{N}_desired_joint_angles</text>
+  <line x1="350" y1="282" x2="350" y2="298" class="arrow"/>
+
+  <!-- Step 4: wait -->
+  <rect x="240" y="300" width="220" height="34" class="box box-grey"/>
+  <text x="350" y="317" class="label">4. Ramp window &mdash; wait 250 ms</text>
+  <line x1="350" y1="334" x2="350" y2="350" class="arrow"/>
+
+  <!-- Step 5: teardown -->
+  <rect x="130" y="352" width="440" height="44" class="box box-orange"/>
+  <text x="350" y="367" class="label-bold">5. Process teardown (SIGTERM &rarr; SIGKILL)</text>
+  <text x="350" y="383" class="label-sm">controller &middot; driver &middot; FIC sim &middot; MuJoCo &middot; bags &middot; plotter</text>
+  <line x1="350" y1="396" x2="350" y2="412" class="arrow"/>
+
+  <!-- Step 6: pkill -->
+  <rect x="150" y="414" width="400" height="44" class="box box-red"/>
+  <text x="350" y="429" class="label-bold">6. OS backstop</text>
+  <text x="350" y="445" class="label-code">pkill -9 -f "ros2 launch" &middot; pkill -9 -f cartesian_impedance_control</text>
+</svg>
+
+<h2>What Each Extension Does on E-STOP</h2>
+<p>Extensions implement <code>on_emergency_stop()</code> from
+<code>ExtensionBase</code> (see <a href="#extensions" onclick="showPage('extensions')">Extensions</a>). The core ones:</p>
+<table>
+  <tr><th>Extension</th><th>Action</th></tr>
+  <tr><td><a href="#sequences" onclick="showPage('sequences')">Sequences</a></td><td>Stops sequence playback if playing</td></tr>
+  <tr><td><a href="#teach-mode" onclick="showPage('teach-mode')">Teach Mode</a></td><td>Exits teach mode and publishes the matching playback mode (Cartesian Planner or Joint Impedance With Planner)</td></tr>
+  <tr><td><a href="#teleoperation" onclick="showPage('teleoperation')">Teleoperation</a></td><td>Halts the active teleop session</td></tr>
+  <tr><td><a href="#script-editor" onclick="showPage('script-editor')">Script Editor</a></td><td>Sets the cooperative stop event so blocking script loops exit</td></tr>
+  <tr><td><a href="#experiments" onclick="showPage('experiments')">Experiments / Autotuning / Tracker &hellip;</a></td><td>Each halts its own run; the fan-out continues even if one hook raises</td></tr>
+</table>
+
+<h2>Dev Console Difference</h2>
+<p>The <a href="#dev-console" onclick="showPage('dev-console')">Dev Console</a> has a simpler E-STOP handler: it stops the
+hardware controller, driver, FIC controller, bag recording and plotter, publishes the hold pose for the
+station robot only, and runs the <code>cartesian_impedance_control</code> pkill backstop. It does not
+load extensions, so there is no fan-out step, and it does not issue the mode-0 ramp command before
+killing &mdash; prefer the Full Studio when running hardware experiments.</p>
+
+<h2>Automatic Trigger: Safety Zone Violations</h2>
+<p>The safety system can also command a stop without you pressing anything: when a
+<a href="#safety" onclick="showPage('safety')">safety zone</a> violation is detected with enforcement enabled, the GUI
+issues a debounced <code>broadcast_stop()</code> (one stop per 3-second episode) &mdash; the same graceful
+mode-0 ramp, but without the process teardown. The C++ controller additionally clamps targets and applies
+virtual walls, so this GUI-side stop is a backstop, not the primary enforcement.</p>
+
+<h2>Recovery After E-STOP</h2>
+<ol>
+  <li><strong>Assess the situation</strong> &mdash; check the robot's physical state and surroundings.</li>
+  <li><strong>Review logs</strong> &mdash; check the <a href="#log-viewer" onclick="showPage('log-viewer')">Logs</a> for what triggered the stop.</li>
+  <li><strong>Restart processes</strong> &mdash; E-STOP kills all processes. You need to restart them manually:
+    <ul>
+      <li>In FIC Control Studio, set <strong>Target</strong> to <em>Simulation</em> or <em>Hardware</em> and press <strong>&#9654; Start</strong> to relaunch the session (simulator/driver, then the FIC controller ~2&nbsp;s later)</li>
+      <li>In the FIC Dev Console, use the discrete <strong>&#9654; API</strong> (driver) and <strong>&#9654; FIC</strong> (controller) buttons instead</li>
+    </ul>
+    See <a href="#processes" onclick="showPage('processes')">Processes</a> for the full start order.</li>
+  <li><strong>Verify robot state</strong> &mdash; check joint positions in the live readout before sending new commands.</li>
+  <li><strong>Resume work</strong> &mdash; the status bar returns to normal once processes are restarted.</li>
+</ol>
+
+<h2>E-STOP vs STOP vs Per-Process Stop</h2>
+<table>
+  <tr><th>Feature</th><th>STOP button (per robot)</th><th>Per-process stop</th><th>E-STOP</th></tr>
+  <tr><td>What it does</td><td>Publishes <code>"Stop Controller"</code> (mode 0) &mdash; graceful torque ramp, controller keeps running idle</td><td>SIGTERM to that process group only</td><td>Ramp + hold + kill everything</td></tr>
+  <tr><td>Processes killed</td><td>None</td><td>Only the selected process</td><td>All Studio-launched processes</td></tr>
+  <tr><td>Position hold</td><td>Yes (targets snap to current state)</td><td>No</td><td>Yes (hold pose published per robot)</td></tr>
+  <tr><td>Force kill</td><td>No</td><td>SIGKILL only after SIGTERM timeout</td><td>Yes (pkill -9 backstop)</td></tr>
+  <tr><td>Extensions stopped</td><td>No</td><td>No</td><td>Yes (fan-out hook)</td></tr>
+  <tr><td>Recoverable without restart</td><td>Yes &mdash; just select a mode again</td><td>Restart that process</td><td>Restart all processes</td></tr>
+</table>
+
+<h2>Terminal Equivalent</h2>
+<p>To stop everything manually from a terminal, mirror the GUI's own sequence &mdash; graceful stop
+first, then kill:</p>
+<pre><code># 1. Graceful controller stop (torque ramp-down, robot1)
+ros2 topic pub --once /robot1_mode_select std_msgs/msg/String "{data: 'Stop Controller'}"
+
+# 2. Kill the launch trees and controllers
+pkill -9 -f "ros2 launch"
+pkill -9 -f cartesian_impedance_control
+
+# 3. Simulation leftovers (patterns the GUI itself uses)
+pkill -9 -f simulation_launch.py
+pkill -9 -f mujoco
+pkill -9 -f mujoco_newton
+pkill -9 -f gripper_bridge.py</code></pre>
+<p>Repeat step 1 with <code>/robot2_mode_select</code> etc. on a multi-robot station.
+See <a href="#topics" onclick="showPage('topics')">Topics</a> for the full topic map.</p>
+
+<div class="admonition warning"><div class="adm-title">Skipping the ramp</div>
+<p>Killing the controller process without first sending <code>Stop Controller</code> loses the graceful
+ramp. Since v4.3.0 a controller that is stopped normally (SIGTERM or Ctrl+C) clears the shared-memory
+<code>alive</code> flag, and the driver leaves torque mode and holds position. A controller that is
+<code>SIGKILL</code>ed or crashes cannot clear it, so the driver keeps the last commanded torque until
+it is stopped too. Always send the mode-0 stop first when the robot is under torque control.</p></div>
+
+<div class="admonition danger"><div class="adm-title">Hardware E-STOP</div>
+<p>The software E-STOP is not a substitute for a physical emergency stop button.
+When working with real hardware, always have a hardware E-STOP within arm's reach.
+The software E-STOP requires a working computer and network &mdash; a physical button does not.</p></div>

@@ -1,0 +1,14 @@
+{
+  "name": "FIC Control Studio",
+  "short_name": "FIC Studio",
+  "description": "Control a robot through a running FIC Control Studio.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#171614",
+  "theme_color": "#171614",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

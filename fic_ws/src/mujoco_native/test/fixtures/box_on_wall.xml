@@ -1,0 +1,12 @@
+<mujoco>
+  <option timestep="0.001" gravity="0 0 -9.81"/>
+  <worldbody>
+    <body name="wall" mocap="true" pos="0 0 0">
+      <geom name="wall_geom" type="box" size="0.2 0.2 0.005" contype="2" conaffinity="2"/>
+    </body>
+    <body name="box" pos="0 0 0.05">
+      <freejoint/>
+      <geom name="box_geom" type="box" size="0.02 0.02 0.02" mass="1.0" contype="2" conaffinity="2"/>
+    </body>
+  </worldbody>
+</mujoco>

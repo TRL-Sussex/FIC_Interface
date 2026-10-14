@@ -1,0 +1,835 @@
+#!/bin/bash
+# install-fic-studio.sh — FIC Control Studio Installer
+# Checks and installs all dependencies, then registers the desktop app.
+# Double-click or run: bash install-fic-studio.sh
+
+# Don't use set -e — we handle errors manually with GUI/terminal messages
+
+APP_DIR="$(cd "$(dirname "$0")" && pwd)"
+INCLUDE_DIR="$APP_DIR/fic_install"
+BUILD_GUI="$INCLUDE_DIR/build_gui.py"
+INSTALLER_GUI="$INCLUDE_DIR/installer_gui.py"
+WS_PATH="$APP_DIR/fic_ws"
+LOG_FILE="/tmp/fic-install.log"
+
+# ── Know the machine (OS, arch, board, ROS, GPU, how to get root) ──
+# shellcheck source=fic_install/detect-system.sh
+. "$INCLUDE_DIR/detect-system.sh"
+
+# ── Options ──
+#   --dry-run   report the system and what would be installed, change nothing
+#   --yes       accept every default (no questions; for terminals and scripts)
+DRY_RUN=0
+ASSUME_YES=0
+#: Empty = ask. Set by --headless/--with-gui so a fleet can be installed
+#: without anyone clicking: the choice is per machine, and answering it by
+#: hand on every robot is how machines end up inconsistent.
+INTERFACE_PRESET=""
+for _a in "$@"; do
+    case "$_a" in
+        --dry-run) DRY_RUN=1 ;;
+        --yes|-y)  ASSUME_YES=1 ;;
+        --headless) INTERFACE_PRESET="headless" ;;
+        --with-gui) INTERFACE_PRESET="window" ;;
+        --help|-h)
+            echo "usage: $0 [--dry-run] [--yes] [--headless|--with-gui]"
+            echo "  Installs ROS 2, every FIC dependency, builds the workspace and registers the apps."
+            echo "  --headless  no window on this machine; use the web interface from another PC"
+            echo "  --with-gui  show a window on this machine (the default)"
+            exit 0 ;;
+    esac
+done
+
+# ── App variants ──
+STUDIO_DESKTOP_SRC="$INCLUDE_DIR/fic-control-studio.desktop"
+STUDIO_DESKTOP_DST="$HOME/.local/share/applications/fic-control-studio.desktop"
+STUDIO_LAUNCH="$INCLUDE_DIR/fic-control-studio.sh"
+
+DEV_DESKTOP_SRC="$INCLUDE_DIR/fic-dev-console.desktop"
+DEV_DESKTOP_DST="$HOME/.local/share/applications/fic-dev-console.desktop"
+DEV_LAUNCH="$INCLUDE_DIR/fic-dev-console.sh"
+
+# ── If double-clicked, relaunch detached from terminal ──
+# Run in a terminal (or --dry-run), stay in the foreground: output and the
+# sudo password prompt must reach the user.
+# The same with --yes (a script waits for it to finish) or with no display (there
+# are no dialogs to show).
+if [ -t 0 ] || [ "$DRY_RUN" -eq 1 ] || [ "$ASSUME_YES" -eq 1 ] || [ "${FIC_HAS_DISPLAY:-0}" -eq 0 ]; then
+    export FIC_INSTALLER_RUNNING=1
+fi
+if [ -z "$FIC_INSTALLER_RUNNING" ]; then
+    export FIC_INSTALLER_RUNNING=1
+    # Detached, nothing can see stdout/stderr: keep all of it in the log.
+    echo "FIC installer started $(date) — detached; progress in dialogs, output in $LOG_FILE" > "$LOG_FILE"
+    setsid bash "$0" "$@" >> "$LOG_FILE" 2>&1 < /dev/null &
+    sleep 0.3
+    exit 0
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  BOOTSTRAP PYTHON — required before anything else
+# ══════════════════════════════════════════════════════════════════════════════
+# Every dialog below runs through python3 + tkinter (installer_gui.py / build_gui.py)
+# and the Python deps install through pip. If Python is missing there is no GUI to
+# show, so we detect it up front and OFFER to install it before the setup begins.
+ensure_python() {
+    local need=()
+    command -v python3 &>/dev/null || need+=("python3")
+    { command -v pip3 &>/dev/null || python3 -m pip --version &>/dev/null; } || need+=("python3-pip")
+    python3 -c "import tkinter" &>/dev/null || need+=("python3-tk")
+
+    # Nothing missing → GUI + pip are ready, continue silently.
+    [ ${#need[@]} -eq 0 ] && return 0
+
+    local pkg_list="${need[*]}"
+    echo "Python components required by the installer are missing: $pkg_list"
+
+    # Ask for consent. Prefer a zenity dialog (the process is detached from the
+    # terminal when double-clicked, so a terminal read() may be invisible); fall
+    # back to a terminal prompt, then to auto-proceed when neither is possible —
+    # the installer genuinely cannot run without Python.
+    local proceed=1
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo "(dry run) would install: $pkg_list"
+        return 0
+    elif [ "$ASSUME_YES" -eq 1 ]; then
+        proceed=0
+    elif [ -t 0 ]; then
+        read -r -p "Install these with apt now? [Y/n] " _ans
+        [[ "$_ans" =~ ^[Nn]$ ]] && proceed=1 || proceed=0
+    elif command -v zenity &>/dev/null && [ "$FIC_HAS_DISPLAY" -eq 1 ]; then
+        zenity --question --title="FIC Control Studio Installer" \
+            --text="Python is required to run the installer, but the following components are missing:\n\n  $pkg_list\n\nInstall them now?" \
+            --ok-label="Install" --cancel-label="Cancel" --width=420 2>/dev/null
+        proceed=$?
+    else
+        echo "No dialog available; installing Python automatically (it is required)."
+        proceed=0
+    fi
+
+    if [ "$proceed" -ne 0 ]; then
+        echo "Python is required. Installation cancelled."
+        command -v zenity &>/dev/null && zenity --error --title="FIC Control Studio Installer" \
+            --text="Python is required to continue.\n\nInstall it manually with:\n  sudo apt-get install -y $pkg_list" \
+            --width=420 2>/dev/null
+        exit 1
+    fi
+
+    echo "Installing: $pkg_list"
+    $FIC_SUDO $FIC_APT update -y
+    $FIC_SUDO $FIC_APT install -y "${need[@]}"
+
+    # Verify the essentials actually landed before proceeding.
+    if ! command -v python3 &>/dev/null; then
+        echo "python3 is still not available after install; cannot continue." >&2
+        command -v zenity &>/dev/null && zenity --error --title="FIC Control Studio Installer" \
+            --text="Python could not be installed automatically.\n\nInstall it manually with:\n  sudo apt-get install -y $pkg_list" \
+            --width=420 2>/dev/null
+        exit 1
+    fi
+}
+
+ensure_python
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  GUI HELPERS — use installer_gui.py (tkinter), fall back to zenity, then echo
+# ══════════════════════════════════════════════════════════════════════════════
+
+gui_available() {
+    python3 "$INSTALLER_GUI" splash "Test" "test" 0 &>/dev/null 2>&1
+    return $?
+}
+
+# Detect which GUI backend works (checked once)
+if [ -t 0 ] || [ "$FIC_HAS_DISPLAY" -eq 0 ] || [ "$DRY_RUN" -eq 1 ]; then
+    GUI_MODE="terminal"
+elif python3 -c "import tkinter" &>/dev/null && [ -f "$INSTALLER_GUI" ]; then
+    GUI_MODE="tkinter"
+elif command -v zenity &>/dev/null; then
+    GUI_MODE="zenity"
+else
+    GUI_MODE="terminal"
+fi
+
+gui_info() {
+    # $1=title $2=text
+    case $GUI_MODE in
+        tkinter)  python3 "$INSTALLER_GUI" info "$1" "$2" ;;
+        zenity)   zenity --info --title="$1" --text="$2" --width=450 2>/dev/null ;;
+        terminal) echo -e "\n[INFO] $1\n$2\n" ;;
+    esac
+}
+
+gui_error() {
+    case $GUI_MODE in
+        tkinter)  python3 "$INSTALLER_GUI" error "$1" "$2" ;;
+        zenity)   zenity --error --title="$1" --text="$2" --width=450 2>/dev/null ;;
+        terminal) echo -e "\n[ERROR] $1\n$2\n" >&2 ;;
+    esac
+}
+
+gui_warning() {
+    case $GUI_MODE in
+        tkinter)  python3 "$INSTALLER_GUI" warning "$1" "$2" ;;
+        zenity)   zenity --warning --title="$1" --text="$2" --width=450 2>/dev/null ;;
+        terminal) echo -e "\n[WARNING] $1\n$2\n" ;;
+    esac
+}
+
+gui_success() {
+    case $GUI_MODE in
+        tkinter)  python3 "$INSTALLER_GUI" success "$1" "$2" ;;
+        zenity)   zenity --info --title="$1" --text="$2" --width=450 2>/dev/null ;;
+        terminal) echo -e "\n[OK] $1\n$2\n" ;;
+    esac
+}
+
+gui_splash() {
+    # $1=title $2=text $3=seconds
+    case $GUI_MODE in
+        tkinter)  python3 "$INSTALLER_GUI" splash "$1" "$2" "$3" ;;
+        zenity)   zenity --info --title="$1" --text="$2" --width=400 --timeout="$3" 2>/dev/null || true ;;
+        terminal) echo -e "$1: $2" ;;
+    esac
+}
+
+gui_question() {
+    # $1=title $2=text $3=yes_label $4=no_label — exit 0=Yes 1=No
+    case $GUI_MODE in
+        tkinter)  python3 "$INSTALLER_GUI" question "$1" "$2" "${3:-Yes}" "${4:-No}"; return $? ;;
+        zenity)   zenity --question --title="$1" --text="$2" --ok-label="${3:-Yes}" --cancel-label="${4:-No}" --width=400 2>/dev/null; return $? ;;
+        terminal)
+            if [ "$ASSUME_YES" -eq 1 ]; then echo "$2 [yes]"; return 0; fi
+            read -p "$(echo -e "$2") [y/N] " choice; [[ "$choice" =~ ^[Yy]$ ]]; return $? ;;
+    esac
+}
+
+gui_progress() {
+    # $1=title $2=status_text $3=command
+    case $GUI_MODE in
+        tkinter)  python3 "$INSTALLER_GUI" progress "$1" "$2" "$3"; return $? ;;
+        zenity)
+            (
+                eval "$3" >> "$LOG_FILE" 2>&1
+                echo "100"
+            ) | zenity --progress --title="$1" --text="$2" \
+                --pulsate --auto-close --no-cancel --width=450 2>/dev/null
+            return $?
+            ;;
+        terminal) echo "$2"; eval "$3"; return $? ;;
+    esac
+}
+
+gui_build() {
+    # $1=title — uses build_gui.py (PyQt5) with fallback
+    case $GUI_MODE in
+        tkinter)
+            # After pip deps are installed, try PyQt5 build dialog first
+            if python3 "$BUILD_GUI" "$WS_PATH" "bash '$APP_DIR/build.sh'" \
+                    --title "$1" 2>/dev/null; then
+                return 0
+            else
+                local exit_code=$?
+                if [ "$exit_code" -eq 3 ]; then
+                    # PyQt5 not available, use tkinter progress
+                    python3 "$INSTALLER_GUI" progress "$1" "Building workspace..." \
+                        "bash '$APP_DIR/build.sh'"
+                    return $?
+                fi
+                return $exit_code
+            fi
+            ;;
+        zenity)
+            TOTAL_PKGS=$(find "$WS_PATH/src" -name "package.xml" 2>/dev/null | wc -l)
+            (
+                bash "$APP_DIR/build.sh" >> "$LOG_FILE" 2>&1
+                echo "100"
+            ) | zenity --progress --title="$1" \
+                --text="Building ($TOTAL_PKGS packages)..." \
+                --pulsate --auto-close --no-cancel --width=450 2>/dev/null || true
+            [ -f "$WS_PATH/install/setup.bash" ] && return 0 || return 1
+            ;;
+        terminal)
+            echo "$1"
+            bash "$APP_DIR/build.sh" --event-handlers console_cohesion+
+            return $?
+            ;;
+    esac
+}
+
+gui_choice() {
+    # $1=title $2=text $3..=options — prints chosen option, exit 1=cancelled
+    local title="$1"; shift
+    local text="$1"; shift
+    case $GUI_MODE in
+        tkinter)  python3 "$INSTALLER_GUI" choice "$title" "$text" "$@"; return $? ;;
+        zenity)
+            local items=""
+            local first=1
+            for opt in "$@"; do
+                if [ "$first" -eq 1 ]; then
+                    items="TRUE $opt"
+                    first=0
+                else
+                    items="$items FALSE $opt"
+                fi
+            done
+            zenity --list --radiolist --title="$title" --text="$text" \
+                --column="" --column="Mode" $items --width=450 --height=300 2>/dev/null
+            return $?
+            ;;
+        terminal)
+            echo "$text"
+            local i=1
+            for opt in "$@"; do
+                echo "  $i) $opt"
+                i=$((i + 1))
+            done
+            if [ "$ASSUME_YES" -eq 1 ]; then choice=1; else
+                read -p "Enter number [1]: " choice
+                choice=${choice:-1}
+            fi
+            local idx=1
+            for opt in "$@"; do
+                if [ "$idx" -eq "$choice" ]; then
+                    echo "$opt"
+                    return 0
+                fi
+                idx=$((idx + 1))
+            done
+            return 1
+            ;;
+    esac
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  DETECT ROS2 DISTRO
+# ══════════════════════════════════════════════════════════════════════════════
+
+detect_ros_distro() {
+    # detect-system.sh's answer: sourced distro, else the one matching this
+    # Ubuntu release, else any under /opt/ros.
+    . "$INCLUDE_DIR/detect-system.sh"
+    echo "$FIC_ROS_DISTRO"
+}
+
+# Offer to install ROS 2 when none is present. Runs BEFORE the dependency lists
+# are built so the ROS packages are picked up in the same pass. Uses the GUI
+# helpers (Python is already ensured above).
+ensure_ros2() {
+    # Map the Ubuntu release to the matching ROS 2 distro. Both current LTS
+    # releases are supported: the solver headers accept pinocchio 2.x/3.x/4.x
+    # (version-tolerant includes), so Humble's pinocchio 2.6 builds fine.
+    local codename="$FIC_CODENAME" ros_target="$FIC_ROS_TARGET"
+
+    if [ -z "$ros_target" ]; then
+        gui_error "ROS 2 Not Found" \
+            "ROS 2 was not detected. This app supports Ubuntu 24.04 (noble → ROS 2\nJazzy) and Ubuntu 22.04 (jammy → ROS 2 Humble), but this system is\n'$codename', which can't be installed automatically.\n\nInstall ROS 2 manually:\nhttps://docs.ros.org/en/jazzy/Installation.html"
+        return 1
+    fi
+
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo "(dry run) would install ROS 2 $ros_target (ros-base + ros-dev-tools, $FIC_ARCH)"
+        return 0
+    fi
+    if ! gui_question "ROS 2 Not Found" \
+        "ROS 2 was not detected on this system.\n\nInstall ROS 2 $ros_target (ros-base) now? This downloads several hundred MB\nand can take several minutes. You may be prompted for your password." \
+        "Install ROS 2" "Cancel"; then
+        return 1
+    fi
+
+    # Write the setup steps to a temp script so the nested quoting/command
+    # substitutions survive being run as root (sudo or pkexec).
+    local ros_script
+    ros_script=$(mktemp)
+    cat > "$ros_script" <<ROSEOF
+set -e
+APT="$FIC_APT"
+\$APT update -y
+\$APT install -y software-properties-common curl gnupg locales
+add-apt-repository -y universe
+locale-gen en_US en_US.UTF-8 >/dev/null 2>&1 || true
+CODENAME=\$(. /etc/os-release && echo \$UBUNTU_CODENAME)
+# The ROS 2 repository key rotated in 2025; ros2-apt-source installs the
+# current key + source list and keeps them updated. Fall back to the key
+# file if GitHub's API is unreachable.
+VER=\$(curl -fsSL https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest \
+      | grep -F '"tag_name"' | head -1 | cut -d'"' -f4 || true)
+if [ -n "\$VER" ] && curl -fsSL -o /tmp/ros2-apt-source.deb \
+      "https://github.com/ros-infrastructure/ros-apt-source/releases/download/\$VER/ros2-apt-source_\$VER.\${CODENAME}_all.deb"; then
+    \$APT install -y /tmp/ros2-apt-source.deb
+    rm -f /tmp/ros2-apt-source.deb
+else
+    curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+        -o /usr/share/keyrings/ros-archive-keyring.gpg
+    echo "deb [arch=\$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu \$CODENAME main" \
+        > /etc/apt/sources.list.d/ros2.list
+fi
+\$APT update -y
+\$APT install -y ros-${ros_target}-ros-base ros-dev-tools
+ROSEOF
+
+    gui_progress "Installing ROS 2 ($ros_target)" \
+        "Adding the ROS 2 apt repository and installing ros-base..." \
+        "$FIC_SUDO bash '$ros_script'"
+
+    rm -f "$ros_script"
+
+    # Source the new install so detection, dependency checks, and the colcon
+    # build later in this run all see it.
+    if [ -f "/opt/ros/$ros_target/setup.bash" ]; then
+        source "/opt/ros/$ros_target/setup.bash"
+    fi
+}
+
+ROS_DISTRO=$(detect_ros_distro)
+
+if [ -z "$ROS_DISTRO" ]; then
+    ensure_ros2
+    ROS_DISTRO=$(detect_ros_distro)
+    # A dry run installs nothing: plan against the distro it would install.
+    [ "$DRY_RUN" -eq 1 ] && [ -z "$ROS_DISTRO" ] && ROS_DISTRO="$FIC_ROS_TARGET"
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  DEPENDENCY LISTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+# System libraries (from C++ includes: Eigen, tinyxml2, yaml-cpp, Boost, GL)
+APT_DEPS=(
+    # Build tools
+    cmake
+    build-essential
+    python3-colcon-common-extensions
+    git
+    curl
+    # Eigen (Eigen/Dense, Eigen/Geometry)
+    libeigen3-dev
+    # TinyXML2 — the distribution's, which ROS itself links (see below)
+    libtinyxml2-dev
+    # yaml-cpp (yaml-cpp/yaml.h — used by robot_config_loader)
+    libyaml-cpp-dev
+    # Boost (serialization, system, filesystem — pinocchio deps)
+    libboost-dev
+    libboost-serialization-dev
+    libboost-system-dev
+    libboost-filesystem-dev
+    # OpenGL for the MuJoCo viewer (the mujoco wheel's `glfw` dependency
+    # bundles its own libglfw; the system one is a fallback)
+    libglfw3
+    # Studio's Python stack from apt: pip has no PyQt5 wheels for arm64, and
+    # apt's builds match the system Python on every architecture.
+    python3-pip
+    python3-pyqt5
+    python3-pyqt5.qtsvg
+    # QtWebEngine for the Studio window that hosts the web UI. It must be the
+    # system build: a pip PyQtWebEngine in ~/.local shadows it and fails with
+    # an "undefined symbol" error.
+    python3-pyqt5.qtwebengine
+    python3-yaml
+    python3-numpy
+    python3-scipy
+    python3-cryptography
+    python3-pyqtgraph
+    # The live plotter (PLT) and the contact estimator plot with matplotlib
+    python3-matplotlib
+    # The installer's own dialogs (installer_gui.py)
+    python3-tk
+)
+
+# ROS2 packages (from rclcpp, message types)
+ROS_DEPS=()
+# OPTIONAL packages: attempted with the rest but NOT fatal when unavailable.
+# pinocchio backs the default kinematics solver — without it the workspace
+# still builds and robots run degraded (joint-space only) unless a custom
+# solver is registered (see docs/custom-kinematics-solver.md).
+OPTIONAL_ROS_DEPS=()
+if [ -n "$ROS_DISTRO" ]; then
+    ROS_DEPS=(
+        # Core ROS2 (rclcpp/rclcpp.hpp)
+        "ros-${ROS_DISTRO}-rclcpp"
+        # Standard messages (std_msgs, geometry_msgs, sensor_msgs)
+        "ros-${ROS_DISTRO}-std-msgs"
+        "ros-${ROS_DISTRO}-geometry-msgs"
+        "ros-${ROS_DISTRO}-sensor-msgs"
+        # Used by the simulation (nav_msgs/Odometry) and contact packages.
+        # (cv_bridge and tf2_ros were needed only by the C++ `mujoco`
+        # simulator, retired in v4.5.0.)
+        "ros-${ROS_DISTRO}-nav-msgs"
+        "ros-${ROS_DISTRO}-std-srvs"
+        "ros-${ROS_DISTRO}-urdfdom-headers"
+    )
+    OPTIONAL_ROS_DEPS=(
+        # Pinocchio (default kinematics solver backend)
+        "ros-${ROS_DISTRO}-pinocchio"
+    )
+fi
+
+# Python packages only pip has (everything else comes from apt above).
+# mujoco: the physics behind the mujoco_native backend; wheels for amd64+arm64.
+PIP_DEPS=(
+    "mujoco"
+)
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  CHECK FUNCTIONS
+# ══════════════════════════════════════════════════════════════════════════════
+
+check_apt_missing() {
+    local missing=()
+    for pkg in "$@"; do
+        if ! dpkg -s "$pkg" &>/dev/null; then
+            missing+=("$pkg")
+        fi
+    done
+    echo "${missing[@]}"
+}
+
+check_pip_missing() {
+    local missing=()
+    for pkg in "$@"; do
+        # Strip version specifier for import check
+        local name="${pkg%%=*}"
+        local name="${name%%>*}"
+        local name="${name%%<*}"
+        if ! python3 -c "import ${name//-/_}" &>/dev/null; then
+            missing+=("$pkg")
+        fi
+    done
+    echo "${missing[@]}"
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  MAIN INSTALLER
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Check required app files ──
+MISSING_FILES=""
+[ ! -f "$STUDIO_LAUNCH" ] && MISSING_FILES="${MISSING_FILES}\n  - fic-control-studio.sh"
+[ ! -f "$STUDIO_DESKTOP_SRC" ] && MISSING_FILES="${MISSING_FILES}\n  - fic-control-studio.desktop"
+[ ! -f "$DEV_LAUNCH" ] && MISSING_FILES="${MISSING_FILES}\n  - fic-dev-console.sh"
+[ ! -f "$DEV_DESKTOP_SRC" ] && MISSING_FILES="${MISSING_FILES}\n  - fic-dev-console.desktop"
+[ ! -f "$INCLUDE_DIR/fic-control-studio.svg" ] && MISSING_FILES="${MISSING_FILES}\n  - fic-control-studio.svg"
+if [ -n "$MISSING_FILES" ]; then
+    gui_error "FIC Studio Installer" "Missing files in $APP_DIR:${MISSING_FILES}"
+    exit 1
+fi
+
+# ── Check ROS2 (fallback: still missing after the install offer above) ──
+if [ -z "$ROS_DISTRO" ]; then
+    gui_error "FIC Control Studio Installer" \
+        "ROS 2 is required but was not installed.\n\nInstall it and re-run this installer:\nhttps://docs.ros.org/en/jazzy/Installation.html"
+    exit 1
+fi
+
+# ── Scan for missing dependencies ──
+gui_splash "FIC Control Studio Installer" \
+    "Checking dependencies...\n\nROS2 distro detected: $ROS_DISTRO" 3
+
+MISSING_APT=$(check_apt_missing "${APT_DEPS[@]}" "${ROS_DEPS[@]}")
+MISSING_OPTIONAL_APT=$(check_apt_missing "${OPTIONAL_ROS_DEPS[@]}")
+MISSING_PIP=$(check_pip_missing "${PIP_DEPS[@]}")
+
+# ── Show what needs installing ──
+if [ -n "$MISSING_APT" ] || [ -n "$MISSING_OPTIONAL_APT" ] || [ -n "$MISSING_PIP" ]; then
+    SUMMARY="The following dependencies will be installed:\n"
+    [ -n "$MISSING_APT" ] && SUMMARY="${SUMMARY}\nSystem packages (apt):\n${MISSING_APT}\n"
+    [ -n "$MISSING_OPTIONAL_APT" ] && SUMMARY="${SUMMARY}\nOptional packages (apt, best-effort):\n${MISSING_OPTIONAL_APT}\n"
+    [ -n "$MISSING_PIP" ] && SUMMARY="${SUMMARY}\nPython packages (pip):\n${MISSING_PIP}\n"
+    SUMMARY="${SUMMARY}\nYou may be prompted for your password."
+
+    gui_info "FIC Control Studio — Dependencies" "$SUMMARY"
+fi
+
+if [ "$DRY_RUN" -eq 1 ]; then
+    echo ""
+    fic_system_report
+    echo ""
+    echo "Would install (apt):          ${MISSING_APT:-nothing}"
+    echo "Would install (apt, optional): ${MISSING_OPTIONAL_APT:-nothing}"
+    echo "Would install (pip):          ${MISSING_PIP:-nothing}"
+    echo "Would build:                  fic_ws with: colcon build $(fic_colcon_args)"
+    [ "$FIC_KINOVA_DRIVER" -eq 1 ] && echo "Would build:                  the Kinova vendor driver"
+    echo "Would build:                  robot_library/fic_mcu (inner-loop MCU simulator)"
+    exit 0
+fi
+
+# ── Install missing apt packages ──
+if [ -n "$MISSING_APT" ]; then
+    gui_progress \
+        "Installing System Dependencies" \
+        "Installing system and ROS2 packages..." \
+        "$FIC_SUDO $FIC_APT update -y && $FIC_SUDO $FIC_APT install -y $MISSING_APT"
+fi
+
+# ── Install optional apt packages (best-effort, never fatal) ──
+if [ -n "$MISSING_OPTIONAL_APT" ]; then
+    gui_progress \
+        "Installing Optional Dependencies" \
+        "Installing pinocchio (default kinematics solver)..." \
+        "$FIC_SUDO $FIC_APT install -y $MISSING_OPTIONAL_APT || echo 'Optional packages unavailable — the app will build without the built-in solver.'"
+fi
+
+# ── Update pinocchio when the installed build is older than the distro's ──
+# check_apt_missing only tests presence (dpkg -s), so an already-installed but
+# outdated pinocchio would never be refreshed by the blocks above.
+if [ -n "$ROS_DISTRO" ]; then
+    PINO_PKG="ros-${ROS_DISTRO}-pinocchio"
+    PINO_INSTALLED=$(dpkg-query -W -f='${Version}' "$PINO_PKG" 2>/dev/null || true)
+    PINO_CANDIDATE=$(apt-cache policy "$PINO_PKG" 2>/dev/null | awk '/Candidate:/ {print $2}')
+    if [ -n "$PINO_INSTALLED" ] && [ -n "$PINO_CANDIDATE" ] && \
+       [ "$PINO_CANDIDATE" != "(none)" ] && [ "$PINO_INSTALLED" != "$PINO_CANDIDATE" ]; then
+        gui_progress \
+            "Updating Pinocchio" \
+            "Updating pinocchio ${PINO_INSTALLED} → ${PINO_CANDIDATE}..." \
+            "$FIC_SUDO $FIC_APT install --only-upgrade -y $PINO_PKG || echo 'pinocchio update failed — keeping ${PINO_INSTALLED}.'"
+        # A library swap invalidates already-configured build trees: their
+        # makefiles reference the old .so by exact version and their caches
+        # miss the new pinocchio's compile definitions.
+        gui_info "Pinocchio Updated — Clean Build Needed" \
+            "pinocchio was updated to ${PINO_CANDIDATE}.\n\nBefore the next build, delete fic_ws/build and fic_ws/install\n(colcon regenerates them). Building on the stale tree fails with\n'No rule to make target ...libpinocchio...' or Boost template errors."
+    fi
+fi
+
+# ── Install missing pip packages ──
+if [ -n "$MISSING_PIP" ]; then
+    gui_progress \
+        "Installing Python Dependencies" \
+        "Installing Python packages..." \
+        "python3 -m pip install --user --break-system-packages $MISSING_PIP 'numpy<2'"
+fi
+
+# ── Check tinyxml2 is consistent with ROS ──
+# libtinyxml2-dev is installed with the other apt packages. It must be the ONLY
+# tinyxml2: a second copy (e.g. built from source into /usr) makes FIC link one
+# soname while ROS's urdfdom links another, and fic_hardware segfaults at start.
+# Library paths come from detect-system.sh (x86_64-linux-gnu, aarch64-linux-gnu, ...).
+TINYXML2_CMAKE=""
+for d in "$FIC_LIBDIR/cmake/tinyxml2" /usr/lib/cmake/tinyxml2; do
+    [ -f "$d/tinyxml2-config.cmake" ] && TINYXML2_CMAKE="$d" && break
+done
+if [ -z "$TINYXML2_CMAKE" ]; then
+    gui_error "FIC Control Studio" \
+        "tinyxml2's CMake config was not found after installing libtinyxml2-dev.\n\nTry manually:\n  sudo apt install --reinstall libtinyxml2-dev"
+elif [ -f "$TINYXML2_CMAKE/tinyxml2-shared-targets-release.cmake" ] && \
+     [ -f "$TINYXML2_CMAKE/tinyxml2-shared-targets-none.cmake" ]; then
+    # A source build left its targets beside apt's. Keep the one ROS uses.
+    ROS_TINYXML_SO=$(ldd /opt/ros/*/lib/liburdfdom_model.so /opt/ros/*/lib/*/liburdfdom_model.so 2>/dev/null \
+                     | grep libtinyxml2 | awk '{print $1}' | head -1)
+    RELEASE_SO=$(grep -o 'libtinyxml2\.so\.[0-9.]*' "$TINYXML2_CMAKE/tinyxml2-shared-targets-release.cmake" 2>/dev/null | head -1)
+    if [ -n "$ROS_TINYXML_SO" ] && [ -n "$RELEASE_SO" ] && [ "$ROS_TINYXML_SO" != "$RELEASE_SO" ]; then
+        echo "Removing conflicting tinyxml2 cmake config (release=$RELEASE_SO, ROS needs $ROS_TINYXML_SO)..."
+        $FIC_SUDO bash -c "rm -f '$TINYXML2_CMAKE/tinyxml2-shared-targets-release.cmake' && ldconfig"
+    fi
+fi
+
+# ── Verify installation (optional deps are checked separately, never fatal) ──
+STILL_MISSING_APT=$(check_apt_missing "${APT_DEPS[@]}" "${ROS_DEPS[@]}")
+STILL_MISSING_PIP=$(check_pip_missing "${PIP_DEPS[@]}")
+
+if [ -n "$STILL_MISSING_APT" ] || [ -n "$STILL_MISSING_PIP" ]; then
+    FAIL_MSG="Some dependencies could not be installed:\n"
+    [ -n "$STILL_MISSING_APT" ] && FAIL_MSG="${FAIL_MSG}\napt: $STILL_MISSING_APT"
+    [ -n "$STILL_MISSING_PIP" ] && FAIL_MSG="${FAIL_MSG}\npip: $STILL_MISSING_PIP"
+    FAIL_MSG="${FAIL_MSG}\n\nCheck the log at $LOG_FILE\nThe app may not work correctly."
+    gui_warning "FIC Control Studio" "$FAIL_MSG"
+fi
+
+# ── The web interface must actually load, not merely be installed ──
+# check_apt_missing asks dpkg whether the package is there. That is not the
+# same question: PyQt5 itself can come from pip wheels in ~/.local, which
+# shadow the system Qt, and then the system QtWebEngine is present on disk and
+# unimportable. The Studio only finds out at start-up, where the failure is a
+# MODAL dialog -- and on a robot nobody is sitting at, that dialog is never
+# answered, so Qt's event loop stops on it and everything initialised after it
+# (the fleet, teleoperation) never starts. That happened across the whole lab
+# on 9 Oct 2026: four Studios up and serving, no fleet presence anywhere, and
+# no error any operator would see. Import it here, where there is someone
+# reading the screen.
+if ! python3 -c "import PyQt5.QtWebEngineWidgets" &>/dev/null; then
+    WEB_MSG="The Studio's web interface cannot load:\n\n  import PyQt5.QtWebEngineWidgets failed\n\n"
+    if python3 -c "import PyQt5, sys; sys.exit(0 if 'dist-packages' in PyQt5.__file__ else 1)" &>/dev/null; then
+        WEB_MSG="${WEB_MSG}The system package is installed but not importable.\nCheck the log at $LOG_FILE."
+    else
+        WEB_MSG="${WEB_MSG}PyQt5 is being loaded from pip wheels, which shadow the\nsystem Qt. Either remove them:\n\n  pip uninstall PyQtWebEngine PyQtWebEngine-Qt5 PyQt5 PyQt5-Qt5 PyQt5-sip\n\nor add the matching wheel:\n\n  pip install PyQtWebEngine"
+    fi
+    WEB_MSG="${WEB_MSG}\n\nUntil this is fixed the Studio cannot show its interface.\nInstalling headless avoids it: the interface is then served to\na browser on another PC."
+    gui_warning "FIC Control Studio — web interface" "$WEB_MSG"
+fi
+
+STILL_MISSING_OPTIONAL=$(check_apt_missing "${OPTIONAL_ROS_DEPS[@]}")
+if [ -n "$STILL_MISSING_OPTIONAL" ]; then
+    gui_warning "FIC Control Studio — Optional" \
+        "Optional packages unavailable: $STILL_MISSING_OPTIONAL\n\nThe workspace will build WITHOUT the built-in pinocchio kinematics solver.\nRobots will run in joint-space-only mode unless a custom solver is\nregistered (see docs/custom-kinematics-solver.md)."
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  OPTIONAL: NEWTON (GPU-ACCELERATED MUJOCO BACKEND)
+# ══════════════════════════════════════════════════════════════════════════════
+# If an NVIDIA GPU is detected, offer to install the Newton physics backend
+# (NVIDIA Warp). Newton becomes the default; users can switch in Settings.
+NEWTON_HINT_FILE="$HOME/.fic_studio_install_hints.yaml"
+rm -f "$NEWTON_HINT_FILE"
+
+if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
+    GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
+    [ -z "$GPU_NAME" ] && GPU_NAME="NVIDIA GPU"
+
+    if python3 -c "import newton" &>/dev/null; then
+        # Already installed — record availability
+        echo "newton_available: true" > "$NEWTON_HINT_FILE"
+    else
+        NEWTON_CHOICE=$(gui_choice \
+            "GPU Detected — Optional Backend" \
+            "Detected: $GPU_NAME\n\nMuJoCo Newton is a GPU-accelerated physics backend (NVIDIA Warp).\nIt installs alongside standard MuJoCo (~141 MB) and becomes the\ndefault simulator. You can switch back to standard MuJoCo any time\nfrom Settings > Simulation." \
+            "Install MuJoCo + Newton (recommended for NVIDIA GPUs)" \
+            "Standard MuJoCo only")
+
+        if [[ "$NEWTON_CHOICE" == *Newton* ]]; then
+            gui_progress \
+                "Installing MuJoCo Newton" \
+                "Installing newton[sim,importers] + warp-lang + pyglet..." \
+                "python3 -m pip install --user --break-system-packages 'newton[sim,importers]' 'pyglet>=2.0' 'numpy<2'"
+            if python3 -c "import newton" &>/dev/null; then
+                echo "newton_available: true" > "$NEWTON_HINT_FILE"
+            else
+                gui_warning "MuJoCo Newton" \
+                    "Newton install did not complete cleanly. The app will use\nstandard MuJoCo. You can retry later with:\n\n  pip install --break-system-packages newton"
+            fi
+        fi
+    fi
+fi
+
+# ── Build ROS2 workspace ──
+if [ -d "$WS_PATH/src" ]; then
+    # Source ROS2 distro for colcon
+    source "/opt/ros/$ROS_DISTRO/setup.bash"
+
+    if [ ! -f "$WS_PATH/install/setup.bash" ]; then
+        gui_build "Building FIC Control Studio"
+        if [ ! -f "$WS_PATH/install/setup.bash" ]; then
+            gui_error "FIC Control Studio" \
+                "Build failed. Please run it by hand:\n\ncd $APP_DIR\n./build.sh\n\nCheck log: $LOG_FILE"
+        fi
+    else
+        if gui_question "FIC Control Studio" \
+            "ROS2 workspace is already built.\n\nRebuild now?" "Rebuild" "Skip"; then
+            gui_build "Rebuilding FIC Control Studio"
+        fi
+    fi
+fi
+
+# ── Hardware back-ends that live outside the colcon workspace ──
+# The Kinova driver's C++ API is x86-64 only; other architectures drive the arm
+# through the inner-loop MCU (robot_library/fic_mcu), whose Linux tools build
+# everywhere.
+KINOVA_EX="$APP_DIR/robot_library/Kinova/api_cpp/examples"
+if [ "$FIC_KINOVA_DRIVER" -eq 1 ] && [ -d "$KINOVA_EX" ]; then
+    gui_progress "Building the Kinova driver" "Building the Kinova vendor driver..." \
+        "source /opt/ros/$ROS_DISTRO/setup.bash && cd '$KINOVA_EX' && mkdir -p build-gcc-release && cd build-gcc-release && cmake .. -DCMAKE_BUILD_TYPE=release -DKORTEX_SUB_DIR= -DUSE_CONAN=OFF && make -j$FIC_BUILD_JOBS" \
+        || gui_warning "Kinova driver" "The Kinova driver did not build (see $LOG_FILE).\nKinova hardware control will not work until it does."
+fi
+if [ -x "$APP_DIR/robot_library/fic_mcu/scripts/build.sh" ]; then
+    gui_progress "Building FIC inner-loop tools" "Building the inner-loop MCU simulator..." \
+        "bash '$APP_DIR/robot_library/fic_mcu/scripts/build.sh'" \
+        || gui_warning "FIC inner loop" "robot_library/fic_mcu did not build (see $LOG_FILE)."
+fi
+
+# ── Select which app to install ──
+INSTALL_MODE=$(gui_choice "FIC Studio Installer" \
+    "Select which application to install:" \
+    "FIC Control Studio (Full)" \
+    "FIC Dev Console (Teleop)" \
+    "Both")
+
+if [ -z "$INSTALL_MODE" ]; then
+    gui_info "FIC Studio Installer" "Installation cancelled."
+    exit 0
+fi
+
+# ── Window or headless ──
+# Asked here, not left to a runtime flag, because it is a property of the
+# machine: a robot with no monitor should never draw an interface, and one on
+# a desk always should. Re-run this installer to change it.
+#
+# Headless still runs the ROS node, joins the fleet and serves the web
+# interface; it just draws nothing locally. On a screenless robot that is the
+# difference between 145% of a CPU and 5%, on a machine whose other job is a
+# 1 kHz control loop (measured 9 Oct 2026): with no monitor, X falls back to
+# the "dummy" driver and llvmpipe, Chromium blocklists WebGL, and Three.js
+# renders on the CPU. A browser on a PC that has a GPU draws it properly.
+if [ -n "$INTERFACE_PRESET" ]; then
+    case "$INTERFACE_PRESET" in
+        headless) INTERFACE_MODE="Headless (preset)" ;;
+        *)        INTERFACE_MODE="Window (preset)" ;;
+    esac
+else
+INTERFACE_MODE=$(gui_choice "FIC Studio Installer" \
+    "How should this machine show the Studio?
+
+A machine with a monitor should show a window. A robot without one should be
+headless and be used from a browser on another PC -- it still runs, joins the
+fleet and serves the web interface." \
+    "Window on this machine" \
+    "Headless (no window; use the web interface from another PC)")
+fi
+
+if [ -z "$INTERFACE_MODE" ]; then
+    gui_info "FIC Studio Installer" "Installation cancelled."
+    exit 0
+fi
+
+FIC_INTERFACE_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/fic-studio/interface.conf"
+mkdir -p "$(dirname "$FIC_INTERFACE_CONF")"
+case "$INTERFACE_MODE" in
+    Headless*)
+        printf '# Written by the FIC Studio installer. Re-run it to change this.\nFIC_HEADLESS=1\n' \
+            > "$FIC_INTERFACE_CONF"
+        echo "Interface: headless (no window on this machine)"
+        ;;
+    *)
+        printf '# Written by the FIC Studio installer. Re-run it to change this.\nFIC_HEADLESS=0\n' \
+            > "$FIC_INTERFACE_CONF"
+        echo "Interface: a window on this machine"
+        ;;
+esac
+
+# ── Register desktop app(s) ──
+mkdir -p "$HOME/.local/share/applications"
+INSTALLED_APPS=""
+
+register_studio() {
+    chmod +x "$STUDIO_LAUNCH"
+    sed "s|__FIC_INSTALL__|$INCLUDE_DIR|g" "$STUDIO_DESKTOP_SRC" > "$STUDIO_DESKTOP_DST"
+    chmod +x "$STUDIO_DESKTOP_DST"
+    INSTALLED_APPS="${INSTALLED_APPS}\n  - FIC Control Studio"
+}
+
+register_dev() {
+    chmod +x "$DEV_LAUNCH"
+    sed "s|__FIC_INSTALL__|$INCLUDE_DIR|g" "$DEV_DESKTOP_SRC" > "$DEV_DESKTOP_DST"
+    chmod +x "$DEV_DESKTOP_DST"
+    INSTALLED_APPS="${INSTALLED_APPS}\n  - FIC Dev Console"
+}
+
+case "$INSTALL_MODE" in
+    *Full*)   register_studio ;;
+    *Teleop*) register_dev ;;
+    *Both*)   register_studio; register_dev ;;
+esac
+
+update-desktop-database "$HOME/.local/share/applications" 2>/dev/null
+
+# ── Count what was installed ──
+N_APT=0; N_PIP=0
+[ -n "$MISSING_APT" ] && N_APT=$(echo $MISSING_APT | wc -w)
+[ -n "$MISSING_PIP" ] && N_PIP=$(echo $MISSING_PIP | wc -w)
+
+if [ "$N_APT" -gt 0 ] || [ "$N_PIP" -gt 0 ]; then
+    DEP_MSG="Installed $N_APT system and $N_PIP Python packages.\n\n"
+else
+    DEP_MSG="All dependencies were already installed.\n\n"
+fi
+
+gui_success "FIC Studio Installer" \
+    "Installation complete!\n\n${DEP_MSG}Registered apps:${INSTALLED_APPS}\n\nSearch for FIC in your app launcher."

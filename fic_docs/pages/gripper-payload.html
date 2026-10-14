@@ -1,0 +1,113 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Gripper &amp; Payload Mass</div>
+<h1>Gripper &amp; Payload Mass</h1>
+<p class="subtitle">Most vendor URDFs describe the bare arm and omit the tool. The controller then compensates gravity for a robot that is lighter than the one in front of you &mdash; and the arm sags. How to detect it, fix it, and verify the fix on any robot.</p>
+
+<div class="admonition warning">
+  <div class="adm-title">The symptom you will actually see</div>
+  <p>A joint <strong>slowly falls under its own weight</strong> in impedance, and in <strong>joint admittance</strong> a joint drifts or oscillates instead of holding. It is worst on the joints carrying the most gravity load, and absent on joints that carry none &mdash; that pattern is the fingerprint. It is <em>not</em> a tuning problem, and adding damping only hides it.</p>
+</div>
+
+<h2>Why it happens</h2>
+<p><code>fic_hardware</code> computes its gravity feedforward from the URDF, once per control tick:</p>
+<pre><code>gravity_torques_ = solver_-&gt;gravity(q_current_);   // fic_hardware.cpp</code></pre>
+<p>That is the <em>only</em> producer of <code>gravity_torques_</code> on hardware. Impedance adds it straight to the output torque; admittance passes it in as <code>desired_effort</code>. Either way, whatever the URDF fails to describe is weight the controller never holds up.</p>
+<p>Vendor URDFs routinely stop at the tool flange. The shipped Kinova Gen3 URDF ends at <code>ee_link</code> with <code>mass="0"</code> and contains no Robotiq gripper at all &mdash; 1.339&nbsp;kg of real hardware that the model simply does not know about.</p>
+
+<p>Worse, the error is <strong>pose-dependent</strong>, so it cannot be trimmed away with an offset. Measured on a Kinova Gen3 with a Robotiq 2F-85:</p>
+<table>
+  <tr><th>Joint (0-based)</th><th>0</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th></tr>
+  <tr><td>Gravity shortfall (Nm)</td><td>0.00</td><td><strong>6.83</strong></td><td>0.03</td><td><strong>5.25</strong></td><td>0.05</td><td>2.63</td><td>0.09</td></tr>
+</table>
+<p>Joints 1 and 3 &mdash; shoulder and elbow &mdash; were the two that misbehaved. Joint 2, short by 0.03&nbsp;Nm, was fine. Worst case across the workspace was <strong>12.98&nbsp;Nm</strong>.</p>
+
+<div class="admonition note">
+  <div class="adm-title">Why admittance suffers more than impedance</div>
+  <p>An admittance controller <em>integrates</em> torque into position. A constant bias above the <code>admittance_deadbands.joint_tau</code> floor (2.0&nbsp;Nm on the Kinova) is therefore fed in continuously and the joint walks. On the arm above, the 5.25&nbsp;Nm elbow shortfall sat well clear of that deadband; correcting gravity dropped it to roughly 0.5&nbsp;Nm, <em>below</em> the deadband, and the drive disappeared. Raising damping slows a runaway &mdash; it does not remove its cause.</p>
+</div>
+
+<h2>Step 1 &mdash; Measure the shortfall on your robot</h2>
+<p>Do not guess whether this affects you. If your robot has a MuJoCo model that <em>does</em> include the tool (most in <code>menagerie/</code> do), compare the two directly:</p>
+<pre><code>source fic_ws/install/setup.bash
+python3 - &lt;&lt;'EOF'
+import sys, numpy as np
+sys.path.insert(0, 'fic_ws/src/fic_contact')
+from fic_contact.residual import ArmModel, tool_payload_from_mjcf
+
+URDF = 'fic_ws/src/menagerie/model/&lt;ROBOT&gt;/URDF/&lt;ROBOT&gt;.urdf'
+MJCF = 'fic_ws/src/menagerie/model/&lt;ROBOT&gt;/xml/scene.xml'
+JOINTS = ['Actuator1', 'Actuator2']          # your robot's joint_names, in order
+
+mass, com = tool_payload_from_mjcf(MJCF, JOINTS)
+print('tool the URDF is missing: %.4f kg at %s' % (mass, np.round(com, 5).tolist()))
+
+bare   = ArmModel(URDF, JOINTS)
+tooled = ArmModel(URDF, JOINTS, tool_payload=(mass, com))
+rng = np.random.default_rng(0)
+worst = max(float(np.max(np.abs(tooled.gravity(q) - bare.gravity(q))))
+            for q in rng.uniform(-2.5, 2.5, (200, len(JOINTS))))
+print('worst uncompensated gravity across 200 poses: %.2f Nm' % worst)
+EOF</code></pre>
+<p>Anything above your mode's <code>joint_tau</code> deadband will drive an admittance joint. Anything above roughly 1&nbsp;Nm is worth fixing for impedance too.</p>
+
+<h2>Step 2 &mdash; Build a gripper variant of the URDF</h2>
+<p>Copy the base URDF alongside the original, suffixed <code>_gripper</code>, and give the tool link a real <code>&lt;inertial&gt;</code>. A <strong>point mass is exact for gravity</strong>, which depends only on mass and centre of mass &mdash; the rotational inertia matters only to <code>M(q)</code> and Coriolis terms, which the gravity feedforward does not use.</p>
+<pre><code>&lt;link name="ee_link"&gt;
+  &lt;inertial&gt;
+    &lt;origin xyz="-0.006848 0.0 0.016310" rpy="0 0 0" /&gt;
+    &lt;mass value="1.3391" /&gt;
+    &lt;inertia ixx="4180E-6" ixy="0" ixz="0" iyy="5080E-6" iyz="0" izz="1250E-6" /&gt;
+  &lt;/inertial&gt;
+&lt;/link&gt;</code></pre>
+
+<div class="admonition warning">
+  <div class="adm-title">The centre of mass must be in the tool link's own frame</div>
+  <p><code>tool_payload_from_mjcf</code> returns the com in the <strong>last actuated link's</strong> frame. If you attach the mass to a different link, transform it. On the Kinova the <code>end_effector</code> joint rotates &pi; about X and offsets &minus;0.061525&nbsp;m in Z, which turns <code>[-0.00685, 0, -0.07783]</code> in <code>Bracelet_Link</code> into <code>[-0.00685, 0, 0.01631]</code> in <code>ee_link</code>. Getting this wrong puts the weight on the wrong side of the wrist and makes the sag worse, not better.</p>
+</div>
+
+<div class="admonition note">
+  <div class="adm-title">Check for malformed inertia attributes while you are in there</div>
+  <p>The shipped Kinova URDF had <code>ixx="4180E-6&nbsp;&nbsp;"</code> &mdash; with trailing whitespace. <code>urdf_parser</code> rejects the value and silently discards <strong>the entire <code>&lt;inertial&gt;</code> block</strong>, logging only <code>"inertia element ixx is not a valid double"</code>. If you see that line at startup, a link you think is modelled is not.</p>
+</div>
+
+<h2>Step 3 &mdash; Let <code>has_gripper</code> select it</h2>
+<p>Add the variant path next to the base one in <code>fic_library/config/robots_config.yaml</code>:</p>
+<pre><code>MyRobot:
+  urdf_path: menagerie/model/MyRobot/URDF/MyRobot.urdf
+  urdf_path_gripper: menagerie/model/MyRobot/URDF/MyRobot_gripper.urdf
+  has_gripper: true</code></pre>
+<p><code>RobotConfigLoader</code> swaps them once, at load:</p>
+<pre><code>if (config.has_gripper &amp;&amp; !config.urdf_path_gripper.empty()) {
+    config.urdf_path = config.urdf_path_gripper;
+}</code></pre>
+<p>Because the swap happens at load rather than at each use, <strong>every</strong> consumer of <code>urdf_path</code> sees the arm as it physically is &mdash; gravity, IK, Jacobians and the workspace guard alike. Robots with no <code>urdf_path_gripper</code> are unaffected, so the field is safe to leave out.</p>
+<p>Take the gripper off, set <code>has_gripper: false</code>, and the model reverts to the bare arm with no other edit.</p>
+
+<h2>Step 4 &mdash; Verify against an independent model</h2>
+<p>Do not trust the frame transform by eye. Score the new URDF against the MuJoCo model, which describes the same robot independently:</p>
+<pre><code>python3 - &lt;&lt;'EOF'
+import sys, numpy as np
+sys.path.insert(0, 'fic_ws/src/fic_contact')
+from fic_contact.residual import ArmModel, link_inertials_from_mjcf
+
+BASE, GRIP = '&lt;base&gt;.urdf', '&lt;base&gt;_gripper.urdf'
+MJCF, JOINTS = 'scene.xml', ['Actuator1', 'Actuator2']
+truth = ArmModel(BASE, JOINTS, link_inertials=link_inertials_from_mjcf(MJCF, JOINTS))
+rng = np.random.default_rng(0)
+for name, path in (('base', BASE), ('gripper', GRIP)):
+    m = ArmModel(path, JOINTS)
+    worst = max(float(np.max(np.abs(m.gravity(q) - truth.gravity(q))))
+                for q in rng.uniform(-2.5, 2.5, (200, len(JOINTS))))
+    print('%-8s worst error vs MJCF: %.3f Nm' % (name, worst))
+EOF</code></pre>
+<p>On the Kinova this reported <strong>12.983&nbsp;Nm &rarr; 1.194&nbsp;Nm</strong>, removing 91% of the error. The residual is the <em>arm</em> links' own inertials, which a tool payload cannot fix; if you need that last part, rebuild every link from the MJCF with <code>link_inertials_from_mjcf</code> as <code>fic_contact</code> does.</p>
+
+<h2>What changes when you restart</h2>
+<table>
+  <tr><th>Area</th><th>Effect</th></tr>
+  <tr><td>Impedance modes (1, 2, 5, 6)</td><td>The arm holds its pose instead of sagging, and feels lighter. Gravity is added directly to the output torque.</td></tr>
+  <tr><td>Joint admittance (3, 4)</td><td>Joints stop drifting once their bias falls below <code>joint_tau</code>. Re-tune damping <em>after</em> this, not before &mdash; damping raised to mask the bias will now feel far too heavy.</td></tr>
+  <tr><td>Contact estimation</td><td><code>fic_contact</code> already corrects this independently via <code>link_inertials_from_mjcf</code>, so it is unaffected.</td></tr>
+</table>
+<p>A rebuilt <code>fic_hardware</code> is required (the loader is a header), and the controller reads the URDF when the robot model is loaded, so restart the hardware stack.</p>
+
+<div class="doc-footer">Loader: <code>fic_library/include/fic/robot_config_loader.hpp</code> &middot; Gravity: <code>fic_ws/src/fic_hardware/src/fic_hardware.cpp</code> &middot; Payload extraction: <code>fic_ws/src/fic_contact/fic_contact/residual.py</code></div>

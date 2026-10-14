@@ -1,0 +1,203 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">›</span> Troubleshooting</div>
+<h1>Troubleshooting</h1>
+<p class="subtitle">Common issues and their fixes. If you're brand new, pair this page with the <a href="#first-motion" onclick="showPage('first-motion')">First Motion Checklist</a>.</p>
+
+<h2>"My robot doesn't move" — decision tree</h2>
+<p>Work down this list in order. Each step tells you how to prove or disprove one possible cause before moving on.</p>
+
+<ol>
+  <li>
+    <strong>Is the GUI actually publishing a command?</strong><br>
+    Open <strong>Topic Monitor</strong> (Windows → Topic Monitor) and subscribe to <code>robot{N}_desired_joint_angles</code>. Drag a joint slider.
+    <ul>
+      <li>Values update as you drag → GUI layer is fine. Go to step 2.</li>
+      <li>Nothing updates → <em>station_id</em> mismatch between the GUI and your FIC node (GUI publishes <code>robot1_*</code>, node subscribes to <code>robot2_*</code>). Check Settings → General → Station ID.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Is the control-mode message the right flavour?</strong><br>
+    Simulation uses <code>robot{N}_control_mode</code> (<code>Int32</code>, 1–8). Hardware uses <code>{rid}_mode_select</code> (<code>String</code>, "Joint Impedance" etc.). The GUI publishes <em>both</em> so this normally just works — but if you're sending mode changes from a custom script, subscribe to the right one for your target. See <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Simulation vs. Hardware</a>.
+  </li>
+  <li>
+    <strong>Is the FIC node subscribing at all?</strong><br>
+    Run <code>ros2 topic info robot1_desired_joint_angles --verbose</code>. You should see at least one subscriber.
+    <ul>
+      <li>Zero subscribers → FIC node never started, crashed silently, or started with a different <em>station_id</em>. Check the terminal where FIC was launched; restart with matching station ID.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>(Simulation only) Is MuJoCo running?</strong><br>
+    The FIC simulation node needs MuJoCo's feedback topics before it can publish torques. If the SIM LED is red or the viewer never appeared, start SIM first, then FIC.
+  </li>
+  <li>
+    <strong>(Hardware only) Is the vendor driver running?</strong><br>
+    <code>ros2 topic list | grep -i joint_state</code> on the hardware machine should show the driver's state topic. Also check the shared-memory heartbeat: with the driver up, <code>ls -la /dev/shm/ | grep robot</code> should list <code>robot_feedback_memory</code> and <code>desired_joint_angles_memory</code>.
+    <ul>
+      <li>No shared-memory entries → the driver crashed. Start API alone (no FIC) and confirm it stays up.</li>
+      <li>Entries present, heartbeat stale → old shared-memory segment from a previous session. Stop everything, remove with <code>rm /dev/shm/robot_feedback_memory /dev/shm/desired_joint_angles_memory</code>, restart.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Is the FIC control loop publishing torques?</strong><br>
+    Subscribe to <code>/fic_torque_commands</code> (simulation) or watch the driver-side log (hardware). If torques are exactly zero, the current control mode is probably 0 (passive) or K₀ is zero. The C++ controller initialises to <strong>Mode 1 (Joint Impedance)</strong>, but stays effectively passive until a mode message lands and a non-zero stiffness is set — re-select and send Mode 1 in the Control Panel to re-engage.
+  </li>
+  <li>
+    <strong>Are torques being saturated to zero by a safety limit?</strong><br>
+    Robot Config → Safety. A Cartesian-zone violation or out-of-range joint target clamps the output. The log viewer (<kbd>Ctrl+L</kbd>) logs "Safety limit hit" when this happens.
+  </li>
+  <li>
+    <strong>Is the target just… where the robot already is?</strong><br>
+    FIC holds pose when <code>target == current</code>. If nothing moves <em>and</em> the log shows zero tracking error, command a 5° joint offset to confirm the full pipeline works before assuming anything is broken.
+  </li>
+</ol>
+
+<div class="admonition tip"><div class="adm-title">Bisect with <code>ros2 topic echo</code></div>
+<p>The fastest way to find which layer is wrong is to <em>watch</em> the data at each hop: GUI → <code>desired_joint_angles</code>, FIC node → <code>fic_torque_commands</code>, driver → joint state. Wherever the values stop updating is the broken layer.</p></div>
+
+<h2>IK solver didn't converge (Modes 5–8)</h2>
+<ul>
+  <li>Cartesian target is outside the robot's reach → shrink the commanded offset.</li>
+  <li>Target too close to a kinematic singularity (fully-extended arm, wrist flip) → add a small rotation to break the singularity.</li>
+  <li>Tolerance too tight → relax <code>ik_tolerance</code> in the robot config.</li>
+  <li>Symptom: <code>"IK: no solution"</code> in the log, the Cartesian target turns red in the Control Panel, and no new <code>desired_joint_angles</code> is published until the target becomes feasible again.</li>
+</ul>
+
+<h2>Shared memory: "permission denied"</h2>
+<ul>
+  <li>The first process that creates <code>/dev/shm/robot_feedback_memory</code> sets its permissions. If an earlier run was launched as root, subsequent user-mode runs can't write to it.</li>
+  <li>Fix: <code>sudo rm /dev/shm/robot_feedback_memory /dev/shm/desired_joint_angles_memory</code>, then restart the driver + FIC as your normal user.</li>
+</ul>
+
+<h2>Startup &amp; Installation</h2>
+<table>
+  <tr><th>Problem</th><th>Fix</th></tr>
+  <tr><td>App not in launcher</td><td><code>update-desktop-database ~/.local/share/applications</code> &mdash; or log out and back in</td></tr>
+  <tr><td>Dev Console not in launcher</td><td>Re-run installer and choose "FIC Dev Console" or "Both"</td></tr>
+  <tr><td>Build fails during install</td><td>Check <code>/tmp/fic-install.log</code>. The installer shows errors in a scrollable dialog.</td></tr>
+  <tr><td>Build fails on launch</td><td>Run manually: <code>cd ~/FIC_Interface/fic_ws && colcon build --symlink-install</code></td></tr>
+  <tr><td><code>empy</code> error during build</td><td><code>pip install empy==3.3.4</code> (version 4.x breaks colcon)</td></tr>
+  <tr><td>ImportError after editing mixin</td><td>Check syntax: <code>python3 -m py_compile path/to/mixin.py</code> then rebuild</td></tr>
+  <tr><td>Dependency install failed</td><td>Check <code>/tmp/fic-install.log</code>. Try manual install: <code>sudo apt install &lt;pkg&gt;</code></td></tr>
+</table>
+
+<h2>Simulation</h2>
+<table>
+  <tr><th>Problem</th><th>Fix</th></tr>
+  <tr><td>Robot not moving in simulation</td><td>Both SIM + FIC LEDs must be green. Verify correct robot is selected. Check MuJoCo window for errors.</td></tr>
+  <tr><td>MuJoCo window doesn't appear</td><td>Check for OpenGL errors: <code>glxinfo | grep "direct rendering"</code>. Install <code>libglfw3 libglew-dev</code>.</td></tr>
+  <tr><td>FIC node crashes on start</td><td>Start SIM <strong>before</strong> FIC. The FIC node needs MuJoCo's topics to be available.</td></tr>
+  <tr><td>Jacobian size mismatch crash</td><td>Stop FIC/CTRL &rarr; change robot &rarr; restart. Never change robot while controller is running.</td></tr>
+  <tr><td>Arm holds a rock-steady pose and ignores every target</td><td>A latched hard fault. A joint that left its <code>joint_limits_deg</code> range sets <code>hard_fault_</code> and the controller outputs gravity compensation only &mdash; which looks exactly like a healthy arm that refuses to move. It is cleared <em>only</em> by <code>loadRobotModel()</code>, i.e. by republishing the robot name on <code>robot{N}_selected_robot</code>. Look for <code>HARD FAULT</code> in the FIC log.</td></tr>
+  <tr><td>Several simulators fighting over one topic</td><td>Killing the <code>ros2 launch</code> parent can leave the simulator process (<code>install/mujoco_native/lib/mujoco_native/simulation</code>) or the controller running, and one accumulates per restart. Kill on <code>lib/mujoco_native/simulation</code> and <code>install/fic_simulation/lib</code>, SIGKILL, then <strong>verify exactly one of each</strong> before trusting anything you measure.</td></tr>
+  <tr><td>Freshly started station falls over before you can use it</td><td>The arm starts at the model keyframe with nothing holding it and falls during the ~10&nbsp;s the controller spends initialising; on the Kinova joint&nbsp;3 reaches its &minus;150&deg; limit and hard-faults on the way down. Park it with the <code>robot{N}_simulation/sim_reset</code> service <em>while</em> you wait, and command the pose <strong>before</strong> teleporting onto it, so the controller is never closing a large error against an arm that was just moved.</td></tr>
+  <tr><td>The FIC loop rate drops while a target streams (the arm slows, lags or stops following)</td><td>Before v4.4.0, in every mode except Joint Impedance (mode&nbsp;1) each streamed joint target, and every <code>robot{N}_hapfic_enable</code> message even with an unchanged value, made the next 1&nbsp;ms tick re-read <code>config.xml</code> (about 29&nbsp;ms per read on the lab PC, more on slower PCs). In MuJoCo with targets at 100&nbsp;Hz the loop fell from 1000&nbsp;Hz to 74&nbsp;Hz (mode&nbsp;2) and 65&nbsp;Hz (mode&nbsp;3); <code>hapfic_enable</code> re-sent at 20&nbsp;Hz brought it to 405&nbsp;Hz. This is what stopped the arms after 5&nbsp;Oct. <strong>Fixed in v4.4.0</strong>: the nodes read the tuning once per robot and mode, in the background, and a target only re-seeds the controllers from memory (see <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a>). Rebuild <code>fic_simulation</code> and <code>fic_hardware</code>. <code>fic_simulation</code> logs the rate it reaches every 10&nbsp;s (<code>Control loop: &hellip; Hz</code>); it should read about 1000&nbsp;Hz.</td></tr>
+  <tr><td>Commands you publish have no effect at all</td><td>You published before the controller subscribed. Discovery here takes up to about 12&nbsp;s, and publishing into an undiscovered topic succeeds silently and delivers nothing. Wait on <code>get_subscription_count()</code> before sending anything that matters.</td></tr>
+</table>
+
+<h3>Recording from another PC</h3>
+<p>Two traps that do not look like faults &mdash; they look like bad control.</p>
+<table>
+  <tr><th>Problem</th><th>Fix</th></tr>
+  <tr><td>A topic reads a steady, plausible nothing</td><td>QoS mismatch. <code>gravity_torques</code>, <code>actuator_torques</code>, <code>force_torque</code> and <code>joint_states</code> are published <strong>best-effort</strong>; a default (reliable) subscription matches none of them and simply receives nothing. ROS warns once on the console &mdash; read it. Subscribe with <code>qos_profile_sensor_data</code>.</td></tr>
+  <tr><td>The arm looks like it is diverging</td><td>Check your own sample rate before believing it. Draining callbacks once per loop iteration against a ~1&nbsp;kHz publisher drops most messages and leaves the value you read stale, so the arm appears to freeze and then jump. Spin on a dedicated thread, and refuse to record below a feedback rate you have chosen in advance.</td></tr>
+  <tr><td><code>force_torque</code> suggests contact that never happened</td><td>It is the arm's own wrench estimate and <strong>includes gravity</strong> &mdash; measured at 46.7&nbsp;N with a Kinova standing still and untouched, swinging 10&ndash;47&nbsp;N in free motion. It is not a contact sensor. To detect contact, run the same commanded motion with and without the obstacle and compare; that cancels gravity and the arm's own dynamics because both runs follow the same trajectory.</td></tr>
+</table>
+
+<div class="admonition warning"><div class="adm-title">Is the published gravity actually gravity?</div>
+<p>Pick a joint whose axis is vertical (on the Kinova Gen3, joint&nbsp;0). Gravity exerts no moment about a
+vertical axis in any pose, so that entry in <code>gravity_torques</code> must be ~0&nbsp;Nm whatever the arm
+is doing. If it is not, the vector is not gravity &mdash; and <code>fic_simulation</code> adds it raw to the
+control law's output in every joint mode, so a wrong one is injected feedforward on every joint, every cycle.
+See <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Simulation vs. Hardware</a>.</p></div>
+
+<div class="admonition note"><div class="adm-title">Known issue: one simulated joint does not move</div>
+<p>On the Kinova in simulation, joint&nbsp;0 receives its target correctly, computes the right error and the
+control law asks for up to 20&nbsp;Nm, yet the arm does not move; every other joint tracks to about a degree.
+Not explained by continuity detection (the controller logs it correctly as CONTINUOUS), the gains, the model
+or gravity. Under investigation &mdash; if you are driving joint&nbsp;0 in simulation and seeing nothing, this
+is why.</p></div>
+
+<h2>Hardware</h2>
+<table>
+  <tr><th>Problem</th><th>Fix</th></tr>
+  <tr><td>Robot not responding</td><td>Check: (1) driver connected (API LED green), (2) can ping robot IP, (3) torque control enabled on robot, (4) start API before FIC.</td></tr>
+  <tr><td>Driver won't connect</td><td>Check network cable, robot IP, firewall. Try manual launch: <code>~/FIC_Interface/robot_library/franka/build/franka_joint_controller 192.168.1.100</code></td></tr>
+  <tr><td>Kinova faults when stopping FIC or API</td><td>Fixed in v3.8.1. If you see this on an older build, rebuild both <code>fic_hardware</code> and the Kinova driver against the latest <code>shared_params.h</code>. The driver now catches SIGTERM and transitions back to position mode before exiting. <code>fic_hardware</code> ramps torques down to gravity compensation over ~200&nbsp;ms instead of zeroing instantly.</td></tr>
+  <tr><td>Kinova faults during normal operation</td><td>Check torque tuning &mdash; the per-joint rate limit is &plusmn;2&nbsp;Nm/ms (joints 0&ndash;3) and &plusmn;1&nbsp;Nm/ms (joints 4&ndash;6). If the controller output changes faster than this, the rate limiter clamps it. Lower K0 stiffness or increase planner damping_ratio to reduce torque transients.</td></tr>
+  <tr><td>Jerky motion on hardware</td><td>Lower K0 stiffness, increase planner damping_ratio, check network latency between machines.</td></tr>
+  <tr><td>Robot goes limp after E-STOP</td><td>Expected behaviour. Restart API + FIC to re-enable control. The hold command only lasts while the controller runs.</td></tr>
+  <tr><td>Shared memory version mismatch after update</td><td>Auto-handled &mdash; <code>open_or_create()</code> detects the size change and recreates the segment. If you see persistent errors, manually remove: <code>rm /dev/shm/robot_feedback_memory /dev/shm/desired_joint_angles_memory</code> and restart.</td></tr>
+</table>
+
+<h2>Tuning &amp; Auto-Tuning</h2>
+<table>
+  <tr><th>Problem</th><th>Fix</th></tr>
+  <tr><td>Parameters don't take effect</td><td>Click SAVE after editing; the save publishes <code>robot{N}_param_update</code> and the FIC node logs <code>Parameter update (&hellip;); reloading tuning from config.xml</code>, then <code>Controllers Initialized &hellip; (tuning read from config.xml)</code> when it has switched. After editing the file by hand, publish <code>robot{N}_param_update</code> (any string) or restart the FIC node. Without <code>--symlink-install</code>, rebuild <code>fic_simulation</code> first.</td></tr>
+  <tr><td>Auto-tuning stuck / no improvement</td><td>Increase <code>max_iterations</code> (default 12) or the <code>PSO particles</code> count. The optimiser is Neural&nbsp;Network&nbsp;+&nbsp;CEM (the legacy PSO / Bayesian / Hybrid names all map to it). Check that the test trajectory is appropriate for the mode being tuned.</td></tr>
+  <tr><td>Oscillation during tuning</td><td>Lower initial K0. Enable save_during_tuning so improvements aren't lost on crash.</td></tr>
+  <tr><td>New robot missing from dropdown</td><td>Add it in Robot Config (<strong>+ ADD</strong>), click <strong>DEPLOY TO CONTROLLER</strong>, rebuild (<code>colcon build --symlink-install</code>), source, restart.</td></tr>
+</table>
+
+<h2>Teleoperation</h2>
+<table>
+  <tr><th>Problem</th><th>Fix</th></tr>
+  <tr><td>No partner found (timeout)</td><td>Check both machines have same <code>ROS_DOMAIN_ID</code>. Try <code>ros2 topic list</code> on both machines to verify discovery.</td></tr>
+  <tr><td>Session Busy</td><td>Another pair is already active. Wait for them to finish or ask them to disconnect.</td></tr>
+  <tr><td>Heartbeat lost</td><td>Network interruption. Robot holds position safely. Restart the session.</td></tr>
+  <tr><td>Slave not moving</td><td>FIC controller must be running on slave machine before starting teleop.</td></tr>
+  <tr><td>High latency warning</td><td>Filter auto-tightens. Check WiFi/VPN quality. Use Ethernet for best results.</td></tr>
+</table>
+
+<h2>Scripts &amp; Sequences</h2>
+<table>
+  <tr><th>Problem</th><th>Fix</th></tr>
+  <tr><td>Script can't find Robot API</td><td>Functions are injected automatically. Don't <code>import</code> them. Check the Target dropdown (Simulation/Hardware).</td></tr>
+  <tr><td>Joint sequence waypoint timeout</td><td>Increase <code>timeout_seconds</code> in Settings, or increase <code>joint_tolerance_deg</code> (default 3&deg;).</td></tr>
+  <tr><td>Cartesian sequence waits for the timeout before advancing</td><td>The Cartesian planner often steady-states 5&ndash;10&nbsp;mm off in gravity-loaded poses. Default <em>Pos&nbsp;Tol</em> is 15&nbsp;mm and there is also a settle-pass fallback (<code>position_error &le; 3&times; tolerance</code> stable for 1.0&nbsp;s). If it still times out, the EE never got within 45&nbsp;mm &mdash; check the trajectory plot for an unreachable target / wrong frame / singularity rather than tolerance.</td></tr>
+  <tr><td>Cartesian sequence advances too aggressively (settles far from target)</td><td>If the settle-pass log line fires consistently more than the strict-pass line, the planner can't reach within tolerance. Either tighten the Cartesian-mode tuning (Tuning panel, Mode&nbsp;6 stiffness) or accept the wider tolerance and lower the <em>Pos&nbsp;Tol</em> spinbox to a value the planner reliably hits.</td></tr>
+  <tr><td>TEACH MODE button puts the robot in the wrong space</td><td>Set the <em>Capture Mode</em> dropdown above the position fields first &mdash; the TEACH / PLAYBACK buttons read it. Joint / Gripper &rarr; joint admittance / planner; Cartesian &rarr; Cartesian admittance / planner.</td></tr>
+  <tr><td>Sequence doesn't loop</td><td>Check the Loop checkbox is enabled.</td></tr>
+  <tr><td><code>pip</code> error on Install API</td><td>The button uses <code>python3 -m pip</code>. If it fails with PEP 668, the <code>--break-system-packages</code> flag is already added.</td></tr>
+</table>
+
+<h2>Teach Mode</h2>
+<table>
+  <tr><th>Problem</th><th>Fix</th></tr>
+  <tr><td>Click Start Teaching but the robot is still stiff</td><td>The teach panel publishes <code>"Joint Admittance"</code> or <code>"Cartesian Admittance"</code> on <code>{rid}_mode_select</code> &mdash; the FIC controller has to be running for the publish to land. Confirm with <code>ros2 topic echo {rid}_mode_select</code>; if the message goes out but mode never changes, the FIC node isn't subscribed (matching <em>station_id</em>).</td></tr>
+  <tr><td>Teach started in the wrong control space</td><td>Pick the <em>Mode</em> selector in the teach panel's title row before clicking Start Teaching. The selector locks while a session is live; click Stop Teaching first if you need to switch.</td></tr>
+  <tr><td>Cartesian Go-To moves the wrong direction</td><td>The teach panel saves the EE pose in the base frame (matching <code>{rid}_ee_current_pose</code>). If pushing the EE during teaching produced a recorded pose that's offset from where you actually were, check that the <code>ee_link</code> frame in the URDF matches what libfranka / the simulator publishes.</td></tr>
+  <tr><td>Gripper buttons don't actuate the real gripper</td><td>The libfranka bridge runs the gripper on a separate thread at ~20&nbsp;Hz and ignores width changes &lt; 2&nbsp;mm. Confirm <code>{rid}_gripper_width</code> is reaching the bridge (<code>ros2 topic echo</code>); if the bridge isn't running, the publishes go to the void silently.</td></tr>
+</table>
+
+<h2>Manual Process Debugging</h2>
+<p>If GUI processes fail to start, try launching them manually in separate terminals:</p>
+<pre><code># Terminal 1: Source workspace
+source /opt/ros/jazzy/setup.bash
+source ~/FIC_Interface/fic_ws/install/setup.bash
+
+# Terminal 2: MuJoCo simulation
+ros2 launch mujoco_native simulation_launch.py robot_name:=Franka_FR3
+
+# Terminal 3: FIC controller (simulation)
+ros2 launch fic_simulation fic_launch.py robot_name:=Franka_FR3 num_joints:=7
+
+# Terminal 4: FIC controller (hardware)
+ros2 launch fic_hardware robot_control_launch.py robot_name:=Franka_FR3
+
+# Terminal 5: Plotter
+ros2 run fic_simulation plotter_node.py
+
+# Terminal 6: Bag recording
+ros2 bag record -a -o ~/bags/debug_session
+
+# Terminal 7: GUI
+ros2 run fic_studio fic_studio_pro    # or fic_dev for Dev Console</code></pre>
+
+<h2>Log Files</h2>
+<table>
+  <tr><th>Log</th><th>Location</th><th>Contents</th></tr>
+  <tr><td>Installer log</td><td><code>/tmp/fic-install.log</code></td><td>Build output and dependency installation results</td></tr>
+  <tr><td>colcon log</td><td><code>~/FIC_Interface/fic_ws/log/</code></td><td>Per-package build logs</td></tr>
+  <tr><td>GUI log</td><td>In-app Log Viewer</td><td>Runtime messages (toggle with <kbd>Ctrl+L</kbd>)</td></tr>
+  <tr><td>ROS 2 log</td><td><code>~/.ros/log/</code></td><td>ROS 2 node logs</td></tr>
+</table>

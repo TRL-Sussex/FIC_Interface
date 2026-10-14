@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- FIC Studio launcher icon: bold enough to read at taskbar size. -->
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="#E8A33D"/>
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="none" stroke="#F6D9A8" stroke-width="2"/>
+  <text x="32" y="41" text-anchor="middle" font-family="DejaVu Sans, Ubuntu, sans-serif"
+        font-weight="bold" font-size="22" fill="#1E1B18">FIC</text>
+</svg>

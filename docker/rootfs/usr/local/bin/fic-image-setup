@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+#
+# Final configuration of the image. Run once by the Dockerfile, as root,
+# after the workspace is built and docker/rootfs has been copied in.
+
+set -euo pipefail
+
+ROOT="${FIC_ROOT:-/opt/fic}"
+FIC_HOME=/home/fic
+
+# ── Window manager: one desktop, and the Studio opens maximised ───────────
+python3 - <<'PY'
+import re
+path = "/etc/xdg/openbox/rc.xml"
+rc = open(path).read()
+rc = re.sub(r"(<desktops>.*?<number>)\d+(</number>)", r"\g<1>1\g<2>", rc, count=1, flags=re.S)
+rules = """<applications>
+  <application title="FIC Control Studio*" type="normal">
+    <maximized>yes</maximized>
+  </application>
+  <application title="FIC Dev Console*" type="normal">
+    <maximized>yes</maximized>
+  </application>
+"""
+if "FIC Control Studio*" not in rc:
+    rc = rc.replace("<applications>", rules, 1)
+open(path, "w").write(rc)
+PY
+
+# ── Frame pacing for OpenGL windows (see fic_gl_pace.c) ────────────────────
+# Wrappers named like the real libGL.so.1 / libGLX.so.0, found first through
+# LD_LIBRARY_PATH, each depending on the real library by absolute path.
+triplet="$(gcc -dumpmachine)"
+install -d /usr/local/lib/fic/gl
+for lib in libGL.so.1 libGLX.so.0; do
+    real="/usr/lib/${triplet}/${lib}"
+    gcc -O2 -Wall -shared -fPIC -Wl,-soname,"${lib}" -DFIC_REAL_LIB="\"${real}\"" \
+        -o "/usr/local/lib/fic/gl/${lib}" /usr/local/src/fic/fic_gl_pace.c \
+        -Wl,--no-as-needed "${real}" -ldl
+    patchelf --replace-needed "${lib}" "${real}" "/usr/local/lib/fic/gl/${lib}"
+    readelf -d "/usr/local/lib/fic/gl/${lib}" | grep -q "Shared library: \[${real}\]"
+done
+
+# ── Shells: ROS 2 and the workspace in every interactive shell ────────────
+# (Login shells get it from /etc/profile.d/fic.sh.)
+cat >> /etc/bash.bashrc <<'EOF'
+
+# FIC Studio: ROS 2 and the FIC workspace.
+[ -f /etc/fic/env.sh ] && source /etc/fic/env.sh
+EOF
+
+# ── The workspace as the image ships it, for fic-state to compare against ─
+install -d /etc/fic/pristine/files
+for rel in \
+        fic_ws/src/fic_studio/fic_studio/fic_studio_robots.yaml \
+        fic_library/config/robots_config.yaml \
+        fic_library/config/config.xml; do
+    install -D -m 0664 "${ROOT}/${rel}" "/etc/fic/pristine/files/${rel}"
+done
+find "${ROOT}/fic_ws/src/menagerie/model" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
+    | sort > /etc/fic/pristine/models.txt
+find "${ROOT}/Extensions" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
+    | sort > /etc/fic/pristine/extensions.txt
+
+# ── Output folders live in the user's shared folder ────────────────────────
+# Recordings, datasets and plots end up in ~/FIC_Studio, which is on the host
+# when the container is started by fic-studio.sh / fic-studio.ps1 / compose.
+link_out() {  # link_out <path in the workspace> <folder in ~/FIC_Studio>
+    # Skip the folders of extensions this tree does not carry.
+    [ -d "$(dirname "${ROOT}/$1")" ] || return 0
+    ln -sfn "${FIC_HOME}/FIC_Studio/$2" "${ROOT}/$1"
+    chown -h fic:fic "${ROOT}/$1"
+}
+link_out experiments experiments
+link_out Extensions/excitation_dataset/runs excitation_runs
+link_out Extensions/lemniscate/plots lemniscate_plots
+
+# ── Permissions ────────────────────────────────────────────────────────────
+# The workspace was copied and built group-writable (group `fic`), apart from
+# the folders COPY created as destinations and a few files installed with
+# fixed modes (MuJoCo plugins, pip metadata). Fix only those: a recursive
+# chmod of everything would duplicate the whole workspace in a new layer.
+fix="$(find "${ROOT}" -xdev \( -type f -o -type d \) ! -perm -g=w -print | wc -l)"
+find "${ROOT}" -xdev \( -type f -o -type d \) ! -perm -g=w -exec chmod g+w {} +
+echo "fic-image-setup: made ${fix} file(s)/folder(s) in ${ROOT} group-writable"
+
+# ── Cleanup ────────────────────────────────────────────────────────────────
+rm -rf /tmp/* /root/.cache

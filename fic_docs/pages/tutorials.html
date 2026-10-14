@@ -1,0 +1,136 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">›</span> Tutorials</div>
+<h1>Tutorials</h1>
+<p class="subtitle">Step-by-step guides to get you started.</p>
+
+<hr>
+
+<h2>1. First Simulation (5 minutes)</h2>
+<p>Get a simulated robot moving in under 5 minutes.</p>
+<ol>
+  <li>Launch <strong>FIC Control Studio</strong> (Super &rarr; search "FIC Control Studio").</li>
+  <li>Select <strong>Franka_FR3</strong> from the Robot dropdown in the toolbar.</li>
+  <li>In the toolbar set <strong>Target</strong> to <em>Simulation</em>, then click <strong>&#9654; Start</strong>. A MuJoCo 3D viewer opens with the robot in its home pose and the FIC controller auto-starts about 2&nbsp;s later. The <strong>SIM</strong> and <strong>FIC</strong> status LEDs in the bottom bar turn green. (Equivalent: <em>Simulation → Launch Sim + FIC</em>, <kbd>F7</kbd>.)</li>
+  <li>Open <strong>&#9650; Joint</strong> on the control bar (Simulation target). Drag the joint fields to see the robot respond.</li>
+  <li>Try different <strong>control modes</strong>: switch to mode 5 (Cartesian Impedance) and drag the Cartesian target.</li>
+  <li>Open the <strong>Tuning Panel</strong>. Drag the stiffness handle on the FIC canvas to see the response change in real time.</li>
+</ol>
+<div class="admonition tip"><div class="adm-title">Terminal equivalent</div>
+<pre><code>source ~/FIC_Interface/fic_ws/install/setup.bash
+ros2 launch mujoco_native simulation_launch.py robot_name:=Franka_FR3 &
+ros2 launch fic_simulation fic_launch.py robot_name:=Franka_FR3 num_joints:=7 &
+ros2 run fic_studio fic_studio_pro</code></pre></div>
+
+<hr>
+
+<h2>2. Recording a Sequence</h2>
+<p>Create a repeatable motion sequence.</p>
+<ol>
+  <li>Start a simulation (SIM + FIC, as above).</li>
+  <li>Open the <strong>Sequences</strong> panel.</li>
+  <li>Click <strong>+ NEW</strong> and name it (e.g. "demo_pick_place").</li>
+  <li>Pick a <strong>Capture Mode</strong> from the dropdown &mdash; <strong>Joint</strong>, <strong>Cartesian</strong>, or <strong>Gripper</strong> &mdash; for the waypoint you're about to add.</li>
+  <li>Set the values: for a Joint waypoint click <strong>READ FROM ROBOT</strong> to fill the fields from the current pose (or type angles); for a Gripper waypoint use <strong>OPEN</strong> / <strong>CLOSE</strong>.</li>
+  <li>Set <strong>Hold Time</strong> (default 1.0&nbsp;s), then click <strong>CAPTURE POSITION</strong> to append the waypoint to the table. Repeat for each step.</li>
+  <li>Tick <strong>Loop</strong> for continuous repetition, then click <strong>&#9654; PLAY</strong> &mdash; the robot moves through each waypoint in turn.</li>
+  <li>Click <strong>SAVE TO YAML</strong> to persist; sequences are stored in <code>~/robot_sequences.yaml</code> and reload with <strong>LOAD FROM YAML</strong>.</li>
+</ol>
+
+<hr>
+
+<h2>3. Teach Mode</h2>
+<p>Record waypoints by physically guiding the robot (simulation or hardware).</p>
+<ol>
+  <li>Start SIM + FIC (simulation) or API + FIC (hardware).</li>
+  <li>Open the <strong>Teach Mode</strong> panel.</li>
+  <li>Click <strong>Start Teaching</strong> &mdash; the robot switches to Joint Admittance (compliant mode).</li>
+  <li>In simulation, use the control bar's joint fields to "guide" the robot. On hardware, physically move it.</li>
+  <li>Click <strong>&#9210; Record Current Position</strong> at each pose you want to save, or enable <strong>Auto-record</strong> (captures a waypoint every 1&nbsp;s).</li>
+  <li>Click <strong>Stop Teaching</strong> when done.</li>
+  <li>Review the recorded waypoints in the table on the right; the per-row <strong>Go</strong> button drives the robot to that waypoint so you can verify it.</li>
+  <li>Click <strong>Save as Sequence</strong> to convert to a playable sequence.</li>
+</ol>
+
+<hr>
+
+<h2>4. Auto-Tuning Mode 2</h2>
+<p>Automatically optimise FIC parameters for smooth joint motion.</p>
+<ol>
+  <li>Start SIM + FIC with a robot (e.g. Franka_FR3).</li>
+  <li>Open the <strong>Auto-Tuning</strong> panel.</li>
+  <li>Tick <strong>Joint Planner (Mode 2)</strong> in the phase list.</li>
+  <li>Review settings: <code>min_score = 85</code>, <code>max_iterations = 12</code>, and the optimiser (<code>Neural Network + CEM</code> &mdash; the only algorithm; the legacy PSO / Bayesian / Hybrid labels all map to it). Adjust the <code>PSO particles</code> spinbox to widen or narrow the search.</li>
+  <li>Click <strong>START</strong>.</li>
+  <li>Watch the score improve over iterations. The auto-tuner sends test trajectories and measures the response.</li>
+  <li>When the score reaches the target (or convergence is detected), tuning stops automatically.</li>
+  <li>Click <strong>Save</strong> to write the optimised parameters to <code>config.xml</code>.</li>
+  <li>Open the <strong>Tuning Panel</strong> to verify the new parameters visually.</li>
+</ol>
+
+<hr>
+
+<h2>5. Adding a New Robot</h2>
+<p>Register a new robot model in the system.</p>
+<ol>
+  <li>Place the robot's URDF in <code>fic_ws/src/menagerie/model/&lt;robot_name&gt;/URDF/&lt;robot_name&gt;.urdf</code>.</li>
+  <li>Place the MuJoCo model in <code>fic_ws/src/menagerie/model/&lt;robot_name&gt;/xml/&lt;robot_name&gt;.xml</code>, with its <code>scene.xml</code> and <code>assets/</code> alongside.</li>
+  <li>Open the <strong>Robot Config</strong> page in FIC Control Studio (an inline card page since v3.9.3 — the old modal dialog is gone).</li>
+  <li>Click <strong>+ ADD</strong>, give the robot an ID, then fill in the display name, number of joints, frame names, and the URDF / MuJoCo XML paths (relative to <code>fic_ws/src/</code>). Click <strong>Save Robot</strong>.</li>
+  <li>Click <strong>DEPLOY TO CONTROLLER</strong> to write <code>robots_config.yaml</code> and patch <code>config.xml</code> (this button replaced the old <em>SYNC TO FIC CONFIG</em>).</li>
+  <li>Rebuild so the new model files are installed: open Settings &rarr; click <strong>&#10227; Rebuild Workspace</strong> (<kbd>Ctrl+B</kbd>), or run <code>colcon build --symlink-install</code> in a terminal.</li>
+  <li>Source the workspace: <code>source install/setup.bash</code>.</li>
+  <li>Restart the GUI. The new robot appears in the toolbar dropdown.</li>
+</ol>
+<p>See the <a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a> page and the
+<a href="fic_ws/src/menagerie/">menagerie README</a> for detailed model requirements.</p>
+
+<hr>
+
+<h2>6. Writing a Script</h2>
+<p>Automate robot actions with Python.</p>
+<ol>
+  <li>Open the <strong>Script Editor</strong> panel.</li>
+  <li>Set <strong>Target</strong> to "Simulation" (or "Hardware").</li>
+  <li>Click <strong>New</strong> and write your script:
+<pre><code>home()
+wait(2.0)                                   # home() is non-blocking; let it settle
+move_joints([0, 45, -90, 0, 90, 0, 0], wait=True)   # blocks until reached
+pos = get_ee_position()
+print(f"EE position: {pos}")
+home()</code></pre>
+  </li>
+  <li>Click <strong>Run</strong> (or <kbd>Ctrl+R</kbd>). Output appears in the console.</li>
+  <li>Click <strong>Save</strong> to store the script in <code>~/.fic_studio_scripts/</code>.</li>
+</ol>
+<p>See <a href="#api-reference" onclick="showPage('api-reference')">Script API Reference</a> for all available functions.</p>
+
+<hr>
+
+<h2>7. Setting Up Teleoperation</h2>
+<p>Control a remote robot from a master workstation.</p>
+<ol>
+  <li>On <strong>both</strong> machines, launch FIC Control Studio and start a robot session (Simulation or Hardware) so the FIC controller is running on each side. (Teleoperation is a Studio extension &mdash; the lightweight Dev Console does not host it.)</li>
+  <li>Ensure both machines share the <strong>same <code>ROS_DOMAIN_ID</code></strong> (Settings &rarr; Network) and are on the same DDS-reachable network.</li>
+  <li>Verify discovery: run <code>ros2 topic list</code> on both machines &mdash; each should see the other's topics.</li>
+  <li>Open the <strong>Teleoperation</strong> page on each machine and pick a <strong>Role</strong> from the dropdown &mdash; <strong>Master</strong> on one, <strong>Slave</strong> on the other. The roles must be opposite; two machines requesting the same role never pair.</li>
+  <li>Click <strong>START TELEOP</strong> on both. On pairing, each machine captures its current configuration as "home"; the master then streams its <em>delta from home</em> to the slave.</li>
+  <li>Move the master robot &mdash; the slave applies the scaled, mapped delta to its own home. Force sensed at the slave is reflected back and rendered on the master for bilateral feedback; tune the reflection with the <strong>force gain</strong> spinbox.</li>
+  <li>Click <strong>STOP TELEOP</strong> on either machine to end the session.</li>
+</ol>
+<p>See <a href="#teleoperation" onclick="showPage('teleoperation')">Teleoperation</a> and <a href="#dev-console" onclick="showPage('dev-console')">FIC Dev Console</a> for full details.</p>
+
+<hr>
+
+<h2>8. Using the Dev Console for Hardware</h2>
+<p>Direct robot control from a workstation next to the robot.</p>
+<ol>
+  <li>Launch <strong>FIC Dev Console</strong> on the robot PC.</li>
+  <li>Select the robot from the toolbar dropdown.</li>
+  <li>Click <strong>&#9654; API</strong> to start the vendor driver. Wait for the API LED to turn green.</li>
+  <li>Click <strong>&#9654; FIC</strong> to start the hardware controller.</li>
+  <li>Select a control mode (e.g. "1: Joint Impedance") and click <strong>Send</strong>.</li>
+  <li>Click <strong>RESET TO HOME</strong> to load the robot's home position into the fields.</li>
+  <li>Click <strong>SEND JOINTS</strong> to move the robot to the home position.</li>
+  <li>Adjust FIC parameters on the <strong>Tuning</strong> tab as needed.</li>
+  <li>Use <strong>&#9654; BAG</strong> to record data and <strong>&#9654; PLT</strong> to visualise it.</li>
+</ol>
+<p>See <a href="#dev-console" onclick="showPage('dev-console')">FIC Dev Console</a> for the full guide.</p>

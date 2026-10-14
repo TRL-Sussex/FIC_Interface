@@ -1,0 +1,166 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Installation (Docker)</div>
+<h1>Installation (Docker)</h1>
+<p class="subtitle">Run the whole FIC Control Studio on Windows, macOS or Linux with only Docker installed. The Studio's desktop opens in your web browser.</p>
+
+<div class="admonition tip"><div class="adm-title">What you get</div><p>The Studio and the Dev Console, the MuJoCo simulator, the FIC controller and the extensions that work in simulation, already built, in one image (<code>ghcr.io/trl-sussex/fic_interface</code>). It is <strong>simulation only</strong>: nothing in it talks to a real robot. For hardware, use the <a href="#installation" onclick="showPage('installation')">Linux install</a>. The full reference is <code>docker/README.md</code> in the repository.</p></div>
+
+<h2>How it works</h2>
+<ol>
+  <li><strong>A container starts</strong> from the image, downloaded the first time (about 1 GB).</li>
+  <li><strong>Inside it, a virtual desktop starts</strong> and FIC Control Studio opens on it.</li>
+  <li><strong>The desktop is shown in your browser</strong> at <code>http://localhost:6080</code>. MuJoCo windows, the plotter and these docs open there too.</li>
+  <li><strong>Nothing is lost when you stop it.</strong> Settings, tuning and robots you add are kept in the Docker volume <code>fic-studio-home</code>. Recordings and your own extensions go to the folder <code>FIC_Studio</code> in your home folder.</li>
+  <li><strong>It is password-protected.</strong> Every start gets a new random password, built into the link the launcher opens.</li>
+</ol>
+<p>The launcher (<code>docker/fic-studio.sh</code> on macOS/Linux, <code>docker/fic-studio.cmd</code> on Windows) does all of this. Give Docker <strong>4 or more CPUs and 8 GB of memory</strong> (Docker Desktop &rarr; Settings &rarr; Resources); the 3D view is drawn on the CPU, so more cores make it smoother.</p>
+
+<h2>Windows 10 / 11</h2>
+<ol>
+  <li>Install <a href="https://docs.docker.com/desktop/setup/install/windows-install/" target="_blank">Docker Desktop for Windows</a>. Keep <strong>Use WSL 2</strong> ticked, and restart if asked. If it reports that WSL 2 is missing, run <code>wsl --install</code> in PowerShell as Administrator and restart.</li>
+  <li>Start <strong>Docker Desktop</strong> and wait for <em>Engine running</em>. No Docker account is needed.</li>
+  <li>On a shared lab PC, your account must be in the <strong>docker-users</strong> group (an administrator runs <code>net localgroup docker-users &lt;your user&gt; /add</code>; then sign out and back in).</li>
+  <li>Get the repository (clone it, or download it as a ZIP and unzip it).</li>
+  <li>Double-click <strong><code>docker\fic-studio.cmd</code></strong>. It downloads FIC Studio the first time, waits for it and opens your browser. If SmartScreen appears, click <strong>More info &rarr; Run anyway</strong>.</li>
+</ol>
+<p>Your shared folder is <code>C:\Users\&lt;you&gt;\FIC_Studio</code>.</p>
+
+<h2>macOS (Apple Silicon or Intel)</h2>
+<ol>
+  <li>Install <a href="https://docs.docker.com/desktop/setup/install/mac-install/" target="_blank">Docker Desktop for Mac</a> for your chip, start it, and wait for <em>Engine running</em>. The image runs natively on Apple Silicon; Rosetta is not needed.</li>
+  <li>Clone the repository (outside <em>Desktop</em>, <em>Documents</em> and <em>Downloads</em>).</li>
+  <li>In Terminal:
+<pre><code>cd &lt;the repository&gt;/docker
+./fic-studio.sh</code></pre>
+  If it says permission denied, run <code>chmod +x fic-studio.sh</code> once.</li>
+</ol>
+
+<h2>Linux (Ubuntu)</h2>
+<ol>
+  <li>Install Docker (once), then <strong>log out and back in</strong>:
+<pre><code>curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER</code></pre></li>
+  <li>Start FIC Studio:
+<pre><code>cd &lt;the repository&gt;/docker
+./fic-studio.sh</code></pre></li>
+</ol>
+<p>On Linux, <code>./fic-studio.sh --native</code> opens the Studio and MuJoCo windows directly on your desktop instead of in the browser.</p>
+
+<h2>Check that it works</h2>
+<ol>
+  <li>The browser shows FIC Control Studio, with <strong>KinovaGen3_7DOF</strong> selected and Target <strong>Simulation</strong>.</li>
+  <li>Press <strong>&#9654; Start</strong>. A MuJoCo window opens with the arm.</li>
+  <li>The <a href="#dashboard" onclick="showPage('dashboard')">Dashboard</a> shows <em>simulator</em> and <em>fic controller</em> running, with live joint values.</li>
+</ol>
+<p>For a full check (about two minutes): <code>docker exec fic-studio fic-selftest</code>. Then continue with the <a href="#quickstart" onclick="showPage('quickstart')">Quick Start Guide</a>.</p>
+
+<h2>Commands</h2>
+<table>
+  <tr><th>macOS / Linux</th><th>Windows</th><th></th></tr>
+  <tr><td><code>./fic-studio.sh</code></td><td><code>fic-studio.cmd</code></td><td>Start and open the browser (or reopen the link)</td></tr>
+  <tr><td><code>./fic-studio.sh stop</code></td><td><code>fic-studio.cmd stop</code></td><td>Stop (settings are kept)</td></tr>
+  <tr><td><code>./fic-studio.sh restart</code></td><td><code>fic-studio.cmd restart</code></td><td>Stop and start again</td></tr>
+  <tr><td><code>./fic-studio.sh update</code></td><td><code>fic-studio.cmd update</code></td><td>Download the newest version and restart</td></tr>
+  <tr><td><code>./fic-studio.sh logs</code></td><td><code>fic-studio.cmd logs</code></td><td>Show what it is doing</td></tr>
+  <tr><td><code>./fic-studio.sh shell</code></td><td><code>fic-studio.cmd shell</code></td><td>A terminal inside it (ROS 2 is set up)</td></tr>
+  <tr><td><code>./fic-studio.sh status</code></td><td><code>fic-studio.cmd status</code></td><td>Running? Which version? What is saved?</td></tr>
+  <tr><td><code>./fic-studio.sh reset</code></td><td><code>fic-studio.cmd reset</code></td><td>Forget all settings and saved robots</td></tr>
+  <tr><td><code>./fic-studio.sh uninstall</code></td><td><code>fic-studio.cmd uninstall</code></td><td>Remove it from Docker</td></tr>
+</table>
+<p>Options: <code>--port 6081</code>, <code>--web-port 8089</code>, <code>--lan</code> (web remote on your network, with sign-in on: the launcher prints the <code>admin</code> password), <code>--folder DIR</code>, <code>--image REF</code>, <code>--dev</code> (Dev Console), <code>--no-browser</code>. On Windows: <code>-Port</code>, <code>-WebPort</code>, <code>-Lan</code>, <code>-Folder</code>, <code>-Image</code>, <code>-Dev</code>, <code>-NoBrowser</code>.</p>
+
+<h2>Your files</h2>
+<table>
+  <tr><th>In <code>FIC_Studio/</code></th><th>What goes there</th></tr>
+  <tr><td><code>experiments/</code></td><td>Bag recordings and <a href="#experiments" onclick="showPage('experiments')">Experiments</a> sessions</td></tr>
+  <tr><td><code>extensions/</code></td><td>Your own <a href="#extensions" onclick="showPage('extensions')">extensions</a> (each folder with a <code>manifest.json</code>)</td></tr>
+</table>
+<p>The <a href="#web-remote" onclick="showPage('web-remote')">web remote</a> is at <code>http://localhost:8088</code>.</p>
+
+<h2>Troubleshooting</h2>
+<table>
+  <tr><th>Symptom</th><th>Fix</th></tr>
+  <tr><td><code>docker</code> not found, or Docker not running</td><td>Start Docker Desktop, wait for <em>Engine running</em>, open a new terminal. On macOS, add <code>~/.docker/bin</code> to <code>PATH</code>.</td></tr>
+  <tr><td><code>permission denied</code> (Linux)</td><td><code>sudo usermod -aG docker $USER</code>, then log out and back in.</td></tr>
+  <tr><td>The page asks for a password</td><td>Open the link the launcher prints; run the launcher again to print it again.</td></tr>
+  <tr><td><code>port is already allocated</code></td><td><code>./fic-studio.sh restart --port 6081</code></td></tr>
+  <tr><td><code>unauthorized</code>, <code>denied</code> or <em>does not exist (yet)</em></td><td>The image is not public yet: see <strong>If the image is not public</strong> below.</td></tr>
+  <tr><td>Everything is slow</td><td>Give Docker more CPUs, and close MuJoCo windows you are not using.</td></tr>
+</table>
+
+<h2>Limits</h2>
+<ul>
+  <li><strong>Simulation only</strong>: no robot drivers.</li>
+  <li><strong>No Newton (GPU) backend</strong>: it needs an NVIDIA GPU with CUDA. The CPU MuJoCo simulator is included.</li>
+  <li>Gamepads work only on Linux hosts (add <code>--device /dev/input/js0</code> to <code>docker run</code>).</li>
+</ul>
+
+<h2 id="docker-not-public">If the image is not public</h2>
+<p>Until the package is public, <code>docker pull ghcr.io/trl-sussex/fic_interface:latest</code> says <code>unauthorized</code> or <code>denied</code>. Use one of these instead.</p>
+<h3>A. Download it while it is private</h3>
+<ol>
+  <li>On GitHub: your picture &rarr; <strong>Settings &rarr; Developer settings &rarr; Personal access tokens &rarr; Tokens (classic) &rarr; Generate new token (classic)</strong>. Tick only <strong><code>read:packages</code></strong> and copy the token.</li>
+  <li><code>docker login ghcr.io -u &lt;your GitHub username&gt;</code>, and paste the token as the password.</li>
+  <li>Start as usual: <code>./fic-studio.sh</code> (Windows: <code>fic-studio.cmd</code>). That is <code>ghcr.io/trl-sussex/fic_interface:latest</code>, built from the <code>main</code> branch. To pin a release, name it: <code>./fic-studio.sh --image ghcr.io/trl-sussex/fic_interface:v5.6.0</code> (Windows: <code>fic-studio.cmd -Image ghcr.io/trl-sussex/fic_interface:v5.6.0</code>).</li>
+</ol>
+<h3>B. Load a file someone gave you</h3>
+<pre><code>docker load -i fic-studio_local.tar.gz
+./fic-studio.sh --image fic-studio:local</code></pre>
+<h3>C. Build it yourself</h3>
+<p>Only if A and B do not work. Follow the steps below.</p>
+
+<h2 id="docker-build">Building the image yourself, step by step</h2>
+<p>This builds <code>fic-studio:local</code> from the source code and runs it. You need Docker, Git, about <strong>10 GB</strong> of free disk space and 15 to 30 minutes. Type each line, one at a time, and wait for it to finish.</p>
+
+<h3>On Windows 10 / 11 (PowerShell)</h3>
+<ol>
+  <li>Install Docker Desktop (as above) and <a href="https://git-scm.com/download/win" target="_blank">Git for Windows</a> with its default options (it includes <strong>Git Bash</strong>).</li>
+  <li>Docker Desktop &rarr; <strong>Settings &rarr; Resources</strong>: at least 4 CPUs and 8 GB. <strong>Apply &amp; restart</strong>.</li>
+  <li>Open <strong>PowerShell</strong> and check Docker:
+<pre><code>docker version</code></pre>
+  If it says <em>docker is not recognized</em>, Docker Desktop was installed for your user only. Fix it for this window:
+<pre><code>$env:Path = "$env:LOCALAPPDATA\Programs\DockerDesktop\resources\bin;$env:ProgramFiles\Docker\Docker\resources\bin;$env:Path"</code></pre></li>
+  <li>Go to where you want the code:
+<pre><code>cd $HOME</code></pre></li>
+  <li>Download the code with Linux line endings (scripts with Windows line endings fail inside the image with <code>python3\r: No such file or directory</code>):
+<pre><code>git clone -c core.autocrlf=false -c core.longpaths=true --branch main https://github.com/TRL-Sussex/FIC_Interface.git FIC_Docker_Build</code></pre>
+  <code>main</code> is the branch the image is built from. A warning about <code>Pendulum.urdf</code> colliding is harmless. Do not build from a clone made with default Git settings.</li>
+  <li>Go into it:
+<pre><code>cd FIC_Docker_Build</code></pre></li>
+  <li>Build the image and run the self-test:
+<pre><code>&amp; "$env:ProgramFiles\Git\bin\bash.exe" docker/build.sh --test</code></pre>
+  or, without Git Bash and without the self-test:
+<pre><code>docker buildx build --file docker/Dockerfile --tag fic-studio:local --load .</code></pre></li>
+  <li>Check that the image is there:
+<pre><code>docker image ls fic-studio</code></pre></li>
+  <li>Start it:
+<pre><code>.\docker\fic-studio.cmd -Image fic-studio:local</code></pre></li>
+  <li>Optional: make it the default (then open a new PowerShell window):
+<pre><code>setx FIC_IMAGE fic-studio:local</code></pre></li>
+  <li>After changing or pulling code:
+<pre><code>git pull
+&amp; "$env:ProgramFiles\Git\bin\bash.exe" docker/build.sh
+.\docker\fic-studio.cmd restart -Image fic-studio:local</code></pre></li>
+</ol>
+
+<h3>On macOS or Linux</h3>
+<ol>
+  <li>Install Docker (as above) and give it 4+ CPUs and 8+ GB.</li>
+  <li>Check Docker:
+<pre><code>docker version</code></pre></li>
+  <li>Download the code:
+<pre><code>cd ~
+git clone --branch main https://github.com/TRL-Sussex/FIC_Interface.git FIC_Docker_Build
+cd FIC_Docker_Build</code></pre></li>
+  <li>Build the image and run the self-test:
+<pre><code>./docker/build.sh --test</code></pre></li>
+  <li>Check that the image is there:
+<pre><code>docker image ls fic-studio</code></pre></li>
+  <li>Start it:
+<pre><code>./docker/fic-studio.sh --image fic-studio:local</code></pre></li>
+  <li>After changing or pulling code:
+<pre><code>git pull
+./docker/build.sh
+./docker/fic-studio.sh restart --image fic-studio:local</code></pre></li>
+</ol>
+
+<div class="admonition note"><div class="adm-title">Handing the image to someone else</div><p><code>docker/build.sh --save</code> writes <code>docker/dist/fic-studio_local.tar.gz</code>. They load it with <code>docker load -i fic-studio_local.tar.gz</code> and start it with <code>--image fic-studio:local</code>. An image built on an Intel/AMD PC runs on Intel/AMD computers; one built on Apple Silicon runs on ARM computers.</p></div>

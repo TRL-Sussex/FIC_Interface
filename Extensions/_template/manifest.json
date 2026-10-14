@@ -1,0 +1,14 @@
+{
+  "id": "my_extension",
+  "name": "My Extension",
+  "description": "A starting point: live robot readouts, a setting, an on/off switch, actions and a log, on a web page.",
+  "sidebar_icon": "",
+  "sidebar_section": "Extensions",
+  "web": {
+    "page": "page.js",
+    "poll_ms": 250,
+    "local_only": [
+      "reset_settings"
+    ]
+  }
+}

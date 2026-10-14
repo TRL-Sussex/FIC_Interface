@@ -1,0 +1,8 @@
+{
+  "autoconnect": true,
+  "resize": "remote",
+  "reconnect": true,
+  "reconnect_delay": 1000,
+  "quality": 8,
+  "compression": 2
+}

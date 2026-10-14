@@ -1,0 +1,348 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Gamepad Control</div>
+<h1>Gamepad Control</h1>
+<p class="subtitle">Xbox-compatible gamepad teleoperation following the Kinova paradigm &mdash; works in all 8 FIC control modes.</p>
+
+<h2>Overview</h2>
+<p>FIC Studio reads Xbox/compatible USB gamepads directly via the Linux joystick protocol
+(<code>/dev/input/jsN</code>) &mdash; no ROS joy node or external driver is needed. Plug in a controller,
+and the status bar shows a green <strong>GAMEPAD</strong> LED; once you start pressing buttons the label
+is replaced by the current control state. Devices are hot-plug scanned at 2&nbsp;Hz, so
+controllers can be connected and removed mid-session.</p>
+<p>The control scheme follows <strong>Kinova&rsquo;s standard gamepad interface</strong>:</p>
+<ul>
+  <li><strong>Back</strong> toggles between Joint and Cartesian control space</li>
+  <li><strong>Start</strong> cycles FIC sub-modes (Impedance &rarr; Planner &rarr; Admittance &rarr; Admittance Haptic)</li>
+  <li><strong>LB / RB</strong> selects which joint is active (joint mode only)</li>
+  <li><strong>Triggers</strong> provide proportional gripper control</li>
+  <li>Face, shoulder and stick-click buttons are user-remappable in <a href="#settings" onclick="showPage('settings')">Settings</a>; the triggers and D-pad are fixed</li>
+</ul>
+
+<figure>
+<svg viewBox="0 0 700 340" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="Gamepad Data Flow">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#gamepad-arrowhead); }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+  </style>
+  <defs>
+    <marker id="gamepad-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+  </defs>
+
+  <text x="350" y="16" class="label-title">Gamepad Data Flow</text>
+
+  <!-- Device -->
+  <rect x="20" y="45" width="150" height="55" class="box box-grey"/>
+  <text x="95" y="62" class="label-bold">USB Gamepad</text>
+  <text x="95" y="80" class="label-code">/dev/input/jsN</text>
+
+  <!-- Event reader -->
+  <rect x="230" y="40" width="190" height="65" class="box box-blue"/>
+  <text x="325" y="57" class="label-bold">Event reader</text>
+  <text x="325" y="73" class="label-sm">buttons, axes, D-pad edges</text>
+  <text x="325" y="87" class="label-sm">2 Hz hot-plug scan</text>
+  <line x1="170" y1="72" x2="230" y2="72" class="arrow"/>
+
+  <!-- Immediate actions -->
+  <rect x="480" y="30" width="200" height="90" class="box box-purple"/>
+  <text x="580" y="46" class="label-bold">Immediate actions</text>
+  <text x="580" y="62" class="label-sm">mode switch, home, E-STOP,</text>
+  <text x="580" y="76" class="label-sm">postural / elbow toggles,</text>
+  <text x="580" y="90" class="label-sm">speed level, robot cycling</text>
+  <text x="580" y="106" class="label-sm">published on button edge</text>
+  <line x1="420" y1="65" x2="480" y2="65" class="arrow"/>
+  <text x="450" y="52" class="label-sm">press</text>
+
+  <!-- Pad state -->
+  <rect x="230" y="140" width="190" height="60" class="box box-grey"/>
+  <text x="325" y="157" class="label-bold">Pad state</text>
+  <text x="325" y="173" class="label-sm">space &middot; sub-mode &middot; speed level</text>
+  <text x="325" y="187" class="label-sm">joint / pose targets &middot; gripper</text>
+  <line x1="325" y1="105" x2="325" y2="140" class="arrow"/>
+
+  <!-- 100 Hz tick -->
+  <rect x="230" y="235" width="190" height="65" class="box box-green"/>
+  <text x="325" y="252" class="label-bold">100 Hz publish tick</text>
+  <text x="325" y="268" class="label-sm">integrate stick velocities</text>
+  <text x="325" y="282" class="label-sm">into absolute targets</text>
+  <line x1="325" y1="200" x2="325" y2="235" class="arrow"/>
+
+  <!-- Liveness gate note -->
+  <rect x="20" y="240" width="150" height="55" class="box box-red"/>
+  <text x="95" y="258" class="label-bold">Liveness gate</text>
+  <text x="95" y="276" class="label-sm">no events for 0.75 s</text>
+  <text x="95" y="288" class="label-sm">&rarr; publishing pauses</text>
+  <line x1="170" y1="267" x2="230" y2="267" class="arrow"/>
+
+  <!-- Topics -->
+  <rect x="480" y="225" width="200" height="85" class="box box-orange"/>
+  <text x="580" y="241" class="label-bold">ROS 2 topics</text>
+  <text x="580" y="258" class="label-code">{rid}_desired_joint_angles</text>
+  <text x="580" y="272" class="label-code">command_ee_position_change_{rid}</text>
+  <text x="580" y="286" class="label-code">{rid}_gripper_width</text>
+  <text x="580" y="300" class="label-sm">&rarr; FIC controller (sim / hardware)</text>
+  <line x1="420" y1="267" x2="480" y2="267" class="arrow"/>
+</svg>
+</figure>
+
+<h2>Controller Layout</h2>
+<pre>
+             +------------------------------------+
+             |        [Back]       [Start]        |
+             |      Joint/Cart  Cycle sub-mode    |
+             |                                    |
+  [LB] &lt;-----| Prev joint            Next joint  |-----&gt; [RB]
+  [LT] &lt;-----| Gripper close       Gripper open  |-----&gt; [RT]
+             |                                    |
+             |   +----+               [Y] Elbow   |
+             |   | LS |   [D-pad]   [X]     [B]   |
+             |   +----+   ^ Speed+ Postural E-STOP|
+             |            v Speed-   [A] Home     |
+             |            &lt; &gt; Robot       +----+  |
+             |                            | RS |  |
+             |        [Guide]             +----+  |
+             |     Reset targets                  |
+             +------------------------------------+
+</pre>
+
+<h2>Control Spaces</h2>
+
+<h3>Joint Mode</h3>
+<p>Follows the Kinova single-joint-plus-neighbour approach. The <strong>left stick Y</strong> drives the
+currently selected joint, and the <strong>right stick Y</strong> drives the next joint
+(selected + 1). Press <strong>LB / RB</strong> to shift the selection one joint at a time
+(selection wraps around past the last joint).</p>
+
+<table>
+  <tr><th>Selection</th><th>Left Stick Y</th><th>Right Stick Y</th></tr>
+  <tr><td>J1, J2 (default)</td><td>Joint 1</td><td>Joint 2</td></tr>
+  <tr><td>J2, J3</td><td>Joint 2</td><td>Joint 3</td></tr>
+  <tr><td>J3, J4</td><td>Joint 3</td><td>Joint 4</td></tr>
+  <tr><td>&hellip;</td><td>&hellip;</td><td>&hellip;</td></tr>
+  <tr><td>J7 (7-DOF arm)</td><td>Joint 7</td><td>&mdash; (skipped)</td></tr>
+</table>
+
+<p>Stick deflection maps to joint <strong>velocity</strong> (deg/s), integrated at 100&nbsp;Hz into
+position targets. Targets are clamped to the robot&rsquo;s <code>joint_limits_deg</code> from
+<code>fic_studio_robots.yaml</code> (see <a href="#robot-config" onclick="showPage('robot-config')">Robot Configuration</a>);
+a joint with no limits entry falls back to &plusmn;180&deg;. Joint targets are seeded from live
+joint state feedback before the first command is sent.</p>
+
+<div class="admonition tip"><div class="adm-title">Tip</div>
+<p>Joint targets are seeded from the robot&rsquo;s current position when you first move a stick
+or switch to joint mode. If no joint state has been received yet (controller not running),
+the gamepad logs a warning and waits.</p></div>
+
+<h3>Cartesian Mode</h3>
+<p>All four stick axes are active simultaneously &mdash; no group cycling needed:</p>
+<table>
+  <tr><th>Stick</th><th>Robot Axis</th><th>Motion</th></tr>
+  <tr><td>Left Stick X</td><td>Y translation</td><td>Left / Right</td></tr>
+  <tr><td>Left Stick Y</td><td>Z translation</td><td>Up / Down</td></tr>
+  <tr><td>Right Stick Y</td><td>X translation</td><td>Forward / Back</td></tr>
+  <tr><td>Right Stick X</td><td>Yaw rotation</td><td>Rotate</td></tr>
+</table>
+<p>Roll and pitch are not mapped to the gamepad &mdash; use the GUI pose inputs for orientation
+adjustments beyond yaw.</p>
+<p>Stick deflection scales by the current speed preset. Displacements are integrated into an
+absolute <code>geometry_msgs/Pose</code> published at 100&nbsp;Hz while a stick is deflected. The
+target pose is seeded from the live end-effector pose (or the YAML <code>default_ee_target</code>
+if unavailable).</p>
+
+<div class="admonition warning"><div class="adm-title">Tool-frame motion</div>
+<p>Cartesian displacements are applied in the <strong>end-effector (tool) frame</strong>, not the world
+frame: translations are rotated by the current target orientation before being added, and yaw
+rotates about the tool&rsquo;s Z axis. With the tool pointing down this feels world-aligned, but
+after rotating the end effector, &ldquo;forward&rdquo; follows the tool &mdash; not the robot base.</p></div>
+
+<h2>Sub-Modes</h2>
+<p>Press <strong>Start</strong> to cycle through the four FIC sub-modes within the current control space.
+The mode is shown in the status bar after the pipe character. See
+<a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a> for what each mode does.</p>
+<table>
+  <tr><th>#</th><th>Joint Space</th><th>#</th><th>Cartesian Space</th></tr>
+  <tr><td>1</td><td>Joint Impedance</td><td>5</td><td>Cartesian Impedance</td></tr>
+  <tr><td>2</td><td>Joint Impedance With Planner</td><td>6</td><td>Cartesian Planner</td></tr>
+  <tr><td>3</td><td>Joint Admittance</td><td>7</td><td>Cartesian Admittance</td></tr>
+  <tr><td>4</td><td>Joint Admittance Haptic</td><td>8</td><td>Cartesian Admittance Haptic</td></tr>
+</table>
+<p>Switching sub-mode publishes both the <code>control_mode</code> integer and the
+<code>mode_select</code> string to reach both simulation and hardware nodes. The sub-mode
+<em>slot</em> is preserved when toggling control space with <strong>Back</strong>: if you are on
+Cartesian Planner (slot 2) and switch to joint space, you land on Joint Impedance
+With Planner (also slot 2).</p>
+
+<h2>Speed Presets</h2>
+<p>D-pad Up / Down cycles through three speed levels. The current level is shown in the
+status bar. Cartesian steps are applied per 100&nbsp;Hz tick at full stick deflection, giving
+the effective maximum speeds below.</p>
+<table>
+  <tr><th>Level</th><th>Cart Step</th><th>Cart Rotation</th><th>Joint Velocity</th><th>Max Cart Speed</th></tr>
+  <tr><td>Slow</td><td>0.5 mm</td><td>0.25&deg;</td><td>10&deg;/s</td><td>50 mm/s, 25&deg;/s yaw</td></tr>
+  <tr><td><strong>Medium</strong> (default)</td><td>1.0 mm</td><td>0.5&deg;</td><td>25&deg;/s</td><td>100 mm/s, 50&deg;/s yaw</td></tr>
+  <tr><td>Fast</td><td>2.0 mm</td><td>1.0&deg;</td><td>50&deg;/s</td><td>200 mm/s, 100&deg;/s yaw</td></tr>
+</table>
+
+<h2>Gripper</h2>
+<p>The triggers provide <strong>proportional velocity-based</strong> gripper control:</p>
+<ul>
+  <li><strong>RT</strong> (right trigger) = open</li>
+  <li><strong>LT</strong> (left trigger) = close</li>
+</ul>
+<p>Trigger deflection controls the <em>rate</em> of gripper movement, not the position directly.
+Harder press = faster movement. Full trigger deflection opens or closes the gripper fully
+in approximately 2.5 seconds (rate 0.4/s of full stroke). Release the trigger and the gripper
+holds its position. Both triggers pressed together cancel out (net deflections below 5% are
+ignored).</p>
+<p>The internal 0&ndash;100% value is converted to metres with a fixed 0.08&nbsp;m scale (matching
+the Robotiq 2F-85 stroke and the GUI slider convention) before publishing on
+<code>{rid}_gripper_width</code>.</p>
+
+<h2>Button Reference</h2>
+<table>
+  <tr><th>Button</th><th>Default Action</th><th>Remappable</th></tr>
+  <tr><td><strong>Back</strong></td><td>Toggle Joint / Cartesian</td><td>Yes</td></tr>
+  <tr><td><strong>Start</strong></td><td>Cycle sub-mode</td><td>Yes</td></tr>
+  <tr><td><strong>LB</strong></td><td>Previous joint (joint mode)</td><td>Yes</td></tr>
+  <tr><td><strong>RB</strong></td><td>Next joint (joint mode)</td><td>Yes</td></tr>
+  <tr><td><strong>A</strong></td><td>Go to Home position</td><td>Yes</td></tr>
+  <tr><td><strong>B</strong></td><td>E-STOP</td><td>Yes</td></tr>
+  <tr><td><strong>X</strong></td><td>Toggle Postural hold</td><td>Yes</td></tr>
+  <tr><td><strong>Y</strong></td><td>Toggle Elbow hold</td><td>Yes</td></tr>
+  <tr><td><strong>Guide</strong></td><td>Reset target pose</td><td>Yes</td></tr>
+  <tr><td><strong>LStick / RStick</strong> (click)</td><td>None (unassigned)</td><td>Yes</td></tr>
+  <tr><td><strong>LT / RT</strong></td><td>Gripper close / open</td><td>No (fixed)</td></tr>
+  <tr><td><strong>D-pad Up/Down</strong></td><td>Speed level +/&minus;</td><td>No (fixed)</td></tr>
+  <tr><td><strong>D-pad Left/Right</strong></td><td>Cycle active robot</td><td>No (fixed)</td></tr>
+</table>
+<p>Any remappable button can be assigned one of these actions: <code>none</code>,
+<code>toggle_space</code>, <code>cycle_sub_mode</code>, <code>prev_group</code>, <code>next_group</code>,
+<code>home</code>, <code>e_stop</code>, <code>toggle_postural</code>, <code>toggle_elbow</code>,
+<code>cycle_robot_prev</code>, <code>cycle_robot_next</code>, <code>speed_up</code>,
+<code>speed_down</code>, <code>reset_target_pose</code>.</p>
+
+<div class="admonition danger"><div class="adm-title">E-STOP behaviour</div>
+<p>Pressing <strong>B</strong> (default) triggers the studio&rsquo;s <em>global</em> E-STOP &mdash; the same
+path as the toolbar E-STOP button: extensions are halted, a graceful torque ramp-down
+(mode 0, &ldquo;Stop Controller&rdquo;) is broadcast to every active robot, and controller processes
+are then torn down as a backstop. See <a href="#estop" onclick="showPage('estop')">E-STOP</a> and
+<a href="#safety" onclick="showPage('safety')">Safety</a> for details.</p></div>
+
+<h2>Home Button</h2>
+<p>Pressing <strong>A</strong> (default) sends the robot to its <code>q_home_deg</code> configuration from
+<code>fic_studio_robots.yaml</code>. This:</p>
+<ol>
+  <li>Switches the gamepad to joint space and Joint Impedance mode (Mode 1)</li>
+  <li>Publishes the home joint angles (converted to radians) on <code>{rid}_desired_joint_angles</code></li>
+  <li>Seeds the gamepad&rsquo;s joint targets to the home position</li>
+  <li>Resets the selected joint to J1</li>
+</ol>
+<p>If the robot&rsquo;s config has no <code>q_home_deg</code>, the press is ignored with a warning
+in the <a href="#log-viewer" onclick="showPage('log-viewer')">Logs</a>.</p>
+
+<h2>Multi-Robot</h2>
+<p>Each connected gamepad is assigned to one robot. By default, the first pad targets
+Robot 1, the second targets Robot 2 (following the active robot list). Press
+<strong>D-pad Left / Right</strong> to cycle the assignment at any time. The target robot can also be
+changed in Settings &rarr; Gamepad &rarr; Connected Controllers.</p>
+<p>Plugging in a second controller mid-session automatically assigns it to the next
+available robot. Switching the target robot resets the pad&rsquo;s joint and Cartesian targets,
+so they re-seed from the new robot&rsquo;s live state before any command is sent &mdash; the
+previous robot&rsquo;s targets are never replayed onto the new one.</p>
+
+<h2>Status Bar</h2>
+<p>The status bar shows the gamepad state next to the LED indicator:</p>
+<table>
+  <tr><th>Mode</th><th>Example</th></tr>
+  <tr><td>Joint</td><td><code>Joint J1,J2 Medium | Impedance</code></td></tr>
+  <tr><td>Cartesian</td><td><code>Cart XYZ+Yaw Fast | Planner</code></td></tr>
+  <tr><td>Idle / disconnected</td><td><code>GAMEPAD</code> (static label; LED drops to idle when unplugged)</td></tr>
+</table>
+<p>The text after the pipe is the last word of the mode name, so both Admittance Haptic
+modes display as <code>| Haptic</code>.</p>
+
+<h2>Settings</h2>
+<p>Open <strong>Settings &rarr; Gamepad</strong> to configure:</p>
+<table>
+  <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+  <tr><td><strong>Deadzone</strong></td><td>0.12</td><td>Minimum stick deflection before input registers (0.0&ndash;0.5). Values above it are rescaled so output still ramps smoothly from 0 to full.</td></tr>
+  <tr><td><strong>Axis Inversion</strong></td><td>All off</td><td>Checkboxes to invert LX, LY, RX, RY individually</td></tr>
+  <tr><td><strong>Button Mapping</strong></td><td>Kinova defaults</td><td>Dropdown per button to assign any action</td></tr>
+</table>
+<p>Settings are persisted to <code>~/.robot_selector_gui_settings.yaml</code> under the
+<code>gamepad</code> key and take effect immediately.</p>
+<p>The <strong>Connected Controllers</strong> list at the bottom of the tab shows a live card per pad
+with its device path, target-robot selector, current state, raw axis values and held buttons
+&mdash; useful for confirming which physical button corresponds to each label before remapping,
+and for diagnosing axis-direction issues.</p>
+
+<h2>ROS 2 Topics</h2>
+<p>All topics use the robot-prefix convention (<code>{rid}</code> = <code>robotN</code>); see
+<a href="#topics" onclick="showPage('topics')">Topics</a> for the full reference.</p>
+<table>
+  <tr><th>Topic</th><th>Type</th><th>Rate</th><th>Purpose</th></tr>
+  <tr><td><code>{rid}_desired_joint_angles</code></td><td>Float32MultiArray</td><td>100 Hz while deflected</td><td>Joint position targets (radians, all joints)</td></tr>
+  <tr><td><code>command_ee_position_change_{rid}</code></td><td>geometry_msgs/Pose</td><td>100 Hz while deflected</td><td>Absolute end-effector pose target</td></tr>
+  <tr><td><code>robot{n}_control_mode</code></td><td>Int32</td><td>On change</td><td>Active control mode (1&ndash;8)</td></tr>
+  <tr><td><code>{rid}_mode_select</code></td><td>String</td><td>On change</td><td>Mode name string</td></tr>
+  <tr><td><code>{rid}_gripper_width</code></td><td>Float32</td><td>Up to ~50 Hz*</td><td>Gripper aperture in metres</td></tr>
+  <tr><td><code>{rid}_postural_enable</code></td><td>Bool</td><td>On change (transient-local)</td><td>Postural hold toggle</td></tr>
+  <tr><td><code>{rid}_elbow_enable</code></td><td>Bool</td><td>On change (transient-local)</td><td>Elbow hold toggle</td></tr>
+</table>
+<p>* Gripper publishes only when the width has changed by &ge; 0.5% of full stroke since the
+last publish, so the effective rate depends on trigger deflection (at full deflection this
+works out to roughly every other 100&nbsp;Hz tick).</p>
+
+<div class="admonition tip"><div class="adm-title">Liveness gating</div>
+<p>The 100&nbsp;Hz publish loop only acts on a pad that has produced an input event within the
+last 0.75&nbsp;s. A pad that goes silent (unplugged, or genuinely untouched) stops publishing
+immediately &mdash; targets are never streamed from a stale controller. Use the
+<a href="#topic-monitor" onclick="showPage('topic-monitor')">Topic Monitor</a> to watch the command topics live.</p></div>
+
+<h2>Troubleshooting</h2>
+<table>
+  <tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr>
+  <tr><td>No LED, no controller listed</td>
+      <td>Permissions on <code>/dev/input/js*</code></td>
+      <td>Add user to <code>input</code> group: <code>sudo usermod -aG input $USER</code>, then log out/in</td></tr>
+  <tr><td>Sticks don&rsquo;t move robot</td>
+      <td>FIC controller not running</td>
+      <td>Start the simulation or hardware controller first (see <a href="#quickstart" onclick="showPage('quickstart')">Quick Start</a>)</td></tr>
+  <tr><td>Cartesian mode inactive, warning in log</td>
+      <td>No live EE pose and no <code>default_ee_target</code> in the robot&rsquo;s YAML config</td>
+      <td>Start the controller so a live pose arrives, or add <code>default_ee_target</code> in <a href="#robot-config" onclick="showPage('robot-config')">Robot Configuration</a></td></tr>
+  <tr><td>Joint mode does nothing on first move</td>
+      <td>No joint state feedback received yet &mdash; targets can&rsquo;t be seeded</td>
+      <td>Wait for joint state subscription, or start in Cartesian mode (default)</td></tr>
+  <tr><td>Axis direction feels wrong</td>
+      <td>Controller variant maps axes differently</td>
+      <td>Use the Axis Inversion checkboxes in Settings &rarr; Gamepad; the Connected Controllers card shows raw axis values live</td></tr>
+  <tr><td>Gripper doesn&rsquo;t move</td>
+      <td>Triggers not initialized (Xbox quirk)</td>
+      <td>Pull and release both triggers once after plugging in</td></tr>
+  <tr><td>Robot jumps on mode switch</td>
+      <td>Target re-seeding from live state</td>
+      <td>Normal &mdash; the C++ controller snaps targets on mode change</td></tr>
+</table>
+
+<h2>Related Pages</h2>
+<ul>
+  <li><a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a> &mdash; what modes 1&ndash;8 actually do</li>
+  <li><a href="#teleoperation" onclick="showPage('teleoperation')">Teleoperation</a> &mdash; haptic-device and network teleop alternatives</li>
+  <li><a href="#vr-zed-teleop" onclick="showPage('vr-zed-teleop')">VR / ZED Teleoperation</a> &mdash; controller-free 6-DOF input</li>
+  <li><a href="#settings" onclick="showPage('settings')">Settings</a> &mdash; the full settings reference, including the Gamepad tab</li>
+  <li><a href="#safety" onclick="showPage('safety')">Safety</a> &mdash; zone enforcement in the controller also applies to gamepad commands</li>
+</ul>

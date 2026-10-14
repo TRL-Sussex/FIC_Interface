@@ -1,0 +1,263 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Teach Mode</div>
+<h1>Teach Mode</h1>
+<p class="subtitle">Kinesthetic teaching &mdash; physically guide the robot, capture motion + gripper steps, save as a sequence.</p>
+
+<h2>Overview</h2>
+<p>Teach Mode puts the robot into a compliant state &mdash; <strong>Joint Admittance (Mode&nbsp;3)</strong> or
+<strong>Cartesian Admittance (Mode&nbsp;7)</strong> depending on the active <em>Mode</em> selector &mdash; so you can physically
+guide it by hand. Motion waypoints (joint or cartesian) and gripper waypoints are captured into a single
+timeline and can be saved as a <a href="#sequences" onclick="showPage('sequences')">sequence</a> for automated playback.</p>
+<p>Teach Mode is an <a href="#extensions" onclick="showPage('extensions')">extension</a> (<code>Extensions/teach_mode/</code>) and appears
+in the sidebar under <strong>Programming</strong>. Saving into the sequence library requires the
+<strong>Sequences</strong> extension to be enabled as well.</p>
+
+<h2>The web page</h2>
+<p>In the web interface (and the Docker image) Teach Mode has its own page. The Classic interface keeps the layout
+described below.</p>
+<table>
+  <tr><th>Zone</th><th>What it does</th></tr>
+  <tr><td><strong>Top row</strong></td><td>Mode (Joint or Cartesian), Robot, Start teaching / Stop teaching, the status (Teaching &middot; 42 s) and which robot it drives &mdash; in red on the real robot</td></tr>
+  <tr><td><strong>Joints, End effector</strong></td><td>The live position: joints in degrees, X/Y/Z in mm, roll/pitch/yaw in degrees</td></tr>
+  <tr><td><strong>Record</strong></td><td>Record position (or press Space while teaching), Auto-record with its interval and the distance the arm must have moved</td></tr>
+  <tr><td><strong>Gripper</strong></td><td>Width in mm, Open, Close, Send, and Record gripper</td></tr>
+  <tr><td><strong>Waypoints</strong></td><td>Each recorded waypoint with Go and Delete; Undo last, Clear all</td></tr>
+  <tr><td><strong>Save</strong></td><td>Save as sequence: the waypoints go into the Sequences page and its file, ready to play</td></tr>
+</table>
+<p>The page asks before anything moves the robot (Start teaching, Go, the gripper buttons) and asks again, in red,
+on the real robot. Any browser that holds control can use it, so keep sign-in on when the web interface is open to a
+network (<a href="#web-remote" onclick="showPage('web-remote')">Web Remote</a> &rsaquo; Signing in).</p>
+
+<h2>How Hand-Guiding Works</h2>
+<p>Teach Mode is <em>not</em> a zero-torque / gravity-float mode. The admittance controller keeps the inner
+impedance loop stiff and instead moves the <em>reference</em> under your push (&ldquo;push-and-stay&rdquo;): the external
+torque estimate (model gravity torque minus measured torque) is fed through a deadband into an admittance
+block that accumulates a persistent offset on the target. Release the arm and it holds position where you
+left it; the offset is anti-windup-clamped at joint limits so pushing against a hard stop does not wind up.</p>
+<table>
+  <tr><th>Deadband</th><th>Default</th><th>Applies To</th></tr>
+  <tr><td><code>joint_tau</code></td><td>1.5 Nm</td><td>Joint Admittance (Mode 3) &mdash; per-joint external torque</td></tr>
+  <tr><td><code>cart_force</code></td><td>4.0 N</td><td>Cartesian Admittance (Mode 7) &mdash; EE translational force</td></tr>
+  <tr><td><code>cart_torque</code></td><td>0.2 Nm</td><td>Cartesian Admittance (Mode 7) &mdash; EE rotational torque</td></tr>
+</table>
+<p>Deadbands are per-robot, loaded from the <code>admittance_deadbands</code> block in
+<code>fic_library/config/robots_config.yaml</code> (see <a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a>).
+Too low a deadband makes the arm drift on gravity-model error; too high makes it feel sticky. On the Franka,
+an unregistered tool adds 1&ndash;2 Nm of bias to the external-torque estimate in heavy poses &mdash; register
+payloads before lowering <code>joint_tau</code>.</p>
+
+<h2>Workflow</h2>
+<ol>
+  <li>Ensure the FIC controller is running (simulation or hardware).</li>
+  <li>Open the <strong>Teach Mode</strong> panel.</li>
+  <li>Pick the <strong>Target Robot</strong> in the title row (multi-robot sessions only) and the active control space in the <strong>Mode</strong> selector:
+    <ul>
+      <li><strong>Joint</strong> &mdash; teach in joint space; <em>Start Teaching</em> activates Joint Admittance.</li>
+      <li><strong>Cartesian</strong> &mdash; teach in EE pose space; <em>Start Teaching</em> activates Cartesian Admittance.</li>
+    </ul>
+  </li>
+  <li>Click <strong>Start Teaching</strong> and confirm the dialog &mdash; the robot switches to the matching admittance mode automatically. The Mode selector locks while the session is live so the recorded data and the active mode can't desync.</li>
+  <li>Physically guide the robot to the desired positions.</li>
+  <li>Capture motion waypoints with the <strong>Record Current Position</strong> button (manual) or enable <strong>Auto-record</strong>.</li>
+  <li>Use the <strong>Gripper</strong> group at any point to actuate the gripper (OPEN / CLOSE / APPLY) and click <strong>Record Gripper Waypoint</strong> to drop a gripper-only step into the timeline at that moment.</li>
+  <li>Click <strong>Stop Teaching</strong> &mdash; the robot switches to the matching planner (Joint Impedance With Planner for Joint, Cartesian Planner for Cartesian).</li>
+  <li>Review the recorded waypoints in the table on the right.</li>
+  <li>Click <strong>Save as Sequence</strong> to store them; they appear in the <a href="#sequences" onclick="showPage('sequences')">Sequences</a> panel.</li>
+</ol>
+<p>If you click Start Teaching while the controller is down, the panel arms anyway but logs
+<em>&ldquo;No mode publisher on the GUI node &mdash; robot mode not switched&rdquo;</em> to the
+<a href="#log-viewer" onclick="showPage('log-viewer')">Logs</a>. Start the controller first, then re-arm.</p>
+
+<h2>Session Data Flow</h2>
+<svg viewBox="0 0 700 330" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="FIC Controller">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-grey { fill: #f5f5f5; stroke: #757575; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .box-red { fill: #fce4ec; stroke: #c62828; }
+    .label { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #333; text-anchor: middle; dominant-baseline: central; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#teach-arrowhead); }
+    .arrow-blue { stroke: #1976d2; }
+    .arrow-green { stroke: #388e3c; }
+    .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
+  </style>
+  <defs>
+    <marker id="teach-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+    <marker id="teach-arrowhead-blue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#1976d2"/>
+    </marker>
+    <marker id="teach-arrowhead-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#388e3c"/>
+    </marker>
+  </defs>
+
+  <!-- Controller (left) -->
+  <rect x="25" y="70" width="170" height="90" class="box box-green"/>
+  <text x="110" y="95" class="label-bold">FIC Controller</text>
+  <text x="110" y="113" class="label-sm">fic_simulation / fic_hardware</text>
+  <text x="110" y="133" class="label-sm">Mode 3 / 7 while teaching</text>
+  <text x="110" y="148" class="label-sm">planner mode after stop</text>
+
+  <!-- Teach panel (center) -->
+  <rect x="270" y="55" width="180" height="120" class="box box-purple"/>
+  <text x="360" y="78" class="label-bold">Teach Mode panel</text>
+  <text x="360" y="96" class="label-sm">Start / Stop Teaching</text>
+  <text x="360" y="112" class="label-sm">Record position / gripper</text>
+  <text x="360" y="128" class="label-sm">20 Hz live display</text>
+  <text x="360" y="150" class="label-sm">waypoint timeline</text>
+
+  <!-- Sequences (right) -->
+  <rect x="510" y="70" width="165" height="90" class="box box-blue"/>
+  <text x="592" y="95" class="label-bold">Sequences extension</text>
+  <text x="592" y="113" class="label-sm">steps: joint / cartesian /</text>
+  <text x="592" y="127" class="label-sm">gripper, hold_time 0.5 s</text>
+  <text x="592" y="147" class="label-sm">playback + editing</text>
+
+  <!-- Panel -> controller: mode select -->
+  <line x1="270" y1="90" x2="195" y2="90" class="arrow arrow-blue" style="marker-end:url(#teach-arrowhead-blue)"/>
+  <text x="232" y="45" class="label-code">{rid}_mode_select</text>
+  <text x="232" y="60" class="label-sm">"Joint/Cartesian Admittance"</text>
+  <text x="232" y="75" class="label-sm">on stop: planner mode</text>
+
+  <!-- Controller -> panel: feedback -->
+  <line x1="195" y1="140" x2="270" y2="140" class="arrow arrow-green" style="marker-end:url(#teach-arrowhead-green)"/>
+  <text x="232" y="158" class="label-code">{rid}_q_current</text>
+  <text x="232" y="172" class="label-code">{rid}_ee_current_pose</text>
+
+  <!-- Panel -> sequences -->
+  <line x1="450" y1="115" x2="510" y2="115" class="arrow"/>
+  <text x="480" y="98" class="label-sm">Save as</text>
+  <text x="480" y="132" class="label-sm">Sequence</text>
+
+  <!-- Sequences -> yaml file -->
+  <rect x="510" y="215" width="165" height="50" class="box box-grey"/>
+  <text x="592" y="233" class="label-bold">YAML on disk</text>
+  <text x="592" y="250" class="label-code">~/robot_sequences.yaml</text>
+  <line x1="592" y1="160" x2="592" y2="215" class="arrow"/>
+  <text x="640" y="188" class="label-sm">auto-saved</text>
+
+  <!-- Panel -> export yaml -->
+  <rect x="270" y="215" width="180" height="50" class="box box-grey"/>
+  <text x="360" y="233" class="label-bold">Export YAML</text>
+  <text x="360" y="250" class="label-code">waypoints_&lt;date&gt;.yaml</text>
+  <line x1="360" y1="175" x2="360" y2="215" class="arrow"/>
+  <text x="418" y="195" class="label-sm">raw waypoints</text>
+
+  <!-- Human -->
+  <rect x="25" y="215" width="170" height="50" class="box box-teal"/>
+  <text x="110" y="233" class="label-bold">Operator's hand</text>
+  <text x="110" y="250" class="label-sm">push-and-stay admittance</text>
+  <line x1="110" y1="215" x2="110" y2="160" class="arrow arrow-green" style="marker-end:url(#teach-arrowhead-green)"/>
+</svg>
+
+<h2>Recording Modes</h2>
+<table>
+  <tr><th>Mode</th><th>How It Works</th><th>Best For</th></tr>
+  <tr><td><strong>Manual Record</strong></td><td>Click <strong>&#9210; Record Current Position</strong> to capture a motion waypoint at the current pose</td><td>Precise pick-and-place positions</td></tr>
+  <tr><td><strong>Auto-record (timed)</strong></td><td>Captures a waypoint every N seconds (0.5&ndash;10.0 s, default: 1.0 s)</td><td>Smooth trajectories, path recording</td></tr>
+  <tr><td><strong>Movement Threshold</strong></td><td>Auto-record only fires when the EE has moved &ge; threshold (0.1&ndash;50.0 mm, default: 5.0 mm) since the last waypoint; the first waypoint always records</td><td>Avoiding duplicate waypoints when pausing</td></tr>
+  <tr><td><strong>Record Gripper Waypoint</strong></td><td>Drops a gripper-only step at the current spinbox width into the timeline</td><td>Choreographing close / open at specific moments without changing arm pose</td></tr>
+</table>
+
+<h2>Gripper Controls</h2>
+<p>The <strong>Gripper</strong> group lets you actuate the end-effector while teaching, so you can manipulate parts and feel the closure moment before deciding to capture.</p>
+<table>
+  <tr><th>Control</th><th>Effect</th></tr>
+  <tr><td><strong>Width spinbox</strong></td><td>Sets the displayed target width (0.0&ndash;0.08&nbsp;m, 0.005&nbsp;m steps, default 0.08&nbsp;m). Live percent readout next to it.</td></tr>
+  <tr><td><strong>OPEN</strong></td><td>Sets width to 0.08 m and publishes immediately.</td></tr>
+  <tr><td><strong>CLOSE</strong></td><td>Sets width to 0.0 m and publishes immediately.</td></tr>
+  <tr><td><strong>APPLY</strong></td><td>Publishes whatever the spinbox currently shows. Use for arbitrary widths (e.g. 0.04 m to grasp a 40 mm part).</td></tr>
+  <tr><td><strong>Record Gripper Waypoint</strong></td><td>Adds a <code>type:'gripper'</code> step at the current spinbox width to the recorded timeline. Disabled when no teach session is active.</td></tr>
+</table>
+<p>All actuator buttons publish through <code>node.publish_gripper_width(rid, width)</code> &mdash; the same path the Sequences and Control panels use &mdash; so what you feel during teaching is what the saved sequence will reproduce.</p>
+
+<h2>Live Display</h2>
+<p>While teaching, the panel polls the robot state every 50 ms (<strong>20 Hz</strong>) showing:</p>
+<ul>
+  <li><strong>Joint positions</strong> &mdash; one readout per joint (hidden rows collapse to the robot's joint count)</li>
+  <li><strong>Cartesian pose</strong> &mdash; X, Y, Z (mm) + Roll, Pitch, Yaw (degrees, converted from the EE quaternion)</li>
+</ul>
+<p>Feedback comes from the shared joint-state subscribers: <code>{rid}_q_current</code>
+(<code>Float64MultiArray</code>) and <code>{rid}_ee_current_pose</code> (<code>Pose</code>), with
+<code>joint_states</code> / <code>simulation_joint_states</code> as unprefixed fallbacks
+(see <a href="#topics" onclick="showPage('topics')">Topics</a>).</p>
+<p>Both joint and cartesian feedback are stored on every recorded motion waypoint, regardless of which Mode the session is in &mdash; the <code>'mode'</code> tag just decides which one is the playback target.</p>
+
+<h2>Waypoint Table</h2>
+<p>Each recorded waypoint appears in the table with:</p>
+<table>
+  <tr><th>Column</th><th>Description</th></tr>
+  <tr><td>#</td><td>Waypoint number (sequential; renumbered after deletes)</td></tr>
+  <tr><td>Time</td><td>Elapsed time since teaching started</td></tr>
+  <tr><td>Position (mm)</td><td>For motion: <code>[Joint] X:.. Y:.. Z:..</code> or <code>[Cart] X:.. Y:.. Z:..</code> (the bracketed tag tells you which mode it was recorded in). For gripper: <code>Gripper: 50% (0.040m)</code>.</td></tr>
+  <tr><td>Actions</td><td><strong>Go</strong> (replay this waypoint) and <strong>&#10005;</strong> (delete)</td></tr>
+</table>
+
+<h2>Editing Waypoints</h2>
+<ul>
+  <li><strong>Go</strong> &mdash; after a confirmation dialog, sends the right command for the waypoint's mode: joint angles for Joint waypoints, EE pose for Cartesian, gripper width for Gripper.</li>
+  <li><strong>Undo Last</strong> &mdash; remove the most recently recorded waypoint</li>
+  <li><strong>Clear All</strong> &mdash; remove all recorded waypoints (asks for confirmation)</li>
+  <li><strong>Delete</strong> (&#10005; on the row) &mdash; remove a specific waypoint</li>
+</ul>
+
+<h2>Saving</h2>
+<table>
+  <tr><th>Action</th><th>Description</th></tr>
+  <tr><td><strong>Save as Sequence</strong></td><td>Converts the timeline to the Sequences format. Joint waypoints &rarr; <code>type:'joint'</code> with degrees; Cartesian waypoints &rarr; <code>type:'cartesian'</code> with metres + axis-angle (quaternion auto-converted via <code>_quat_to_axis_angle</code>); Gripper waypoints &rarr; <code>type:'gripper'</code> with metres. Hold time defaults to 0.5&nbsp;s per step. The new sequence is auto-selected in the Sequences dropdown and immediately persisted to <code>~/robot_sequences.yaml</code>.</td></tr>
+  <tr><td><strong>Export YAML</strong></td><td>Exports the raw recorded waypoints (timestamps, joint positions, cartesian pose + quaternion, robot name) as a standalone YAML file &mdash; full data, not the Sequences-format conversion. Default filename <code>waypoints_&lt;YYYYMMDD_HHMMSS&gt;.yaml</code>.</td></tr>
+</table>
+<p>The sequence name defaults to <code>taught_&lt;HHMMSS&gt;</code>; edit it in the <em>Sequence Name</em> field before
+saving. If the Sequences extension is not enabled, Save as Sequence shows a warning &mdash; enable it under
+Settings &rarr; Extensions and restart, or use Export YAML instead.</p>
+
+<h2>ROS Control</h2>
+<table>
+  <tr><th>Event</th><th>Topic</th><th>Type</th><th>Value</th></tr>
+  <tr><td>Start Teaching (Joint)</td><td><code>{rid}_mode_select</code></td><td>String</td><td>"Joint Admittance"</td></tr>
+  <tr><td>Start Teaching (Cartesian)</td><td><code>{rid}_mode_select</code></td><td>String</td><td>"Cartesian Admittance"</td></tr>
+  <tr><td>Stop Teaching (Joint)</td><td><code>{rid}_mode_select</code></td><td>String</td><td>"Joint Impedance With Planner"</td></tr>
+  <tr><td>Stop Teaching (Cartesian)</td><td><code>{rid}_mode_select</code></td><td>String</td><td>"Cartesian Planner"</td></tr>
+  <tr><td>Go To (Joint waypoint)</td><td><code>{rid}_desired_joint_angles</code></td><td>Float32MultiArray</td><td>Joint angles in radians</td></tr>
+  <tr><td>Go To (Cartesian waypoint)</td><td><code>command_ee_position_change_{rid}</code></td><td>Pose</td><td>EE pose in metres + quaternion</td></tr>
+  <tr><td>Gripper actuate / Go To (Gripper waypoint)</td><td><code>{rid}_gripper_width</code></td><td>Float32</td><td>Width 0.0&ndash;0.08&nbsp;m</td></tr>
+</table>
+<p>All published topics target the robot chosen in the panel's <strong>Target Robot</strong> combo
+(<code>host.target_robot_id</code>, defaulting to the first active robot). Mode names map to the numeric
+<a href="#control-modes" onclick="showPage('control-modes')">control modes</a> on the controller side.</p>
+
+<div class="admonition warning"><div class="adm-title">Multi-robot sessions</div>
+<p>The live display and recorded waypoints always read from the <em>first</em> active robot's feedback
+(<code>host.current_joint_positions</code> / <code>current_ee_pose</code>), while commands go to the selected
+<strong>Target Robot</strong>. In a multi-robot session, keep the target on the first robot when teaching &mdash;
+otherwise you would hand-guide one arm while recording another's state.</p></div>
+
+<div class="admonition warning"><div class="adm-title">Safety</div>
+<p>In teach mode, the robot is compliant and will move freely. Keep a firm grip, especially near
+joint limits. The safety system still monitors limits and will warn on violations. Keep
+<a href="#estop" onclick="showPage('estop')">E-STOP</a> accessible at all times when teaching on real hardware &mdash;
+an emergency stop automatically ends the teach session (already-recorded waypoints are kept).
+The session is also ended cleanly if the extension is torn down (e.g. on application exit).</p></div>
+
+<div class="admonition tip"><div class="adm-title">Switching modes mid-session</div>
+<p>The Mode selector locks while a teach session is live. To switch between Joint and Cartesian, click
+<em>Stop Teaching</em>, change the selector, then <em>Start Teaching</em> again. The waypoints already in the table are preserved &mdash; you can mix Joint, Cartesian, and Gripper waypoints across multiple sessions and save them as a single sequence.</p></div>
+
+<h2>Troubleshooting</h2>
+<table>
+  <tr><th>Symptom</th><th>Cause / Fix</th></tr>
+  <tr><td>Robot mode doesn't change on Start Teaching</td><td>The controller isn't running &mdash; the log shows <em>"No mode publisher on the GUI node"</em>. Start <code>fic_simulation</code> / <code>fic_hardware</code> (see <a href="#processes" onclick="showPage('processes')">Processes</a>), then Stop and Start Teaching again.</td></tr>
+  <tr><td>Arm feels sticky / needs a hard shove</td><td>Admittance deadband too high for this robot or payload. Lower <code>admittance_deadbands.joint_tau</code> (or <code>cart_force</code>) in <code>fic_library/config/robots_config.yaml</code> and restart the controller.</td></tr>
+  <tr><td>Arm drifts on its own in teach mode</td><td>Gravity-model error exceeds the deadband &mdash; typically an unregistered tool/payload. Register the payload or raise the deadband.</td></tr>
+  <tr><td>Live display frozen at <code>---</code></td><td>No feedback on <code>{rid}_q_current</code> / <code>{rid}_ee_current_pose</code>. Check the controller with the <a href="#topic-monitor" onclick="showPage('topic-monitor')">Topic Monitor</a>.</td></tr>
+  <tr><td>Save as Sequence shows "Sequences not enabled"</td><td>Enable the Sequences extension (Settings &rarr; Extensions), restart, and save again &mdash; or Export YAML to keep the raw waypoints.</td></tr>
+</table>

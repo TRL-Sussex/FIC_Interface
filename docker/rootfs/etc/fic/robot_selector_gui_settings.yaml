@@ -1,0 +1,39 @@
+# First-run settings for FIC Control Studio in Docker. Copied to
+# ~/.robot_selector_gui_settings.yaml only when that file does not exist, and
+# merged over the Studio's built-in defaults, so only differences are listed.
+general:
+  default_robot: KinovaGen3_7DOF
+  station_id: 1
+  # Skip the first-launch wizard: everything it sets up is already done here.
+  wizard_completed: true
+simulation:
+  backend: mujoco_native
+web_remote:
+  enabled: true
+  port: 8088
+  # The image publishes this port on 127.0.0.1 only, and a workshop machine
+  # has one person at it, so the page opens straight away: no sign-in, and
+  # plain http, which is what docker/README.md tells people to open. A lab
+  # serving it to phones on a network wants both of these on (they are the
+  # Studio's own defaults) — see fic_docs "Web Remote".
+  accounts: false
+  https: false
+extensions:
+  # The extensions that work in simulation. The others (cameras, VR
+  # headsets, tool changer, and Following, which needs the real arm's contact
+  # estimate) are listed under Settings > Extensions.
+  enabled:
+    - admittance_validation
+    - autotuning
+    - excitation_dataset
+    - experiments
+    - kinova_pick_and_place
+    - mujoco_playground
+    - page_builder
+    - script_editor
+    - sequences
+    - teach_mode
+    - torque_map
+    - tracker
+    - trajectory_tests
+  data: {}

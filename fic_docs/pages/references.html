@@ -1,0 +1,171 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> References</div>
+<h1>References</h1>
+<p class="subtitle">The published work this project builds on, argues against, or implements. Grouped by what part of the Studio each one is relevant to, with links where a stable one exists.</p>
+
+<div class="admonition note">
+  <div class="adm-title">On these citations</div>
+  <p>Every entry carries a link only where one has actually been checked. Where a DOI or URL is missing, the citation is still complete enough to find &mdash; a missing link means &ldquo;not verified&rdquo;, not &ldquo;does not exist&rdquo;. Please add links rather than guessing them.</p>
+</div>
+
+<h2>Fractal impedance control</h2>
+<p>The control law at the centre of this framework. See <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a> and <a href="#hapfic" onclick="showPage('hapfic')">Hapfic</a>.</p>
+<table>
+  <thead><tr><th>Reference</th><th>Relevance</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>K. K. Babarahmati, C. Tiseo, J. Smith, H.-C. Lin, M. S. Erden and M. Mistry, &ldquo;Fractal impedance for passive controllers: a framework for interaction robotics,&rdquo; <em>Nonlinear Dynamics</em>, vol. 110, no. 3, pp. 2517&ndash;2533, 2022. <a href="https://doi.org/10.1007/s11071-022-07754-3" target="_blank" rel="noopener">doi:10.1007/s11071-022-07754-3</a></td>
+      <td>The FIC formulation itself &mdash; the passive, energy-bounded controller every mode in this Studio runs.</td>
+    </tr>
+    <tr>
+      <td>C. Tiseo <em>et al.</em>, &ldquo;HapFIC: An Adaptive Force/Position Controller for Safe Environment Interaction in Articulated Systems,&rdquo; <em>IEEE Trans. Neural Systems and Rehabilitation Engineering</em>, vol. 29, pp. 1432&ndash;1440, 2021. <a href="https://doi.org/10.1109/TNSRE.2021.3098062" target="_blank" rel="noopener">doi:10.1109/TNSRE.2021.3098062</a></td>
+      <td>The hybrid force/impedance layer implemented as control modes 3, 4 and the Cartesian HapFIC path.</td>
+    </tr>
+    <tr>
+      <td>N. Hogan, &ldquo;Impedance Control: An Approach to Manipulation,&rdquo; <em>ASME J. Dynamic Systems, Measurement, and Control</em>, 1985.</td>
+      <td>The origin of impedance control; the baseline every later scheme, FIC included, is measured against.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Contact localization from proprioception</h2>
+<p>Directly relevant to <a href="#contact-localization" onclick="showPage('contact-localization')">Contact Localization</a>. Both of the first two entries do <em>more</em> than this Studio's feature does &mdash; multi-contact, point-level &mdash; but both require a <strong>base force/torque sensor</strong>, which the Kinova Gen3 here does not have. That asymmetry is the whole reason our claim is restricted to link identity.</p>
+<table>
+  <thead><tr><th>Reference</th><th>Relevance</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>S. W. Han and M. J. Kim, &ldquo;Proprioceptive Sensor-Based Simultaneous Multi-Contact Point Localization and Force Identification for Robotic Arms,&rdquo; <em>IEEE ICRA</em>, pp. 12099&ndash;12105, 2023. <a href="https://ieeexplore.ieee.org/document/10161173/" target="_blank" rel="noopener">IEEE Xplore</a> &middot; <a href="https://arxiv.org/abs/2303.03903" target="_blank" rel="noopener">arXiv:2303.03903</a></td>
+      <td>Particle filter over preprocessed link meshes, joint torque sensors <em>plus</em> a base F/T sensor. 0.16&nbsp;cm single-contact RMSE &mdash; but simulation only. Source of the observation that multi-contact &ldquo;is challenging when the robot is equipped with only JTSs.&rdquo;</td>
+    </tr>
+    <tr>
+      <td>&ldquo;CDM: Contact Diffusion Model for Multi-Contact Point Localization,&rdquo; 2025. <a href="https://arxiv.org/abs/2502.06109" target="_blank" rel="noopener">arXiv:2502.06109</a></td>
+      <td>Diffusion model on joint torque sensors plus an ATI Mini85 base F/T sensor, validated on <strong>real hardware, on a Kinova Gen3</strong>: 0.44&nbsp;cm single-contact, 1.24&nbsp;cm dual. The closest published work to our setup, and the reason our contribution is framed as a feature rather than a result.</td>
+    </tr>
+    <tr>
+      <td>P. Manuelli and R. Tedrake, &ldquo;Localizing external contact using proprioceptive sensors: The contact particle filter,&rdquo; <em>IEEE/RSJ IROS</em>, 2016.</td>
+      <td>The contact particle filter that most later proprioceptive localization work descends from.</td>
+    </tr>
+    <tr>
+      <td>A. De Luca and R. Mattone, &ldquo;Sensorless robot collision detection and hybrid force/motion control,&rdquo; <em>IEEE ICRA</em>, 2005.</td>
+      <td>The generalized momentum observer &mdash; the standard way to estimate external joint torque without an F/T sensor. Our estimator uses a simpler quasi-static gravity residual instead, which is valid only because the arm holds still.</td>
+    </tr>
+    <tr>
+      <td>S. Haddadin, A. De Luca and A. Albu-Sch&auml;ffer, &ldquo;Robot Collisions: A Survey on Detection, Isolation, and Identification,&rdquo; <em>IEEE Trans. Robotics</em>, vol. 33, no. 6, pp. 1292&ndash;1312, 2017.</td>
+      <td>The detection / isolation / identification taxonomy. This feature performs <em>isolation</em> (which link), not identification (what force, where exactly).</td>
+    </tr>
+    <tr>
+      <td>A. Bicchi, J. K. Salisbury and D. L. Brock, &ldquo;Contact Sensing from Force Measurements,&rdquo; <em>Int. J. Robotics Research</em>, 1993.</td>
+      <td>Intrinsic contact sensing, and the original statement of what a force measurement can and cannot tell you about contact location.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Simulation, dynamics and middleware</h2>
+<p>Relevant to <a href="#simulation" onclick="showPage('simulation')">Simulation</a>, <a href="#topics" onclick="showPage('topics')">ROS 2 Topics</a> and <a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a>.</p>
+<table>
+  <thead><tr><th>Reference</th><th>Relevance</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>E. Todorov, T. Erez and Y. Tassa, &ldquo;MuJoCo: A physics engine for model-based control,&rdquo; <em>IEEE/RSJ IROS</em>, 2012. <a href="https://mujoco.org/" target="_blank" rel="noopener">mujoco.org</a></td>
+      <td>The simulator behind every backend here, and the renderer the contact twin highlights links in.</td>
+    </tr>
+    <tr>
+      <td>J. Carpentier <em>et al.</em>, &ldquo;The Pinocchio C++ library,&rdquo; <em>IEEE/SII</em>, 2019. <a href="https://github.com/stack-of-tasks/pinocchio" target="_blank" rel="noopener">github.com/stack-of-tasks/pinocchio</a></td>
+      <td>Rigid-body dynamics: the kinematics solver, gravity torques, and the per-link Jacobians the contact estimator depends on.</td>
+    </tr>
+    <tr>
+      <td>S. Macenski <em>et al.</em>, &ldquo;Robot Operating System 2: Design, architecture, and uses in the wild,&rdquo; <em>Science Robotics</em>, vol. 7, no. 66, 2022. <a href="https://www.science.org/doi/10.1126/scirobotics.abm6074" target="_blank" rel="noopener">doi:10.1126/scirobotics.abm6074</a></td>
+      <td>The middleware everything in this Studio communicates over.</td>
+    </tr>
+    <tr>
+      <td>MuJoCo Menagerie, DeepMind. <a href="https://github.com/google-deepmind/mujoco_menagerie" target="_blank" rel="noopener">github.com/google-deepmind/mujoco_menagerie</a></td>
+      <td>Origin of several models under <code>fic_ws/src/menagerie/</code>, including the Franka FR3 and Kinova Gen3 scenes.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Real-time control and the inner-loop MCU</h2>
+<p>Relevant to <a href="#mcu-inner-loop" onclick="showPage('mcu-inner-loop')">Inner-Loop MCU</a>. These are also the references of the inner-loop technical report.</p>
+<table>
+  <thead><tr><th>Reference</th><th>Relevance</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>F. Reghenzani, G. Massari and W. Fornaciari, &ldquo;The real-time Linux kernel: A survey on PREEMPT_RT,&rdquo; <em>ACM Computing Surveys</em>, vol. 52, no. 1, 2019. <a href="https://doi.org/10.1145/3297714" target="_blank" rel="noopener">doi:10.1145/3297714</a></td>
+      <td>What a real-time kernel provides &mdash; and what the inner-loop MCU makes unnecessary for the joint layer.</td>
+    </tr>
+    <tr>
+      <td>Y. Maruyama, S. Kato and T. Azumi, &ldquo;Exploring the performance of ROS2,&rdquo; EMSOFT, 2016. <a href="https://doi.org/10.1145/2968478.2968502" target="_blank" rel="noopener">doi:10.1145/2968478.2968502</a></td>
+      <td>ROS 2 latency and jitter: why the 1 kHz joint loop should not depend on the middleware path.</td>
+    </tr>
+    <tr>
+      <td>L. Puck <em>et al.</em>, &ldquo;Performance evaluation of real-time ROS2 robotic control in a time-synchronized distributed network,&rdquo; IEEE CASE, 2021. <a href="https://doi.org/10.1109/CASE49439.2021.9551447" target="_blank" rel="noopener">doi:10.1109/CASE49439.2021.9551447</a></td>
+      <td>Distributed ROS 2 control timing, the alternative to putting the joint layer on an MCU.</td>
+    </tr>
+    <tr>
+      <td>S. Chitta <em>et al.</em>, &ldquo;ros_control: A generic and simple control framework for ROS,&rdquo; <em>J. Open Source Software</em>, 2017. <a href="https://doi.org/10.21105/joss.00456" target="_blank" rel="noopener">doi:10.21105/joss.00456</a></td>
+      <td>The usual way of structuring real-time controllers on a PC.</td>
+    </tr>
+    <tr>
+      <td>H. Bruyninckx, &ldquo;Open robot control software: the OROCOS project,&rdquo; IEEE ICRA, 2001. <a href="https://doi.org/10.1109/ROBOT.2001.933002" target="_blank" rel="noopener">doi:10.1109/ROBOT.2001.933002</a></td>
+      <td>Real-time robot control on PC hardware.</td>
+    </tr>
+    <tr>
+      <td>K. Belsare <em>et al.</em>, &ldquo;Micro-ROS,&rdquo; in <em>Robot Operating System (ROS): The Complete Reference, Vol. 7</em>, Springer, 2023. <a href="https://doi.org/10.1007/978-3-031-09062-2_2" target="_blank" rel="noopener">doi:10.1007/978-3-031-09062-2_2</a></td>
+      <td>ROS 2 on microcontrollers; the inner-loop MCU instead runs the FIC joint layer with a small UDP protocol.</td>
+    </tr>
+    <tr>
+      <td>S. Haddadin <em>et al.</em>, &ldquo;The Franka Emika Robot: A reference platform for robotics research and education,&rdquo; <em>IEEE Robotics &amp; Automation Magazine</em>, 2022. <a href="https://doi.org/10.1109/MRA.2022.3202488" target="_blank" rel="noopener">doi:10.1109/MRA.2022.3202488</a></td>
+      <td>A commercial 1 kHz external torque interface, the same contract the MCU meets for the Kinova.</td>
+    </tr>
+    <tr>
+      <td>C. Ott, R. Mukherjee and Y. Nakamura, &ldquo;Unified impedance and admittance control,&rdquo; IEEE ICRA, 2010. <a href="https://doi.org/10.1109/ROBOT.2010.5509861" target="_blank" rel="noopener">doi:10.1109/ROBOT.2010.5509861</a></td>
+      <td>Impedance vs. admittance trade-offs behind the joint-layer split.</td>
+    </tr>
+    <tr>
+      <td>A. Q. L. Keemink, H. van der Kooij and A. H. A. Stienen, &ldquo;Admittance control for physical human&ndash;robot interaction,&rdquo; <em>IJRR</em>, vol. 37, no. 11, 2018. <a href="https://doi.org/10.1177/0278364918768950" target="_blank" rel="noopener">doi:10.1177/0278364918768950</a></td>
+      <td>Why admittance stays on the MCU: its stability is sensitive to delay and sampling.</td>
+    </tr>
+    <tr>
+      <td>J. E. Colgate and G. G. Schenkel, &ldquo;Passivity of a class of sampled-data systems: Application to haptic interfaces,&rdquo; <em>J. Robotic Systems</em>, 1997.</td>
+      <td>Sampling and passivity in force-feedback loops.</td>
+    </tr>
+    <tr>
+      <td>B. Hannaford and J.-H. Ryu, &ldquo;Time-domain passivity control of haptic interfaces,&rdquo; <em>IEEE Trans. Robotics and Automation</em>, 2002. <a href="https://doi.org/10.1109/70.988969" target="_blank" rel="noopener">doi:10.1109/70.988969</a></td>
+      <td>Passivity of haptic loops under delay.</td>
+    </tr>
+    <tr>
+      <td>R. J. Anderson and M. W. Spong, &ldquo;Bilateral control of teleoperators with time delay,&rdquo; <em>IEEE Trans. Automatic Control</em>, 1989. <a href="https://doi.org/10.1109/9.24201" target="_blank" rel="noopener">doi:10.1109/9.24201</a></td>
+      <td>Delay destabilises force feedback; the case for keeping the fast loop local.</td>
+    </tr>
+    <tr>
+      <td>A. Albu-Sch&auml;ffer, C. Ott and G. Hirzinger, &ldquo;A unified passivity-based control framework for position, torque and impedance control of flexible joint robots,&rdquo; <em>IJRR</em>, 2007. <a href="https://doi.org/10.1177/0278364907073776" target="_blank" rel="noopener">doi:10.1177/0278364907073776</a></td>
+      <td>Joint-torque-level stabilisation beneath task-level control.</td>
+    </tr>
+    <tr>
+      <td>WIZnet, <em>W5500 Datasheet</em>; STMicroelectronics, <em>RM0481 (STM32H5)</em>; Arduino, <em>VENTUNO Q documentation</em> (<a href="https://docs.arduino.cc/hardware/ventuno-q/" target="_blank" rel="noopener">docs.arduino.cc/hardware/ventuno-q</a>); Zephyr Project.</td>
+      <td>The inner-loop MCU&rsquo;s hardware and RTOS.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Hardware</h2>
+<table>
+  <thead><tr><th>Reference</th><th>Relevance</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Kinova Gen3 Ultra lightweight robot &mdash; user guide and Kortex API. <a href="https://github.com/Kinovarobotics/kortex" target="_blank" rel="noopener">github.com/Kinovarobotics/kortex</a></td>
+      <td>The 7-DOF arm with per-joint torque sensing that the contact localization work targets.</td>
+    </tr>
+    <tr>
+      <td>Franka Emika / libfranka. <a href="https://frankaemika.github.io/docs/" target="_blank" rel="noopener">frankaemika.github.io/docs</a></td>
+      <td>The FR3 driver. Note its <code>tau_ext_hat_filtered</code> is already gravity-compensated, unlike the Kinova's raw torque.</td>
+    </tr>
+    <tr>
+      <td>ISO/TS 15066:2016 &mdash; Robots and robotic devices: collaborative robots.</td>
+      <td>The standard governing permissible contact forces in human&ndash;robot collaboration. Referenced by the project's IP disclosure as future certification evidence; <strong>no compliance evidence exists in this repository today</strong>.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="doc-footer">
+  <p>See also: <a href="#contact-localization" onclick="showPage('contact-localization')">Contact Localization</a> &middot; <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a> &middot; <a href="#hapfic" onclick="showPage('hapfic')">Hapfic</a> &middot; <a href="#simulation" onclick="showPage('simulation')">Simulation</a> &middot; <a href="#glossary" onclick="showPage('glossary')">Glossary</a></p>
+</div>

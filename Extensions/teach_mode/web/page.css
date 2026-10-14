@@ -1,0 +1,38 @@
+/* Teach Mode web page. The UI kit draws the buttons, fields and confirmations. */
+.tm-page { display: grid; gap: var(--s3); }
+.tm-bar { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.tm-bar .kit-field { display: flex; align-items: center; gap: var(--s2); margin: 0; }
+.tm-bar .select { min-width: 9rem; }
+.tm-bar .btn-row { gap: var(--s2); }
+.tm-grow { flex: 1 1 auto; }
+.tm-status { color: var(--ink-muted); font-size: var(--fs-s); }
+.tm-status.on { color: var(--accent); font-weight: 600; }
+.tm-runs { color: var(--ink-muted); font-size: var(--fs-s); }
+.tm-runs.hw { color: var(--bad); font-weight: 600; }
+.tm-ask:empty { display: none; }
+
+.tm-work { display: grid; grid-template-columns: minmax(18rem, 2fr) minmax(0, 3fr); gap: var(--s3); align-items: start; }
+.tm-col { display: grid; gap: var(--s3); min-width: 0; }
+.tm-col .section { margin: 0; }
+.tm-live { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr)); gap: 4px var(--s3); }
+.tm-cell { display: flex; align-items: baseline; gap: 6px; }
+.tm-k { color: var(--ink-muted); font-size: var(--fs-s); min-width: 2.6rem; }
+.tm-v { color: var(--ink-strong); font-weight: 600; }
+.tm-u { color: var(--ink-faint); font-size: var(--fs-xs); }
+
+.tm-list { display: grid; gap: 4px; max-height: max(18rem, calc(100vh - 30rem)); overflow: auto; margin-bottom: var(--s3); }
+.tm-row { display: grid; grid-template-columns: 1.6rem 5rem minmax(8rem, 1fr) 4rem auto; gap: var(--s2) var(--s3); align-items: center;
+  padding: 4px var(--s3); border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
+.tm-n { color: var(--ink-muted); text-align: right; }
+.tm-t { justify-self: start; }
+.tm-wv { font-size: var(--fs-s); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-time { color: var(--ink-faint); font-size: var(--fs-xs); text-align: right; }
+.tm-row .btn-row { gap: 2px; flex-wrap: nowrap; }
+.tm-row .btn { padding-left: 8px; padding-right: 8px; }
+.tm-count { display: block; margin-top: var(--s2); color: var(--ink-faint); font-size: var(--fs-xs); }
+
+@media (max-width: 860px) {
+  .tm-work { grid-template-columns: 1fr; }
+  .tm-row { grid-template-columns: 2rem 1fr auto; }
+  .tm-row > .tm-wv, .tm-row > .btn-row { grid-column: 1 / -1; }
+}

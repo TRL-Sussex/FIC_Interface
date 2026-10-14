@@ -1,0 +1,253 @@
+#!/usr/bin/env bash
+#
+# The desktop session, run as the `fic` user by fic-entrypoint.
+#
+# FIC_DISPLAY picks where windows appear:
+#   vnc  (default)  A virtual desktop, shown in the browser through noVNC on
+#                   port ${NOVNC_PORT}. Works the same on every host OS.
+#   host            The host's own X display (Linux; DISPLAY and
+#                   /tmp/.X11-unix are passed in by `fic-studio.sh --native`).
+#
+# Argument (the container command):
+#   studio (default)  FIC Control Studio
+#   dev               FIC Dev Console
+#   desktop           Only the desktop; start programs from its taskbar
+#   shell             An interactive shell, no desktop
+#   <command...>      Run that command with everything set up, no desktop
+#
+# In vnc mode the container lives as long as the desktop does, not the GUI:
+# if the Studio is closed or crashes, relaunch it from the taskbar.
+
+set -eo pipefail
+
+log() { echo "[fic] $*"; }
+
+mode="${1:-studio}"
+[ $# -gt 0 ] && shift
+
+# Files the Studio creates in the workspace stay writable for the `fic`
+# group, like the rest of it. (Not when running under the host's group:
+# files in the shared folder would become writable by that whole group.)
+if [ "$(id -gn)" = "fic" ]; then umask 0002; fi
+
+export USER="${USER:-fic}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-${USER}}"
+mkdir -p "${XDG_RUNTIME_DIR}" 2>/dev/null && chmod 0700 "${XDG_RUNTIME_DIR}" 2>/dev/null || true
+
+# shellcheck disable=SC1091
+source /etc/fic/env.sh
+
+# Robot configs, tuning, imported robots and in-app extensions saved by an
+# earlier container; and the user's own extensions from the shared folder.
+if ! fic-state restore; then
+    if [ -e "${FIC_ROOT}/.fic-state-restored" ]; then
+        log "WARNING: some saved changes could not be restored (see above); they are kept"
+    else
+        log "ERROR: the saved changes could not be restored (see above). They are kept,"
+        log "       and nothing is saved in this container until 'fic-state restore' succeeds."
+    fi
+fi
+
+# ─────────────────────────────────────── programs that need no desktop ───
+case "${mode}" in
+    studio|dev|desktop) ;;
+    shell) cd "${FIC_ROOT}/fic_ws"; exec bash -l ;;
+    *)     cd "${FIC_ROOT}/fic_ws"; exec "${mode}" "$@" ;;
+esac
+
+# ───────────────────────────────────────────────────────────── display ───
+LIFETIME_PID=""
+
+# Mesa's software renderer (llvmpipe). By default it starts a thread per CPU,
+# and with many threads most of their time goes to coordinating with each
+# other: rendering a MuJoCo view at 30 frames/s took ~290% CPU with 4 threads
+# and ~510% with 32. A quarter of the CPUs (1 to 4) keeps the viewers smooth
+# and leaves the rest for the physics and the 1 kHz controller.
+limit_llvmpipe_threads() {
+    if [ -z "${LP_NUM_THREADS:-}" ]; then
+        local threads=$(( $(nproc) / 4 ))
+        [ "${threads}" -lt 1 ] && threads=1
+        [ "${threads}" -gt 4 ] && threads=4
+        export LP_NUM_THREADS="${threads}"
+    fi
+}
+
+use_software_gl() {
+    export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe
+    limit_llvmpipe_threads
+}
+
+start_vnc_desktop() {
+    local geometry="${FIC_SCREEN:-1600x1000}"
+    local display_num="${DISPLAY#:}"
+    display_num="${display_num%%.*}"
+    local rfb_port=$((5900 + display_num))
+
+    # Software OpenGL: the virtual display has no GPU.
+    use_software_gl
+    # OpenGL windows redraw at most as often as the desktop is streamed.
+    export FIC_GL_MAX_FPS="${FIC_GL_MAX_FPS:-30}"
+
+    local security=(-SecurityTypes None)
+    if [ -n "${FIC_VNC_PASSWORD:-}" ]; then
+        mkdir -p "${HOME}/.vnc"
+        printf '%s\n' "${FIC_VNC_PASSWORD}" | vncpasswd -f > "${HOME}/.vnc/passwd"
+        chmod 600 "${HOME}/.vnc/passwd"
+        # Every viewer arrives through websockify on 127.0.0.1, so TigerVNC's
+        # blacklist (after a few wrong passwords, e.g. an old tab with the last
+        # session's password retrying) would lock everyone out. The password is
+        # a fresh random one per start, so the blacklist adds nothing.
+        security=(-SecurityTypes VncAuth -PasswordFile "${HOME}/.vnc/passwd" -UseBlacklist=0)
+    fi
+
+    # The host's X socket folder mounted in (meant for FIC_DISPLAY=host):
+    # starting a virtual display here would take over the host's display.
+    if awk '$5 == "/tmp/.X11-unix" { found = 1 } END { exit !found }' /proc/self/mountinfo; then
+        log "ERROR: /tmp/.X11-unix is mounted from the host; set FIC_DISPLAY=host to use the host's display."
+        exit 2
+    fi
+    rm -f "/tmp/.X${display_num}-lock" "/tmp/.X11-unix/X${display_num}"
+    log "starting the desktop (${geometry})"
+    Xtigervnc "${DISPLAY}" \
+        -geometry "${geometry}" -depth 24 \
+        -desktop "FIC Studio" \
+        -rfbport "${rfb_port}" -localhost \
+        "${security[@]}" \
+        -AlwaysShared -AcceptSetDesktopSize -FrameRate 30 \
+        -nolisten tcp \
+        >/tmp/xvnc.log 2>&1 &
+    LIFETIME_PID=$!
+
+    # Wait for the X server itself instead of guessing with a sleep.
+    local _
+    for _ in $(seq 1 100); do
+        xdpyinfo >/dev/null 2>&1 && break
+        if ! kill -0 "${LIFETIME_PID}" 2>/dev/null; then
+            log "ERROR: the virtual display failed to start:"
+            cat /tmp/xvnc.log >&2
+            exit 1
+        fi
+        sleep 0.1
+    done
+    xdpyinfo >/dev/null 2>&1 || { log "ERROR: the virtual display did not come up"; exit 1; }
+
+    start_desktop_programs
+
+    websockify --web /opt/novnc "${NOVNC_PORT:-6080}" "localhost:${rfb_port}" \
+        >/tmp/websockify.log 2>&1 &
+
+    banner "FIC Studio is running." "" \
+           "Open  ${FIC_URL:-http://localhost:${NOVNC_PORT:-6080}}  in your web browser." "" \
+           "Right-click the desktop, or use the taskbar, to start" \
+           "programs. Your files: the FIC_Studio folder in your home."
+}
+
+# A box of text for the container log, sized to its longest line.
+banner() {
+    local line width=0
+    for line in "$@"; do [ "${#line}" -gt "${width}" ] && width="${#line}"; done
+    local rule
+    rule="$(printf '%*s' $((width + 4)) '' | sed 's/ /─/g')"
+    printf '\n  ┌%s┐\n' "${rule}"
+    for line in "$@"; do printf '  │  %-*s  │\n' "${width}" "${line}"; done
+    printf '  └%s┘\n\n' "${rule}"
+}
+
+start_desktop_programs() {
+    xrdb -merge /etc/X11/Xresources/fic 2>/dev/null || true
+    xsetroot -solid '#2b2622' 2>/dev/null || true
+    # One session bus for the desktop's programs (file manager, browser).
+    eval "$(dbus-launch --sh-syntax)" || true
+    openbox >/tmp/openbox.log 2>&1 &
+    # The image's taskbar, not a copy in the home volume that would hide
+    # changes in later images.
+    tint2 -c /etc/xdg/tint2/tint2rc >/tmp/tint2.log 2>&1 &
+}
+
+use_host_display() {
+    if [ "${mode}" = "desktop" ]; then
+        log "ERROR: 'desktop' needs the browser desktop; with the host display, start studio or dev."
+        exit 2
+    fi
+    # A GPU device passed in (--device /dev/dri or --gpus) is used as is; with
+    # FIC_GL=software, or without one, Mesa renders on the CPU.
+    if [ "${FIC_GL:-auto}" = "software" ]; then
+        use_software_gl
+    else
+        unset LIBGL_ALWAYS_SOFTWARE GALLIUM_DRIVER
+        # Mesa still renders on the CPU when no GPU is reachable.
+        limit_llvmpipe_threads
+    fi
+    if ! xdpyinfo >/dev/null 2>&1; then
+        log "ERROR: cannot open the host display '${DISPLAY}'."
+        log "  Easiest: start it with  docker/fic-studio.sh --native"
+        log "  By hand: on the host run  xhost +SI:localuser:\$(id -un)  and pass"
+        log "    -e FIC_DISPLAY=host -e DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix --ipc=host"
+        log "    --mount type=tmpfs,destination=/dev/shm -e FIC_UID=\$(id -u) -e FIC_GID=\$(id -g)"
+        exit 1
+    fi
+    log "using the host display ${DISPLAY}"
+}
+
+case "${FIC_DISPLAY:-vnc}" in
+    vnc)  start_vnc_desktop ;;
+    host) use_host_display ;;
+    *)    log "ERROR: FIC_DISPLAY must be 'vnc' or 'host' (got '${FIC_DISPLAY}')"; exit 2 ;;
+esac
+
+# The Studio draws with plain Qt widgets, so skip Qt's OpenGL probing.
+# (The MuJoCo viewers use OpenGL through GLFW; this does not affect them.)
+export QT_XCB_GL_INTEGRATION=none
+
+# ─────────────────────────────────────────────────── background helpers ───
+# Save robot configs, tuning and imported robots to the home volume as they
+# change, so they survive the container being replaced by an update.
+( while sleep 20; do fic-state save --quiet || true; done ) &
+
+# Safety net for runaway logs: truncate any log that grows past 100 MB.
+( while sleep 60; do
+      find /tmp "${ROS_LOG_DIR:-/tmp/ros_log}" -maxdepth 3 -type f -name '*.log' \
+           -size +100M -exec truncate -s 0 {} + 2>/dev/null || true
+  done ) &
+
+on_stop() {
+    trap - TERM INT HUP
+    log "stopping; saving robot configuration"
+    fic-state save --quiet || true
+    # tini -g has already passed the signal to every process in the group.
+    exit "${1:-0}"
+}
+trap on_stop TERM INT HUP
+
+# ────────────────────────────────────────────────────────────── the GUI ───
+gui_pid=""
+case "${mode}" in
+    # The web interface, as the desktop entry starts it (its "Classic interface"
+    # action is in the menu). Chromium has no sandbox, GPU or large /dev/shm here.
+    studio)  log "starting FIC Control Studio"
+             QTWEBENGINE_CHROMIUM_FLAGS="--no-sandbox --disable-gpu --disable-dev-shm-usage" \
+                 fic studio --web-ui & gui_pid=$! ;;
+    dev)     log "starting FIC Dev Console";    fic dev    & gui_pid=$! ;;
+    desktop) log "desktop only: start programs from the taskbar" ;;
+esac
+
+if [ "${FIC_DISPLAY:-vnc}" = "vnc" ]; then
+    # Hold the container for as long as the desktop runs.
+    wait "${LIFETIME_PID}" || true
+    log "the desktop exited"
+else
+    # Native windows: stop when the last Studio window has closed. A Studio
+    # can restart itself as a new process, so check by name, not by PID.
+    # (The Studio restarts itself in the same process, so `wait` covers that;
+    # the loop covers a Studio that started a replacement process. Exited
+    # processes not yet reaped, state Z, do not count.)
+    status=0
+    wait "${gui_pid}" || status=$?
+    while pgrep -r R,S,D,T -u "$(id -u)" -f 'fic_studio_pro|fic_dev' >/dev/null; do
+        sleep 2
+    done
+    log "FIC Studio closed"
+    # Report a crash as a failure (exit status), a normal quit as success.
+    on_stop "${status}"
+fi
+on_stop

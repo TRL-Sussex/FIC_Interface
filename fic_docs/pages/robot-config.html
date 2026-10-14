@@ -1,0 +1,297 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">›</span> Robot Configuration</div>
+<h1>Robot Configuration &amp; Model Library</h1>
+<p class="subtitle">Every robot in one list, each on five tabs, with one Save that updates the Studio and the controllers together &mdash; and a drop zone that adds a robot from its URDF.</p>
+
+<h2>Overview</h2>
+<p>The Robot Configuration page lists every robot on the left. Selecting one shows it on the right: a header with its name, status and the <strong>Save</strong> button, over five tabs &mdash; <strong>Overview</strong>, <strong>Joints</strong>, <strong>Frames</strong>, <strong>Hardware</strong> and <strong>Safety</strong>. Under the list, <strong>Add a robot</strong> takes a dropped URDF and builds everything a new robot needs to simulate; see <a href="#adding-a-robot" onclick="showPage('adding-a-robot')">Adding a Robot from its URDF</a>.</p>
+<p>The page opens on the robot the toolbar has selected, and follows the toolbar while you have no unsaved edits. Selecting a robot in this list does <em>not</em> change the toolbar's robot.</p>
+
+<h2>Configuration Files</h2>
+<table>
+  <tr><th>File</th><th>Location</th><th>Purpose</th></tr>
+  <tr><td><code>fic_studio_robots.yaml</code></td><td><code>fic_ws/src/fic_studio/fic_studio/</code></td><td>The Studio's copy &mdash; full robot definitions as the page edits them (including <code>safety_zones</code> and build settings)</td></tr>
+  <tr><td><code>robots_config.yaml</code></td><td><code>fic_library/config/</code></td><td>The controllers' copy, written by every Save &mdash; consumed by the C++ nodes via <code>RobotConfigLoader</code> (<code>fic_library/include/fic/robot_config_loader.hpp</code>)</td></tr>
+  <tr><td><code>config.xml</code></td><td><code>fic_library/config/</code></td><td>FIC tuning parameters per robot per mode (additive: new robots get default tuning) &mdash; see <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a></td></tr>
+</table>
+<p>If <code>robots_config.yaml</code> is missing or unreadable, the C++ nodes log a warning and fall back to the built-in defaults compiled into <code>getDefaultConfig()</code> in <code>robot_config_loader.hpp</code>. The nodes re-read the YAML from <code>&lt;cwd&gt;/../fic_library/config/robots_config.yaml</code> <strong>every time a robot is loaded</strong> (<code>loadRobotModel()</code> calls <code>loadFromDefault()</code>), so most field changes take effect on the next robot selection without restarting or rebuilding anything.</p>
+
+<h2>Page Layout</h2>
+<table>
+  <tr><th>Part</th><th>Behaviour</th></tr>
+  <tr><td><strong>Robot list</strong></td><td>Display name, joint count, and whether it has a hardware driver. The dot is green when the robot is ready to simulate (its files are there and agree with its config) and amber when the Overview has something to fix. Picking another robot with unsaved edits asks <em>Save / Discard / Cancel</em>.</td></tr>
+  <tr><td><strong>Add a robot</strong></td><td>Drop the robot's URDF here (required) &mdash; a <code>.urdf</code>, <code>.xacro</code>, a folder or a <code>.zip</code> &mdash; and its MuJoCo model <code>.xml</code> with it if it has one; or click to browse. Closed-loop robots too &mdash; <a href="#adding-a-robot" onclick="showPage('adding-a-robot')">Adding a Robot</a>.</td></tr>
+  <tr><td><strong>+ Blank robot</strong></td><td>Prompts for a Robot ID (letters, digits and <code>_</code>, starting with a letter), inserts the default template with its paths pointing at <code>menagerie/model/&lt;ID&gt;/</code>, and selects it.</td></tr>
+  <tr><td><strong>Header</strong></td><td>Name, ID, joint count, and two badges: <em>Simulation ready</em> / <em>Needs attention</em>, and <em>Hardware driver</em> / <em>Simulation only</em>.</td></tr>
+  <tr><td><strong>Save</strong></td><td>Writes both robot YAMLs, adds any new robot to <code>config.xml</code>, and publishes the three hot-reload switches to controllers running <em>this</em> robot (table below). Rejects with a validation error if a joint-safety line does not parse as <code>lower, upper</code>. There is no separate Deploy step any more.</td></tr>
+  <tr><td><strong>Save indicator</strong></td><td><code>&#9679; Unsaved changes</code> (amber) while you edit; <code>&#9679; Controllers' copy is older: Save to update</code> (amber) when <code>fic_studio_robots.yaml</code> is newer than <code>robots_config.yaml</code> &mdash; edited by hand, or a save failed half way; <code>&#10003; Saved</code> otherwise.</td></tr>
+  <tr><td><strong>&hellip; menu</strong></td><td><em>Duplicate</em> (as <code>&lt;id&gt;_copy</code>), <em>Delete&hellip;</em> (for an imported robot it also offers to delete its model folder), <em>Import robots from YAML&hellip;</em> (per-robot overwrite prompt), <em>Export all robots to YAML&hellip;</em>, <em>View the controllers' YAML</em> (read-only), <em>Open model folder</em>.</td></tr>
+</table>
+
+<h2>The Tabs</h2>
+
+<h3>Overview</h3>
+<table>
+  <tr><th>Card</th><th>Contents</th></tr>
+  <tr><td><strong>Ready to simulate?</strong></td><td>What the Studio checked in the robot's files, as saved: the URDF has the configured joints and the end-effector / elbow frames; the MuJoCo model has the joints, a motor <code>torq_jk</code> for each joint k, and the <code>force_sensor</code> / <code>torque_sensor</code> the wrench readout uses. Plain XML reads, so it is instant even for large models. <strong>Try in simulation</strong> selects the robot in the toolbar and starts the simulator, then the FIC controller (it asks you to stop a running simulation first). <strong>Open in MuJoCo viewer</strong> opens the model on its own, with nothing else started. <strong>Import report</strong> appears for robots added from a URDF.</td></tr>
+  <tr><td><strong>Identity</strong></td><td>Display name (shown in selectors and logs) and the Robot ID, fixed when the robot is created (the YAML key and the <code>menagerie/model/</code> folder name).</td></tr>
+  <tr><td><strong>Files</strong></td><td>URDF and MuJoCo scene, relative to <code>fic_ws/src/</code>, with Browse buttons. A brick-red border marks a path that does not exist.</td></tr>
+</table>
+
+<h3>Joints</h3>
+<p><strong>Number of joints</strong> (1&ndash;12) resizes the joint table and the home pose; overlapping values are kept, new rows get defaults, tail rows are dropped when shrinking. Row <em>k</em> is driven by the simulator's motor <code>torq_jk</code>.</p>
+<table>
+  <tr><th>Column</th><th>Notes</th></tr>
+  <tr><td>Joint Name</td><td>Must exactly match the URDF and the MuJoCo model</td></tr>
+  <tr><td>Lower / Upper (°)</td><td>Saved as <code>joint_limits_deg</code> &mdash; <strong>hard-stop limits</strong>: exceeding one latches a fault (see <a href="#safety" onclick="showPage('safety')">Safety System &mdash; Tier 2</a>). URDF/Pinocchio limits are used separately for planner target clamping.</td></tr>
+  <tr><td>Torque Max (Nm)</td><td>Saved as <code>joint_torque_limits.max</code> &mdash; the output torque guard clamps each joint's commanded torque to <code>&plusmn;max[i]</code>. When a robot has no per-joint limits (empty <code>joint_torque_limits</code>, e.g. the placeholder entries), the guard falls back to a flat 150&nbsp;Nm clamp. The page has no field for <code>min</code>; a save keeps whatever the config holds (KinovaGen3_CSPM's wrist inputs are &minus;0.235).</td></tr>
+</table>
+<p><strong>Home pose</strong>: one field per joint, in degrees, stored as <code>q_home_deg</code>; <code>q_home_rad</code> is derived on Save.</p>
+
+<h3>Frames</h3>
+<table>
+  <tr><th>Field</th><th>Notes</th></tr>
+  <tr><td>End effector / Elbow</td><td>URDF link names; the &#9662; button lists the URDF's links. The elbow is used for postural / elbow null-space control; leave it empty if unsure.</td></tr>
+  <tr><td>Kinematics solver</td><td><code>kinematics_solver</code> &mdash; see <em>Kinematics Solver Selection</em> below</td></tr>
+  <tr><td>Default Cartesian target</td><td>Position (m) and orientation quaternion <code>[x, y, z, w]</code> with a live <code>|q|</code> readout (not auto-normalised). <strong>Set from home pose</strong> computes the end effector's pose at the home pose from the URDF, the way the controllers do (Pinocchio; MuJoCo when Pinocchio is not installed).</td></tr>
+</table>
+
+<h3>Hardware</h3>
+<table>
+  <tr><th>Card</th><th>Fields</th></tr>
+  <tr><td><strong>Real robot</strong></td><td><strong>Add the driver library</strong>: drop the robot's driver folder or <code>.zip</code> to copy it into <code>robot_library</code>, fill in the three commands below and build it (<a href="#adding-a-robot" onclick="showPage('adding-a-robot')">Adding a Robot &rarr; Real robot</a>). <em>This robot has a hardware driver</em> (<code>is_supported</code> &mdash; the hardware node refuses all control callbacks for unsupported robots; leave it off until hardware-tested), driver command, build directory and build command (<code>{robot_lib}</code> and <code>{robot_name}</code> placeholders), and <strong>Compile driver</strong> (<a href="#build-tools" onclick="showPage('build-tools')">Build Tools</a>).</td></tr>
+  <tr><td><strong>Torque and wrench</strong></td><td>Torque sign (<code>torque_sign</code>, +1 / &minus;1 &mdash; flip if the robot pushes opposite to the command), <em>Measured joint torques are already gravity-free</em> (<code>gravity_compensated</code>), <em>Measured wrench is already gravity-free</em> (<code>wrench_gravity_compensated</code>, defaults to <code>gravity_compensated</code> when absent), <em>Use the driver's wrench</em> (<code>wrench_from_api</code>) &mdash; see the sections below.</td></tr>
+  <tr><td><strong>Sensor deadbands</strong></td><td><code>joint_tau</code> (Nm), <code>cart_force</code> (N), <code>cart_torque</code> (Nm): readings below these are zeroed before the admittance integrator, so sensor noise and gravity-model bias do not move the robot. A per-joint list (<code>joint_tau_per_joint</code>) in the YAML is kept by every save.</td></tr>
+  <tr><td><strong>Gripper</strong></td><td><em>Has a gripper</em> shows the Gripper button on the <a href="#control-panel" onclick="showPage('control-panel')">Robot Control</a> panel (the <code>{rid}_gripper_width</code> slider that drives both hardware and the sim gripper bridge); closed / open width in metres, stored as <code>gripper_range</code>.</td></tr>
+</table>
+
+<h3>Safety</h3>
+<p>Workspace box (end-effector X/Y/Z min/max per axis, each with its own enable), joint safety limits (one <code>lower, upper</code> line per joint, with enable) and speed limits (joints in rad/s, end effector in m/s, with enable). Stored under <code>safety_zones</code> &mdash; see <a href="#safety" onclick="showPage('safety')">Safety System</a>.</p>
+
+<h2>Save Flow &amp; Hot Reload</h2>
+<svg viewBox="0 0 700 330" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="Robot Config: one Save updates both robot lists">
+  <style>
+    .box { rx: 8; ry: 8; stroke-width: 1.5; }
+    .box-blue { fill: #e3f2fd; stroke: #1976d2; }
+    .box-green { fill: #e8f5e9; stroke: #388e3c; }
+    .box-orange { fill: #fff3e0; stroke: #f57c00; }
+    .box-purple { fill: #f3e5f5; stroke: #7b1fa2; }
+    .box-teal { fill: #e0f2f1; stroke: #00897b; }
+    .label-sm { font-family: "Source Sans 3", sans-serif; font-size: 10px; fill: #666; text-anchor: middle; dominant-baseline: central; }
+    .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#robotcfg-arrowhead); }
+  </style>
+  <defs>
+    <marker id="robotcfg-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666"/>
+    </marker>
+  </defs>
+  <text x="350" y="18" class="label-title">Robot Config: one Save updates both</text>
+  <rect x="25" y="45" width="170" height="70" class="box box-blue"/>
+  <text x="110" y="65" class="label-bold">Robot Config page</text>
+  <text x="110" y="82" class="label-sm">FIC Control Studio</text>
+  <text x="110" y="97" class="label-sm">tabs, unsaved-changes flag</text>
+  <rect x="265" y="45" width="180" height="70" class="box box-teal"/>
+  <text x="355" y="65" class="label-code">fic_studio_robots.yaml</text>
+  <text x="355" y="82" class="label-sm">the Studio's copy — every field,</text>
+  <text x="355" y="97" class="label-sm">merged, nothing dropped</text>
+  <line x1="195" y1="80" x2="265" y2="80" class="arrow"/>
+  <text x="230" y="68" class="label-sm">SAVE</text>
+  <rect x="265" y="150" width="180" height="70" class="box box-green"/>
+  <text x="355" y="170" class="label-code">robots_config.yaml</text>
+  <text x="355" y="187" class="label-sm">fic_library/config/ — merged:</text>
+  <text x="355" y="202" class="label-sm">controller-only values kept</text>
+  <rect x="490" y="150" width="180" height="70" class="box box-green"/>
+  <text x="580" y="170" class="label-code">config.xml</text>
+  <text x="580" y="187" class="label-sm">additive only —</text>
+  <text x="580" y="202" class="label-sm">new robots get default tuning</text>
+  <line x1="355" y1="115" x2="355" y2="150" class="arrow"/>
+  <text x="385" y="132" class="label-sm">same Save</text>
+  <line x1="445" y1="112" x2="545" y2="150" class="arrow"/>
+  <rect x="265" y="255" width="180" height="60" class="box box-orange"/>
+  <text x="355" y="275" class="label-bold">fic_simulation /</text>
+  <text x="355" y="290" class="label-bold">fic_hardware</text>
+  <text x="355" y="305" class="label-sm">re-read YAML on robot load</text>
+  <line x1="355" y1="220" x2="355" y2="255" class="arrow"/>
+  <text x="418" y="237" class="label-sm">next loadRobotModel()</text>
+  <rect x="12" y="255" width="206" height="60" class="box box-purple"/>
+  <text x="115" y="271" class="label-code">{rid}_gravity_compensated</text>
+  <text x="115" y="285" class="label-code">{rid}_wrench_gravity_compensated</text>
+  <text x="115" y="299" class="label-code">{rid}_wrench_from_api</text>
+  <line x1="110" y1="115" x2="112" y2="255" class="arrow"/>
+  <text x="58" y="178" class="label-sm">SAVE publishes</text>
+  <text x="58" y="192" class="label-sm">latched Bool, to</text>
+  <text x="58" y="206" class="label-sm">this robot only</text>
+  <line x1="218" y1="285" x2="265" y2="285" class="arrow"/>
+  <text x="241" y="273" class="label-sm">instant</text>
+</svg>
+
+<p>Save touches the running system through two channels:</p>
+<table>
+  <tr><th>Field group</th><th>Takes effect</th></tr>
+  <tr><td><code>gravity_compensated</code>, <code>wrench_gravity_compensated</code>, <code>wrench_from_api</code></td><td><strong>Immediately, on the stations running this robot.</strong> Save publishes a latched (<code>transient_local</code>) <code>std_msgs/Bool</code> on <code>{rid}_gravity_compensated</code>, <code>{rid}_wrench_gravity_compensated</code> and <code>{rid}_wrench_from_api</code> for every station whose selected robot is the one saved; both the simulation and hardware nodes switch on the spot. Saving another robot never flips a running robot's switches.</td></tr>
+  <tr><td>Everything else in <code>robots_config.yaml</code> (joint names, limits, home pose, frames, paths, gripper, deadbands&hellip;)</td><td><strong>On the next robot load.</strong> The C++ nodes call <code>loadFromDefault()</code> inside <code>loadRobotModel()</code>, so re-selecting the robot in the toolbar (or restarting the node) picks up the new YAML &mdash; no rebuild required.</td></tr>
+  <tr><td>New robots added to <code>config.xml</code></td><td><strong>Immediately</strong> with <code>colcon build --symlink-install</code> (this workspace): the nodes read <code>config.xml</code> from <code>fic_simulation</code>'s install share directory, where it is a link to <code>fic_library/config/config.xml</code>. A copy install needs <code>colcon build --packages-select fic_simulation</code>.</td></tr>
+</table>
+<p>Both YAMLs are written atomically, and a save merges rather than replaces: keys the page has no field for &mdash; <code>loop_closures</code>, <code>urdf_path_gripper</code>, a deadband's <code>joint_tau_per_joint</code> &mdash; survive at any depth in the Studio's copy, and values only the controllers' copy has (added there by hand) are kept in it. The controllers' copy is still built from a fixed list of keys, plus <code>robot_category</code>, <code>loop_closures</code>, <code>ee_orientation_only</code>, <code>view_joint_names</code>, <code>safety_zones</code> and <code>sim_backend</code>.</p>
+
+<h2>Gravity Compensated flag</h2>
+<p>The <strong>Gravity Compensated</strong> checkbox in the Admittance &amp; Gravity card controls whether the joint and Cartesian admittance modes (3, 4, 7, 8) feed pinocchio's gravity term as the &ldquo;desired effort&rdquo; in the admittance integrator. It must match how the robot's driver publishes torques and wrenches:</p>
+<table>
+  <tr><th>Setting</th><th>When to use</th><th>Effect</th></tr>
+  <tr><td><strong>Checked (true)</strong></td><td>Driver publishes <em>gravity-removed</em> external torque (e.g.&nbsp;Franka's <code>tau_ext_hat_filtered</code> via the libfranka bridge). The EE wrench is also gravity-removed (<code>O_F_ext_hat_K</code>).</td><td>Admittance feeds <code>0</code> as desired effort, so <code>ext = &minus;measured</code> only contains the user push.</td></tr>
+  <tr><td><strong>Unchecked (false)</strong></td><td>Driver publishes <em>raw</em> joint torque that still includes gravity (typical for Kinova torque mode and most simulators).</td><td>Admittance feeds pinocchio's gravity as desired effort, so <code>ext = gravity &minus; measured</code> cancels the gravity bias.</td></tr>
+</table>
+<p>Picking the wrong setting causes the robot to slowly drift in gravity-heavy poses (one direction or the other), since the controller is double-counting or under-counting gravity. Default for new robots is <strong>false</strong> &mdash; safer for raw-torque drivers; flip it on for Franka-style drivers that pre-compensate. The flag is hot-reloadable: Save publishes it as a latched <code>Bool</code> on <code>{rid}_gravity_compensated</code>. The companion <code>wrench_gravity_compensated</code> flag applies the same idea to the Cartesian wrench and defaults to the value of <code>gravity_compensated</code> when not set. See the <a href="#changelog" onclick="showPage('changelog')">v2.5.5 changelog entry</a> for the root-cause write-up.</p>
+
+<h2>Wrench Source (<code>wrench_from_api</code>)</h2>
+<p>Controls how both controller nodes obtain the external end-effector wrench that drives the Cartesian admittance modes (7/8); on hardware it is also the wrench that appears on the Dashboard:</p>
+<table>
+  <tr><th>Setting</th><th>Wrench source</th><th>When to use</th></tr>
+  <tr><td><strong>ON (true)</strong></td><td>Read directly from the driver&rsquo;s shared memory (<code>shared_feedback-&gt;tool_wrench[6]</code>); in simulation, the wrist F/T sensor.</td><td>The driver&rsquo;s API provides a reliable, continuously updating external wrench estimate. Example: Franka (<code>O_F_ext_hat_K</code>).</td></tr>
+  <tr><td><strong>OFF (false)</strong></td><td>Computed by both nodes from the joint torques via the Jacobian pseudo-inverse: <code>F_ext = (J&middot;J<sup>T</sup>)<sup>&minus;1</sup>&thinsp;J&thinsp;&middot;&thinsp;&tau;<sub>ext</sub></code>, where <code>&tau;<sub>ext</sub> = &minus;(joint_torques + gravity_torques)</code> (gravity from Pinocchio).</td><td>The driver does not provide a live wrench, or the API wrench freezes in the active control mode.</td></tr>
+</table>
+<p>Default for new robots is <strong>false</strong>; of the shipped configs only Franka FR3 sets it to <strong>true</strong> (Kinova Gen3 has <strong>false</strong>). The setting is hot-reloadable: toggling the checkbox on the Hardware tab and clicking <strong>Save</strong> publishes a latched <code>Bool</code> on <code>{rid}_wrench_from_api</code> and the simulation/hardware nodes switch immediately.</p>
+<div class="admonition warning"><div class="adm-title">Kinova Gen3 pitfall</div>
+<p>The Kortex API&rsquo;s <code>tool_external_wrench</code> fields have been observed to freeze once the robot enters low-level (direct torque) mode. The Kinova driver forwards these fields into shared memory (<code>tool_wrench[6]</code>), so if the Dashboard wrench stops updating while a torque mode is active, set <code>wrench_from_api: false</code> and Save &mdash; the Jacobian estimate provides a live wrench instead.</p>
+</div>
+
+<h2>Robot Model Library (menagerie)</h2>
+<h3>Included Models</h3>
+<table>
+  <tr><th>Robot</th><th>Joints</th><th>URDF</th><th>MuJoCo XML</th><th>Gripper</th></tr>
+  <tr><td><strong>Franka FR3</strong></td><td>7</td><td><span class="mark-yes" aria-label="Yes">✓</span></td><td><span class="mark-yes" aria-label="Yes">✓</span></td><td>Franka Hand</td></tr>
+  <tr><td><strong>Kinova Gen3 7DOF</strong></td><td>7</td><td><span class="mark-yes" aria-label="Yes">✓</span></td><td><span class="mark-yes" aria-label="Yes">✓</span></td><td>Robotiq 2F-85</td></tr>
+  <tr><td><strong>KUKA iiwa 14</strong></td><td>7</td><td>.xacro</td><td><span class="mark-yes" aria-label="Yes">✓</span></td><td>—</td></tr>
+  <tr><td><strong>Pendulum</strong></td><td>1</td><td><span class="mark-yes" aria-label="Yes">✓</span></td><td><span class="mark-yes" aria-label="Yes">✓</span></td><td>—</td></tr>
+</table>
+<p>Under <code>safety_zones.velocity</code>, an optional <code>sim_max_joint_vel</code> replaces
+  <code>max_joint_vel</code> for a robot driven in simulation; see <a href="#safety" onclick="showPage('safety')">Safety</a>.</p>
+<p>A robot can declare <code>sim_start_at_home: true</code> (optional) to spawn the simulated arm
+  at its <code>q_home_rad</code> instead of with every joint at 0; see
+  <a href="#simulation" onclick="showPage('simulation')">Simulation</a>.</p>
+<p>A robot can declare <code>sim_backend</code> (optional; absent means the Studio's
+  globally selected backend; the values are <code>mujoco_native</code> and <code>newton</code>). A robot
+  with this key is always launched on the named backend. Floating-base and closed-loop robots
+  should pin <code>mujoco_native</code>, since Newton cannot simulate them correctly; ordinary fixed-base arms need nothing (the Studio passes the scene as <code>model_file:=</code>).</p>
+<p>The KUKA iiwa 14 keeps its MuJoCo files under an uppercase <code>XML/</code> directory (<code>IIWA_14/XML/scene.xml</code>), and its URDF directory contains only <code>.xacro</code> sources.</p>
+
+<h3>Path Convention</h3>
+<pre><code>menagerie/model/&lt;RobotID&gt;/
+  URDF/
+    &lt;RobotID&gt;.urdf          &lt;!-- Pinocchio: FK, IK, gravity --&gt;
+  xml/
+    scene.xml                &lt;!-- Unified scene (skybox, floor, light) + includes robot --&gt;
+    &lt;RobotID&gt;.xml            &lt;!-- Robot-only model (bodies, joints, actuators) --&gt;
+    assets/                  &lt;!-- Mesh files (.stl, .obj) --&gt;</code></pre>
+<p>The <strong>scene.xml</strong> provides the shared simulation environment (skybox, checker floor, directional light) and uses <code>&lt;include file="&lt;RobotID&gt;.xml"/&gt;</code> to pull in the robot. The robot XML must <em>not</em> contain any scene elements (floor, sky, table, lighting) &mdash; those belong only in scene.xml. This keeps every robot in a visually identical environment.</p>
+
+<h3>MuJoCo XML Template</h3>
+<p>A ready-to-copy template lives in <code>menagerie/model/_template/xml/</code>. It contains two files:</p>
+<table>
+  <tr><th>File</th><th>Purpose</th></tr>
+  <tr><td><code>scene.xml</code></td><td>Unified scene (skybox, floor, light). Edit the <code>&lt;include&gt;</code> to point to your robot XML.</td></tr>
+  <tr><td><code>MyRobot.xml</code></td><td>Robot-only model with annotated sections for defaults, meshes, bodies, joints, actuators, sensors, and contact exclusions.</td></tr>
+</table>
+
+<div class="admonition warning"><div class="adm-title">MuJoCo Physics Checklist</div>
+<ul style="margin:0.3em 0">
+  <li>Use <code>integrator="implicitfast"</code> and <code>timestep="0.001"</code> for stable torque control.</li>
+  <li>Collision geoms must have <code>contype="1" conaffinity="1"</code> &mdash; otherwise the robot will pass through the floor and itself.</li>
+  <li>Add <code>&lt;contact&gt;&lt;exclude&gt;</code> pairs for adjacent links to prevent jitter at joints.</li>
+  <li>Add a <code>&lt;site name="force_torque_site"&gt;</code> on the end-effector for the force/torque sensor.</li>
+  <li>Actuator order must match <code>joint_names</code> in <code>robots_config.yaml</code>.</li>
+</ul></div>
+
+<h3>Adding a Robot Manually</h3>
+<p>For almost every robot, <a href="#adding-a-robot" onclick="showPage('adding-a-robot')">drop its URDF on the page</a> instead &mdash; with its MuJoCo model if it has one &mdash; and it writes everything below for you, closed-loop mechanisms included. Write the model by hand only for what the importer does not cover, such as sliding drives.</p>
+<ol>
+  <li>Copy <code>menagerie/model/_template/</code> to <code>menagerie/model/MyRobot_7DOF/</code> (the template's files live in its <code>xml/</code> subdirectory)</li>
+  <li>Rename <code>MyRobot.xml</code> to <code>MyRobot_7DOF.xml</code>, update the <code>&lt;include&gt;</code> in <code>scene.xml</code></li>
+  <li>Fill in the robot XML with your meshes, bodies, joints, and actuators</li>
+  <li>Place the URDF in <code>URDF/MyRobot_7DOF.urdf</code> (joint names must match the XML)</li>
+  <li>Register the robot. Preferred: on the Robot Config page click <strong>+ Blank robot</strong>, enter the ID <code>MyRobot_7DOF</code>, fill in the tabs and click <strong>Save</strong>, which writes an entry like this to <code>fic_library/config/robots_config.yaml</code>:</li>
+</ol>
+<pre><code>robots:
+  MyRobot_7DOF:
+    display_name: "My Custom Robot"
+    num_joints: 7
+    joint_names: [joint1, joint2, joint3, joint4, joint5, joint6, joint7]
+    urdf_path: "menagerie/model/MyRobot_7DOF/URDF/MyRobot_7DOF.urdf"
+    mujoco_xml_path: "menagerie/model/MyRobot_7DOF/xml/scene.xml"
+    ee_frame_name: "ee_link"
+    elbow_frame_name: "link4"
+    kinematics_solver: "pinocchio" # "pinocchio" (default) | "none" (joint-space only) | custom registered solver
+    q_home_deg: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    joint_limits_deg:             # hard-stop limits — fault if exceeded
+      lower: [-166, -101, -166, -190, -166, -20, -130]
+      upper: [ 166,  101,  166,   -6,  166, 280,  130]
+    joint_torque_limits:          # per-joint output clamp (Nm)
+      max: [30, 30, 30, 30, 9, 9, 9]
+    has_gripper: false
+    torque_sign: 1                # +1 or -1 — matches the driver's torque convention
+    gravity_compensated: false    # true for drivers that publish gravity-removed torque
+    wrench_gravity_compensated: false  # true if the driver's wrench is gravity-free
+    wrench_from_api: false        # true = read wrench from driver API; false = compute via Jacobian
+    admittance_deadbands:
+      joint_tau: 1.5              # Nm below which admittance ignores joint torque
+      cart_force: 4.0             # N below which admittance ignores Cartesian force
+      cart_torque: 0.2            # Nm below which admittance ignores Cartesian torque
+    is_supported: false           # Set true only for hardware-tested robots
+    driver_command: ""</code></pre>
+<ol start="6">
+  <li>Save also patches <code>config.xml</code> with default per-joint/Cartesian tuning for the new robot (the same batch step runs at Studio startup via <code>XMLManager.ensure_all_robots()</code>); tune afterwards in the <a href="#tuning" onclick="showPage('tuning')">Tuning Panel</a></li>
+  <li>No rebuild is needed: the Studio starts the simulator with <code>model_file:=</code> the robot's scene, and the controllers read the URDF and YAML from the source tree. Only a copy (non-symlink) install needs <code>colcon build --packages-select fic_simulation</code> for the new <code>config.xml</code> entry</li>
+</ol>
+<div class="admonition warning"><div class="adm-title">Do not hand-edit robots_config.yaml as your primary copy</div>
+<p><code>robots_config.yaml</code> is <strong>rewritten from <code>fic_studio_robots.yaml</code> on every Save</strong>. Values only it has are kept, but a robot added only to <code>robots_config.yaml</code> will not appear in the Studio (which reads its own YAML) and is dropped the next time anyone saves. Hand-edit it only in headless setups that never run the Studio &mdash; otherwise go through the page (<strong>Add a robot</strong>, <strong>+ Blank robot</strong> or <em>Import robots from YAML</em>).</p>
+</div>
+
+<h2>Kinematics Solver Selection</h2>
+<p>The <code>kinematics_solver</code> key selects the kinematics/dynamics backend <strong>per robot</strong>:</p>
+<ul>
+  <li><code>pinocchio</code> (default) — built-in solver; requires pinocchio at build time</li>
+  <li><code>none</code> — degraded mode: joint-space control only. Cartesian modes, IK targets, EE pose/Jacobian publishing and gravity feedforward (hardware) are disabled with warnings</li>
+  <li>any custom name registered in <code>fic_library/include/fic/solvers/solver_factory.hpp</code> — see <code>docs/custom-kinematics-solver.md</code> for a full walkthrough of plugging in your own solver</li>
+</ul>
+<div class="admonition warning"><div class="adm-title">Degraded mode disables the Cartesian workspace guard</div>
+<p>Without a solver there is no forward kinematics, so Cartesian safety zones and the virtual wall <strong>fail open</strong> — joint targets are accepted without the EE-position check. Joint-space limits and the torque hard-fault stay fully enforced. Do not rely on Cartesian zones when running with <code>kinematics_solver: none</code>.</p></div>
+
+<h2>Joint Continuity</h2>
+<p>Whether a joint wraps at ±π (continuous) or clamps to finite limits is derived at runtime by <strong>parsing the URDF directly</strong> (via tinyxml2) — not from YAML, XML config, or Pinocchio's in-memory limits.</p>
+<p>Most vendor URDFs (Kinova, Franka, KUKA) mark continuous joints by omitting <code>lower</code>/<code>upper</code> attributes from the <code>&lt;limit&gt;</code> element rather than using <code>type="continuous"</code>:</p>
+<pre><code>&lt;!-- Continuous joint (Kinova Actuator1) --&gt;
+&lt;limit effort="39" velocity="1.3963" /&gt;
+
+&lt;!-- Bounded joint (Kinova Actuator2) --&gt;
+&lt;limit lower="-2.24" upper="2.24" effort="39" velocity="1.3963" /&gt;</code></pre>
+<p>Classification rule (in <code>deriveJointContinuityFromUrdf()</code> in <code>robot_config_loader.hpp</code>):</p>
+<pre><code>continuous[i] = (type == "continuous") ||
+                (&lt;limit&gt; missing) ||
+                (&lt;limit&gt; has neither `lower` nor `upper` attribute)</code></pre>
+<div class="admonition warning"><div class="adm-title">Why not use Pinocchio's limits?</div>
+<p>In theory, Pinocchio should assign a large sentinel to joints with unspecified URDF bounds. In practice (tested on ROS 2 Jazzy + Kinova Gen3 URDF), <code>model.lowerPositionLimit/upperPositionLimit</code> comes back as <code>0.0, 0.0</code> for such joints — indistinguishable from a bounded joint clamped to zero. Parsing the URDF XML directly is the only reliable signal.</p></div>
+<p>This also correctly distinguishes physical multi-turn joints (e.g. ±720° = ±4π ≈ 12.57 rad) from truly continuous ones — a pure span heuristic would misclassify them.</p>
+<p><code>fic_hardware</code> / <code>fic_simulation</code> call <code>deriveJointContinuityFromUrdf(urdf_path, joint_names)</code> right after <code>buildModel()</code>, compose clamp limits (Pinocchio's values for bounded joints, ±π placeholder for continuous), and install them into <code>ficControl</code> via <code>setJointContinuous()</code> / <code>setJointLimits()</code> — once per robot, before any mode switch — so <strong>Cartesian modes (which skip <code>initJointPlanner</code>) also see correct wrapping behaviour</strong>.</p>
+<p>The URDF remains the authoritative source for <strong>planner target clamping</strong> (the FIC planner clamps
+commanded joint targets to URDF bounds). The <code>joint_limits_deg</code> field in
+<code>robots_config.yaml</code> serves a different role: it defines the robot&rsquo;s <strong>physical
+actuator limits</strong> and is enforced as a <strong>hard fault</strong> at runtime &mdash; if any
+joint&rsquo;s actual position exceeds these bounds, the controller drops to gravity-compensation
+only and latches the fault until the robot is re-loaded. See
+<a href="#safety" onclick="showPage('safety')">Safety System &mdash; Tier 2</a> for details.</p>
+
+<h2>Notes</h2>
+<ul>
+  <li><strong>URDF</strong> is used by Pinocchio (FK, Jacobians, IK, gravity via RNEA)</li>
+  <li><strong>MuJoCo XML</strong> is used only by the MuJoCo simulator (physics + 3D rendering)</li>
+  <li>Both models must have <strong>consistent joint ordering and link names</strong></li>
+  <li>The <code>is_supported</code> flag gates all hardware control — the hardware node sets <code>is_robot_supported_ = false</code> and returns early from every control callback for unsupported robots</li>
+  <li><strong>Save</strong> is the one step: it writes <code>fic_studio_robots.yaml</code> and <code>robots_config.yaml</code>, patches <code>config.xml</code>, and hot-publishes the three gravity/wrench flags to stations running the robot (the separate Deploy button is gone)</li>
+  <li><code>safety_zones</code> is stored in the GUI YAML only (not deployed — zones are pushed to the controller through the <a href="#safety" onclick="showPage('safety')">Safety System</a> topics); <code>build_directory</code>/<code>build_command</code> are written to <code>robots_config.yaml</code> but ignored by the C++ loader — they drive <a href="#build-tools" onclick="showPage('build-tools')">Build Tools</a></li>
+</ul>
+
+<div class="doc-footer">
+  <p>Published work behind Pinocchio and the MuJoCo Menagerie: <a href="#references" onclick="showPage('references')">References</a></p>
+</div>
