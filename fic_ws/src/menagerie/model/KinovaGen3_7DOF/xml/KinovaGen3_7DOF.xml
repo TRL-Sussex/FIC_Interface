@@ -20,11 +20,16 @@
             <joint damping='20.25'/>
         </default>
         <!-- Robotiq 85 working-gripper class. Joints declared on the gripper bodies pick
-             up the range/damping; child geoms get contype/conaffinity=0 so the fingers
-             don't self-interlock during closure. -->
+             up the range/damping. A positive knuckle angle closes the gripper, as on the real
+             Robotiq 2F-85: 0 rad open (about 80 mm between the finger pads), 0.8 rad closed.
+             Gripper geoms collide with the floor, objects and the arm (contype 2 meets their
+             conaffinity 1) but not with each other (conaffinity 1 does not meet contype 2), so
+             the linkage cannot interlock while closing; the two finger pads touch each other
+             through the explicit pair below. KinovaGen3_7DOF_probe.xml (the wall
+             scenes) keeps its gripper without contacts: only its probe touches the wall. -->
         <default class="grip">
-            <joint range="0 0.85" damping="0.05" armature="0.001"/>
-            <geom contype="0" conaffinity="0"/>
+            <joint range="0 0.8" damping="0.05" armature="0.001"/>
+            <geom contype="2" conaffinity="1"/>
         </default>
     </default>
 
@@ -62,8 +67,15 @@
         <motor forcelimited="true" forcerange="-9.0 9.0" joint="Actuator7" name="torq_j7" ctrlrange="-60 60" ctrllimited="true"/>
         <!-- Robotiq 85 driver. The 5 mimic joints follow this one via the equality
              constraints below. Position-controlled — drive via simulation/actuators_cmds
-             with actuators_name=["gripper"] and torque=[ctrl] (ctrl 0=open, 0.85=closed). -->
-        <position name="gripper" joint="left_outer_knuckle" ctrlrange="0 0.85" kp="200" kv="5" forcerange="-10 10"/>
+             with actuators_name=["gripper"] and torque=[ctrl]. ctrl is the finger opening the
+             gripper bridge sends, 10 x the width in metres (0.85 = 85 mm open, 0 = closed);
+             this servo turns it into the knuckle angle 0.744 - 0.9346 ctrl, the angle at which
+             the pads are that far apart (gap ~ 79.6 mm - 107 mm/rad x angle, measured on this
+             model): 0 rad (fully open, 78.5 mm, the knuckle's limit) from ctrl 0.80 up, the pads
+             touching at 0. kp 200, kv 5 (force = kp (q_target - q) - kv qdot). -->
+        <general name="gripper" joint="left_outer_knuckle" ctrlrange="0 0.85" ctrllimited="true"
+                 forcerange="-10 10" forcelimited="true" gaintype="fixed" gainprm="-186.92"
+                 biastype="affine" biasprm="148.8 -200 -5"/>
     </actuator>
     <!-- Base_Link is welded to the world, so MuJoCo's parent-child filter does not
          remove its contact with Shoulder_Link: the meshes overlap by ~12 mm at the
@@ -71,6 +83,8 @@
          against several N m of command torque. The real joint has no such contact. -->
     <contact>
         <exclude body1="Base_Link" body2="Shoulder_Link"/>
+        <!-- The finger pads touch each other (the gripper's own geoms do not collide otherwise). -->
+        <pair geom1="left_finger_pad" geom2="right_finger_pad"/>
     </contact>
 <sensor>
 <!-- Add force and sensors linked to the site -->
@@ -129,7 +143,7 @@
 
 											<body name="left_outer_knuckle" pos="0.0306011 0 0.062792">
 												<inertial pos="0.0178332 3.68915e-11 0.00214425"  quat="0.463241 0.534235 0.534235 0.463241" mass="0.013848" diaginertia="2.80851e-06 2.60224e-06 4.97333e-07" />
-												<joint name="left_outer_knuckle" axis="0 1 0"/>
+												<joint name="left_outer_knuckle" axis="0 -1 0"/>
 												<geom type="mesh" rgba="0.1 0.1 0.1 1" friction="0.2 0. 0.4" mesh="outer_knuckle_coarse" />
 												<body name="left_outer_finger" pos="0.031691 0 -0.00193396">
 													<inertial pos="0.00131452 0 0.0215404"  quat="0.999536 0 -0.0304703 0" mass="0.042604" diaginertia="1.33224e-05 1.07851e-05 3.47367e-06" />
@@ -139,30 +153,30 @@
 
 											<body name="left_inner_knuckle" pos="0.0127 0 0.0693075">
 												<inertial pos="0.0170975 -3.93809e-10 0.0224918"   quat="0.947655 0 -0.319297 0" mass="0.029694" diaginertia="1.49728e-05 1.06148e-05 5.03527e-06" />
-												<joint name="left_inner_knuckle" axis="0 1 0"/>
+												<joint name="left_inner_knuckle" axis="0 -1 0"/>
 												<geom type="mesh" rgba="0.1 0.1 0.1 1" friction="0.8 0.8 0.8" mesh="inner_knuckle_coarse" />
 
 												<body name="left_inner_finger" pos="0.0345853 0 0.045497" >
 													<inertial pos="0.00602756 0 0.00669926"  quat="0.699065 0.106339 0.106339 0.699065" mass="0.042686" diaginertia="1.00232e-05 9.34618e-06 2.17847e-06" />
-													<joint name="left_inner_finger" axis="0 1 0" range="-0.85 0.85"/>
-													<geom type="mesh" rgba="0.1 0.1 0.1 1" friction="0.8 0.8 0.8" mesh="inner_finger_coarse" />
+													<joint name="left_inner_finger" axis="0 -1 0" range="-0.85 0.85"/>
+													<geom name="left_finger_pad" type="mesh" rgba="0.1 0.1 0.1 1" friction="0.8 0.8 0.8" mesh="inner_finger_coarse" />
 												</body>
 											</body>
 
 											<body name="right_inner_knuckle" pos="-0.0127 0 0.0693075" quat="0 0 0 1">
 												<inertial pos="0.0168606 3.93808e-10 0.02267"  quat="0.949317 0 -0.314322 0" mass="0.029694" diaginertia="1.49728e-05 1.06148e-05 5.03527e-06" />
-												<joint name="right_inner_knuckle" axis="0 1 0"/>
+												<joint name="right_inner_knuckle" axis="0 -1 0"/>
 												<geom type="mesh" rgba="0.1 0.1 0.1 1" friction="0.8 0.8 0.8" mesh="inner_knuckle_coarse" />
 												<body name="right_inner_finger" pos="0.034106 0 0.0458574">
 													<inertial pos="0.00602756 0 0.00669926"  quat="0.699065 0.106339 0.106339 0.699065" mass="0.042686" diaginertia="1.00232e-05 9.34618e-06 2.17847e-06" />
-													<joint name="right_inner_finger" axis="0 1 0" range="-0.85 0.85"/>
-													<geom type="mesh" rgba="0.1 0.1 0.1 1" friction="0.8 0.8 0.8" mesh="inner_finger_coarse" />
+													<joint name="right_inner_finger" axis="0 -1 0" range="-0.85 0.85"/>
+													<geom name="right_finger_pad" type="mesh" rgba="0.1 0.1 0.1 1" friction="0.8 0.8 0.8" mesh="inner_finger_coarse" />
 												</body>
 											</body>
 
 											<body name="right_outer_knuckle" pos="-0.0306011 0 0.062792" quat="0 0 0 1">
 												<inertial pos="0.0178097 3.60493e-11 0.00233123"  quat="0.460432 0.536658 0.536658 0.460432" mass="0.013848" diaginertia="2.80851e-06 2.60224e-06 4.97333e-07" />
-												<joint name="right_outer_knuckle" axis="0 1 0"/>
+												<joint name="right_outer_knuckle" axis="0 -1 0"/>
 												<geom type="mesh" rgba="0.1 0.1 0.1 1" friction="0.8 0.8 0.8" mesh="outer_knuckle_coarse" />
 												<body name="right_outer_finger" pos="0.0317096 0 -0.00160136">
 													<inertial pos="0.00108844 0 0.021553"  quat="0.999682 0 -0.0252262 0" mass="0.042604" diaginertia="1.33224e-05 1.07851e-05 3.47367e-06" />

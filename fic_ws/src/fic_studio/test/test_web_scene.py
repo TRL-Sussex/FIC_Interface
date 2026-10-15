@@ -74,7 +74,8 @@ def test_gripper_is_found_and_its_open_end_measured(model):
     assert {s['joints'][c['joint']]['name'] for c in g['coupled']} == {
         'right_outer_knuckle', 'left_inner_knuckle', 'right_inner_knuckle',
         'left_inner_finger', 'right_inner_finger'}
-    assert g['closed'] == 0.0 and g['open'] == pytest.approx(0.85)
+    # the Kinova's knuckles close with a positive angle, as on the real Robotiq 2F-85 (0 open, 0.8 closed)
+    assert g['open'] == 0.0 and g['closed'] == pytest.approx(0.8)
 
 
 def test_open_fingers_are_further_apart_than_closed_ones(model):
