@@ -210,6 +210,14 @@ robots:
       joint_tau: 2.0
       cart_force: 4.0
       cart_torque: 0.2
+    hardware_model:
+      enabled: true
+      source: estimated, Robot1 wall runs 14 Oct 2026 (friction); measured at rest (noise)
+      joint_friction: [0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6]
+      joint_damping: [15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0]
+      torque_noise: [0.08, 0.09, 0.07, 0.1, 0.03, 0.025, 0.015]
+      torque_filter_hz: 200.0
+      command_delay_ms: 0.0
     has_gripper: true
     gripper_range:
     - 0.0

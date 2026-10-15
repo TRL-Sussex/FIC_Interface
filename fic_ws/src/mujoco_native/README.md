@@ -16,7 +16,7 @@ Under `robot{station_id}_simulation/`:
 |---|---|---|---|
 | `joint_states` | `sensor_msgs/JointState` | 1 kHz | every hinge joint (position, velocity, `qfrc_actuator`); a ball joint as `<joint>_roll/_pitch/_yaw` |
 | `gravity_torques` | `std_msgs/Float64MultiArray` | 1 kHz | g(q), one entry per hinge joint (`qfrc_bias` at zero velocity) |
-| `contact_torques` | `std_msgs/Float64MultiArray` | 1 kHz | joint torques of the environment on the arm, one entry per hinge (`qfrc_constraint + qfrc_applied`: contacts, joint limits, applied wrenches); `fic_simulation` estimates HAP-FIC's external wrench in modes 7/8 from it |
+| `contact_torques` | `std_msgs/Float64MultiArray` | 1 kHz | joint torques of the environment on the arm, one entry per hinge (`qfrc_constraint + qfrc_applied`: contacts, joint limits, applied wrenches); `fic_simulation` estimates H-PMP's external wrench in modes 7/8 from it |
 | `imu_data` | `sensor_msgs/Imu` | 500 Hz | the MJCF's accelerometer / gyro / framequat sensors (defaults if none) |
 | `force_torque` | `geometry_msgs/Wrench` | 200 Hz | `force_sensor` + `torque_sensor`, or any sensors whose names end in those (multi-robot scenes prefix them) |
 | `odom` | `nav_msgs/Odometry` | 50 Hz | base pose/twist of a floating base (zeros for a fixed base) |
@@ -70,9 +70,18 @@ state at 500 Hz.
 | `sim_dt` | `0` | physics step; `0` = the MJCF timestep |
 | `publish_rate_hz` | `1000` | joint_states + gravity_torques |
 | `imu_rate_hz`, `ft_rate_hz`, `odom_rate_hz`, `body_poses_rate_hz` | 500, 200, 50, 200 | |
+| `hardware_model` | `''` | the robot's `robots_config.yaml` `hardware_model` as JSON (the launch file passes it) |
 
 The launch file exposes `robot_name`, `station_id`, `model_file`, `headless`,
 `sim_dt` and `publish_rate_hz`.
+
+**Simulating like the real robot.** When the robot named by `robot_name` has an enabled
+`hardware_model` block in `robots_config.yaml` ($FIC_ROOT/fic_library/config, then
+../fic_library/config from the working directory, then fic_simulation's share), the launch file
+passes it to the node, which sets the friction (`frictionloss`), damping and armature of the
+robot's joints, adds the torque-sensor noise to `joint_states`' effort and applies the torque
+command `command_delay_ms` late (`mujoco_native/hardware_model.py`). `FIC_HARDWARE_MODEL=off`
+in the environment skips it. See fic_docs: Simulation vs. Hardware.
 
 ## Build
 

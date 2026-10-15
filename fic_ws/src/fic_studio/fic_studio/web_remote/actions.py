@@ -31,7 +31,7 @@ from fic_studio.mixins.control_bar_mixin import (
     MODE_MENUS, MODE_ROW_LABELS, NO_CARTESIAN, NO_SEQUENCES, VR_DRIVEN,
 )
 from fic_studio.mixins.robot_control_mixin import (
-    CONTROL_MODE_NAMES, CONTROL_MODE_TABS,
+    CONTROL_MODE_DISPLAY, CONTROL_MODE_TABS, mode_display_name,
 )
 
 #: Motion commands are refused for this long after an E-stop, so a jog
@@ -46,7 +46,7 @@ OPTION_TOGGLES = {
     'admittance_planner': ('_rc_admittance_planner_toggle', 'joint'),
     'postural': ('_rc_postural_toggle', 'cart'),
     'elbow': ('_rc_elbow_toggle', 'cart'),
-    'hapfic': ('_rc_hapfic_toggle', 'cart'),
+    'hpmp': ('_rc_hpmp_toggle', 'cart'),
 }
 
 TARGETS = ('simulation', 'hardware', 'vr')
@@ -867,14 +867,16 @@ def _inner_loop_state(w, ctx):
 
 def _mode_state(w, ctx):
     index = int(getattr(w, '_rc_selected_mode_idx', 0))
+    toggle = getattr(w, '_rc_hpmp_toggle', None)
+    hpmp = bool(toggle is not None and toggle.isChecked())
     menus = {}
     for kind, (label, indices) in MODE_MENUS.items():
         menus[kind] = {'label': label, 'modes': [
-            {'index': i, 'label': MODE_ROW_LABELS[slot], 'name': CONTROL_MODE_NAMES[i]}
+            {'index': i, 'label': MODE_ROW_LABELS[slot], 'name': CONTROL_MODE_DISPLAY[i]}
             for slot, i in enumerate(indices)]}
     return {
         'index': index,
-        'name': CONTROL_MODE_NAMES[index] if index < len(CONTROL_MODE_NAMES) else '--',
+        'name': mode_display_name(index, hpmp),     # names H-PMP when the toggle is on (modes 5-8)
         'kind': getattr(w, '_rc_selected_kind', 'joint'),
         'menus': menus,
     }
@@ -1046,8 +1048,8 @@ def _fleet_state(w, ctx):
     for card in directory.studios():
         n = card.get('station')
         known = modes.get('robot%d' % n) if n in mine else None
-        if known is not None and known < len(CONTROL_MODE_NAMES):
-            card = dict(card, mode=CONTROL_MODE_NAMES[known])    # what this Studio last sent that robot
+        if known is not None and known < len(CONTROL_MODE_DISPLAY):
+            card = dict(card, mode=CONTROL_MODE_DISPLAY[known])  # what this Studio last sent that robot
         studios.append({
             'station': n, 'label': station_label(n), 'host': card.get('host', ''),
             'robot': card.get('robot', ''), 'robot_display': card.get('robot_display', ''),

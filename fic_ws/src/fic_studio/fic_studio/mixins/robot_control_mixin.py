@@ -103,11 +103,11 @@ CONTROL_MODE_TABS = [
     ("Joint Imp",     "joint"),   # Mode 1
     ("Joint Planner", "joint"),   # Mode 2
     ("Joint Adm",     "joint"),   # Mode 3
-    ("Joint Haptic",  "joint"),   # Mode 4
+    ("Joint HAP-FIC", "joint"),   # Mode 4
     ("Cart Imp",      "cart"),    # Mode 5
     ("Cart Planner",  "cart"),    # Mode 6
     ("Cart Adm",      "cart"),    # Mode 7
-    ("Cart Haptic",   "cart"),    # Mode 8
+    ("Cart HAP-FIC",  "cart"),    # Mode 8
 ]
 
 # Tooltip text shown when hovering a mode tab — aligned with the Control Modes
@@ -118,15 +118,17 @@ CONTROL_MODE_TOOLTIPS = [
     "Mode 2 — Joint Impedance + Planner. Smooth ramp between targets with damping. "
     "Default mode on startup; safest for first motions.",
     "Mode 3 — Joint Admittance. Robot yields to external forces in joint space.",
-    "Mode 4 — Joint Admittance Haptic. Teleop-variant: admittance driven by a leader device's wrench.",
+    "Mode 4 — Joint HAP-FIC. Joint admittance bounded by each joint's FIC law: yields to a push, returns on release.",
     "Mode 5 — Cartesian Impedance. Spring-anchored end-effector pose, no damping.",
-    "Mode 6 — Cartesian Planner. Smooth EE ramp with damping. Good precision-positioning default.",
+    "Mode 6 — Cartesian Impedance with Planner. Smooth EE ramp with damping. Good precision-positioning default.",
     "Mode 7 — Cartesian Admittance. EE yields to measured wrench. "
     "Postural null-space is gated out in this mode; Elbow still works.",
-    "Mode 8 — Cartesian Admittance Haptic. Teleop follower in Cartesian space. "
+    "Mode 8 — Cartesian HAP-FIC. Cartesian admittance bounded by the FIC law (HapFIC). "
     "Postural null-space gated out; Elbow still works.",
 ]
 
+# The modes' internal names: the hidden mode dropdown, extensions' mode strings and logs key on
+# these, so they stay as they are. What a user reads is CONTROL_MODE_DISPLAY (mode_display_name).
 CONTROL_MODE_NAMES = [
     "Joint Impedance",
     "Joint Impedance With Planner",
@@ -137,6 +139,33 @@ CONTROL_MODE_NAMES = [
     "Cartesian Admittance",
     "Cartesian Admittance Haptic",
 ]
+
+# The modes as the Studio shows them (the Whole-Arm paper's names). HAP-FIC is mode 4 (joints) and
+# mode 8 (Cartesian); H-PMP is not a mode but the toggle that nests a Cartesian mode (5-8) in the
+# joint HAP-FIC.
+CONTROL_MODE_DISPLAY = [
+    "Joint Impedance",
+    "Joint Impedance with Planner",
+    "Joint Admittance",
+    "Joint HAP-FIC",
+    "Cartesian Impedance",
+    "Cartesian Impedance with Planner",
+    "Cartesian Admittance",
+    "Cartesian HAP-FIC",
+]
+
+
+def mode_display_name(idx, hpmp=False):
+    """What the Studio calls mode idx (0-based), with the H-PMP toggle on or off. H-PMP acts on the
+    Cartesian modes only: on Cartesian HAP-FIC (mode 8) it is H-PMP itself, the controller of the
+    Whole-Arm experiments; on modes 5-7 that mode nested in the joint HAP-FIC."""
+    if not 0 <= idx < len(CONTROL_MODE_DISPLAY):
+        return '--'
+    if hpmp and idx == 7:
+        return 'H-PMP'
+    if hpmp and idx >= 4:
+        return CONTROL_MODE_DISPLAY[idx] + ' + H-PMP'
+    return CONTROL_MODE_DISPLAY[idx]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -243,7 +272,7 @@ class RobotControlMixin:
         toggle_row.addStretch()
         layout.addLayout(toggle_row)
 
-        # Mode selection, the modifiers (Postural / Elbow / Hapfic /
+        # Mode selection, the modifiers (Postural / Elbow / Hpmp /
         # Admittance planner) and the config profile selector all live on the
         # global control bar now — see control_bar_mixin. Only the selection
         # state is seeded here, because the publish handlers below read it.
@@ -530,7 +559,7 @@ class RobotControlMixin:
         self._rebuild_rc_control_area()
 
         self.log_message("INFO",
-            f"Mode → {CONTROL_MODE_NAMES[mode_idx]} (Mode {mode_idx + 1}) / {self._rc_current_profile()}",
+            f"Mode → {CONTROL_MODE_DISPLAY[mode_idx]} (Mode {mode_idx + 1}) / {self._rc_current_profile()}",
             "Control")
 
         # Keep the Robot ▸ Control Mode menu checkmark in sync.
@@ -598,9 +627,11 @@ class RobotControlMixin:
         self.node.publish_elbow_enable(bool(checked))
         self.log_message("INFO", f"Elbow {'ON' if checked else 'OFF'}", "Control")
 
-    def _on_rc_hapfic_toggled(self, checked: bool):
-        self.node.publish_hapfic_enable(bool(checked))
-        self.log_message("INFO", f"Hapfic {'ON' if checked else 'OFF'}", "Control")
+    def _on_rc_hpmp_toggled(self, checked: bool):
+        self.node.publish_hpmp_enable(bool(checked))
+        self.log_message("INFO", f"H-PMP {'ON' if checked else 'OFF'}", "Control")
+        if hasattr(self, '_cb_refresh_status'):      # the mode readout names H-PMP when it is on
+            self._cb_refresh_status()
 
     def _on_rc_admittance_planner_toggled(self, checked: bool):
         self._publish_admittance_planner(checked)
@@ -611,7 +642,7 @@ class RobotControlMixin:
         self.node.publish_admittance_planner(enabled, rid)
 
     # ──────────────────────────────────────────────────────────────────────
-    #  Desired wrench of the Cartesian admittance (modes 7/8, HAP-FIC on them)
+    #  Desired wrench of the Cartesian admittance (modes 7/8, H-PMP on them)
     # ──────────────────────────────────────────────────────────────────────
     def desired_wrench_for(self, robot_id=None):
         """Return the desired wrench last sent to a robot (zero if none was sent)."""
@@ -621,7 +652,7 @@ class RobotControlMixin:
     def _publish_desired_wrench(self, values, robot_id=None):
         """Send the admittance's desired wrench [Fx, Fy, Fz, Mx, My, Mz] (N, N m).
 
-        The admittance of modes 7 and 8 (and of HAP-FIC on them) settles where the
+        The admittance of modes 7 and 8 (and of H-PMP on them) settles where the
         measured wrench equals this one; zero, the controller's start-up value, is
         the plain compliant behaviour.
         """
@@ -1223,7 +1254,7 @@ class RobotControlMixin:
         if getattr(self, '_rc_nullspace_label', None) is not None:
             _show('_rc_postural_toggle', show_cart)
             _show('_rc_elbow_toggle', show_cart)
-            _show('_rc_hapfic_toggle', show_cart)
+            _show('_rc_hpmp_toggle', show_cart)
             _show('_rc_nullspace_label', show_cart)
             _show('_rc_admittance_planner_toggle', show_joint)
             self._rc_admittance_planner_toggle.setEnabled(show_joint)
@@ -2040,7 +2071,7 @@ class DesiredWrenchDialog(QDialog):
         self.host, self.rid = host, rid
         self.setWindowTitle('Desired wrench — %s' % rid)
         lay = QVBoxLayout(self)
-        note = QLabel('The Cartesian admittance (modes 7 and 8, and HAP-FIC on them) '
+        note = QLabel('The Cartesian admittance (modes 7 and 8, and H-PMP on them) '
                       'moves the goal until the measured wrench equals this one. '
                       'Zero is the plain compliant behaviour.')
         note.setWordWrap(True)

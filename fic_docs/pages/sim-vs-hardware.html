@@ -102,10 +102,11 @@
   <tr><td>Joint count</td><td>From <code>number_of_joints</code> parameter / <code>robot{N}_number_of_joints</code> topic; controller pre-allocates 20 channels</td><td><code>model.nv</code> from the URDF; shared memory reserves 16 slots (<code>kMaxJoints</code>), active count published in the segment's <code>n_joints</code> field</td></tr>
   <tr><td>Feedback</td><td>Subscribes to <code>robot{sid}_simulation/joint_states</code>, <code>…/gravity_torques</code>, <code>…/force_torque</code></td><td>Reads atomic floats (<code>torque[]</code>, <code>joint_positions[]</code>, <code>tool_wrench[6]</code>) from <code>/dev/shm/robot_feedback_memory</code></td></tr>
   <tr><td>Commands</td><td>Publishes <code>robot{sid}_simulation/actuators_cmds</code> (plus a plain-array copy on <code>/robot{N}_fic_torque_commands</code>, useful for rosbag recording)</td><td>Writes <code>commanded_torque[i]</code> atomics into the same shared-memory segment</td></tr>
-  <tr><td>Mode topic</td><td><code>robot{N}_control_mode</code> &middot; <code>Int32</code> &middot; <code>0..8</code></td><td><code>robot{N}_mode_select</code> &middot; <code>String</code> &middot; <code>"Joint Impedance"</code> … <code>"Cartesian Admittance Haptic"</code>, <code>"Stop Controller"</code></td></tr>
+  <tr><td>Mode topic</td><td><code>robot{N}_control_mode</code> &middot; <code>Int32</code> &middot; <code>0..8</code></td><td><code>robot{N}_mode_select</code> &middot; <code>String</code> &middot; <code>"Joint Impedance"</code> … <code>"Cartesian HAP-FIC"</code>, <code>"Stop Controller"</code></td></tr>
   <tr><td>Gravity torques</td><td>Prefers the simulator's (includes gripper mass), from <code>qfrc_bias</code> at zero velocity; Pinocchio <code>g(q)</code> as fallback</td><td>Pinocchio <code>g(q)</code>; suppressed when the driver compensates internally (<code>gravity_compensated</code> in <code>robots_config.yaml</code>)</td></tr>
   <tr><td>Joint velocities</td><td>From <code>joint_states</code> (10&nbsp;Hz Butterworth filter)</td><td>Finite difference of positions at 1&nbsp;kHz (10&nbsp;Hz filter on positions)</td></tr>
-  <tr><td>Measured-torque filter</td><td>10&nbsp;Hz cutoff</td><td>200&nbsp;Hz cutoff</td></tr>
+  <tr><td>Measured-torque filter</td><td>10&nbsp;Hz cutoff; the robot's (<code>hardware_model.torque_filter_hz</code>, 200&nbsp;Hz on the Kinova) when it is simulated like the real robot</td><td>200&nbsp;Hz cutoff</td></tr>
+  <tr><td>Measured joint torque</td><td>The actuator's effort (the node's own command); with the robot's <code>hardware_model</code> it also carries the arm's joint friction and torque-sensor noise</td><td>The joint torque sensors</td></tr>
   <tr><td>Gripper</td><td>Not wired up yet — the <code>robot{N}_gripper_width</code> callback is a stub</td><td><code>robot{N}_gripper_width</code> → <code>commanded_gripper_width</code> in shared memory; the driver servos the gripper</td></tr>
   <tr><td>Start from GUI</td><td><strong>SIM</strong> + <strong>FIC</strong> buttons</td><td><strong>API</strong> (vendor driver) + <strong>FIC</strong> buttons</td></tr>
 </table>
@@ -134,10 +135,74 @@ Gen3, joint&nbsp;0). Gravity exerts no moment about a vertical axis in any pose,
 <code>gravity_torques</code> must be ~0&nbsp;Nm whatever the arm is doing. If it is not, the vector is not
 gravity.</p></div>
 
+<h2 id="hardware-model">Simulating like the real robot</h2>
+<p>An ideal simulator makes tunes that do not hold on the arm. On the Kinova (October 2026) H-PMP on modes 7 and 8
+held still in simulation and oscillated on the robot, and Cartesian Admittance (mode 7) yielded much less on the
+robot than in simulation. The two nodes ran the same controller; what differed was what the controller measured:</p>
+<ul>
+  <li><strong>The push the admittance sees.</strong> Both nodes estimate the end-effector wrench from the measured joint
+    torque less gravity. On the robot that torque also carries the joints' friction: moving at 10&ndash;20&nbsp;mm/s
+    with nothing touching it, the Kinova's estimate showed about 2&nbsp;N along the motion, and 0.2&ndash;0.4&nbsp;N of
+    noise at rest. The ideal simulator's measured torque is its own command, with a little viscous damping and no noise,
+    and H-PMP's task-space admittance (modes 7/8) was given MuJoCo's exact contact force instead of an estimate.</li>
+  <li><strong>The filter.</strong> The simulator filtered the measured torque at 10&nbsp;Hz, the robot at 200&nbsp;Hz.</li>
+  <li><strong>The deadbands and the velocity damper.</strong> H-PMP's task deadband was the library's 1&nbsp;N in
+    simulation and the robot's 4&nbsp;N on the arm; the simulator ran the weaker <code>sim_max_joint_vel</code> damper.</li>
+</ul>
+<p>A robot's <code>hardware_model</code> block in <code>robots_config.yaml</code> closes these gaps. With it on, the
+simulator gives the arm's joints the measured friction, damping and rotor inertia and adds the torque-sensor noise and
+command delay (<code>mujoco_native/hardware_model.py</code>), and <code>fic_simulation</code> measures torque as
+<code>fic_hardware</code> does: the robot's filter, H-PMP's push estimated from the joint torques, the robot's H-PMP task
+deadband and its velocity damper. A robot without the block, or with <code>enabled: false</code>, is simulated as
+before.</p>
+<table>
+  <tr><th>Key</th><th>Unit</th><th>Effect in simulation</th></tr>
+  <tr><td><code>enabled</code></td><td>true/false</td><td>The switch (true when the block is present and the key is absent).</td></tr>
+  <tr><td><code>joint_friction</code></td><td>N&middot;m per joint</td><td>Coulomb friction (MuJoCo <code>frictionloss</code>).</td></tr>
+  <tr><td><code>joint_damping</code></td><td>N&middot;m&middot;s/rad per joint</td><td>Viscous friction (MuJoCo <code>damping</code>), in place of the model's.</td></tr>
+  <tr><td><code>armature</code></td><td>kg&middot;m&sup2; per joint</td><td>Rotor inertia (MuJoCo <code>armature</code>); absent keeps the model's.</td></tr>
+  <tr><td><code>torque_noise</code></td><td>N&middot;m per joint</td><td>White noise of this standard deviation on the measured joint torque.</td></tr>
+  <tr><td><code>torque_filter_hz</code></td><td>Hz</td><td>The measured-torque filter (<code>fic_hardware</code>'s is 200&nbsp;Hz).</td></tr>
+  <tr><td><code>command_delay_ms</code></td><td>ms</td><td>The torque command is applied this late.</td></tr>
+  <tr><td><code>source</code></td><td>text</td><td>Where the values come from.</td></tr>
+</table>
+<p>The lists follow the robot's <code>joint_names</code>. They are edited under
+<a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a> &rarr; Hardware &rarr; <em>Simulate like the
+real robot</em>.</p>
+<h3>Measuring a robot</h3>
+<p>With the controller running on the real robot (Hardware target) and room for each joint to swing 10&deg; either way,
+run on its PC:</p>
+<pre><code>python3 -m fic_studio.hardware_model --env hardware --robot KinovaGen3_7DOF --write</code></pre>
+<p>The arm holds still for 4&nbsp;s (the noise), then swings one joint at a time through a slow sine about where it
+started, in Joint Impedance (about 4&frac12;&nbsp;min for 7 joints, a warm-up swing first for each). The measured joint torque less the URDF's inverse
+dynamics gives each joint's friction, damping and rotor inertia; <code>--write</code> puts the block into
+<code>robots_config.yaml</code> and the Studio's robot list (only that block: the rest of each file is kept), and the run
+folder keeps the recording and the fit. <code>--joints 2,4</code> measures some joints only, <code>--amplitude-deg</code>
+sets the swing; from another computer, run it over SSH on the robot's PC. On the simulator (<code>--env sim</code>) it returned the model's damping within 9&nbsp;% and its friction
+within 27&nbsp;%. Its rotor-inertia fit also takes up any difference between the URDF's link inertias and the MuJoCo
+model's (0.06&ndash;0.34&nbsp;kg&middot;m&sup2; for 0.01 on the Kinova), so it is written only with
+<code>--fit-armature</code>.</p>
+<h3>Switching it off</h3>
+<p><code>enabled: false</code> (or the switch on the Hardware tab) for the robot, or <code>FIC_HARDWARE_MODEL=off</code> in
+the environment of one simulator run: both <code>mujoco_native</code> and <code>fic_simulation</code> read it. Results
+made with the ideal simulator are reproduced that way.</p>
+<h3>What it does not model yet</h3>
+<ul>
+  <li>Joint elasticity (the harmonic drive and the torque sensor are springs on the real arm) and the robot's own
+    loop latency; <code>command_delay_ms</code> is there for the latter once it is measured.</li>
+  <li>The gravity model's error: the real Kinova's push estimate reads about 2&nbsp;N down at rest with nothing touching
+    it (the gripper's modelled mass), the simulator's none.</li>
+</ul>
+<p>The Kinova's block (October 2026) has the torque noise measured at rest on Robot1 and friction estimated from that
+day's wall runs; replace it with a measurement. With the Kinova's block on, the October default H-PMP tuning showed a
+small residual oscillation on mode 7 in simulation, and the default was changed to remove it (see
+<a href="#changelog" onclick="showPage('changelog')">Changelog</a>, 5.7.0); the robot's own instability on modes
+7/8 has not yet been reproduced in simulation, so check a new tuning on the arm.</p>
+
 <h2>When to use which</h2>
 <ul>
   <li><strong>Developing a new behaviour, new script, or new tuning?</strong> Start in <em>simulation</em>. Free to crash without physical damage, full topic visibility, fast iteration.</li>
-  <li><strong>Validating contact / admittance / dynamics?</strong> Simulation is <em>approximate</em> — MuJoCo models friction and contact, but real rigidity and backlash are not captured. Once a behaviour is stable in sim, re-validate on hardware starting from a lower stiffness (<code>K0</code>) than you used in sim — see <a href="#tuning" onclick="showPage('tuning')">Tuning</a>.</li>
+  <li><strong>Validating contact / admittance / dynamics?</strong> Simulation is <em>approximate</em> — MuJoCo models friction and contact, but real rigidity and backlash are not captured; simulate the robot <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">like the real one</a> (its <code>hardware_model</code>) so tunes carry over. Once a behaviour is stable in sim, re-validate on hardware starting from a lower stiffness (<code>K0</code>) than you used in sim — see <a href="#tuning" onclick="showPage('tuning')">Tuning</a>.</li>
   <li><strong>Teaching / recording waypoints?</strong> Hardware, via <a href="#teach-mode" onclick="showPage('teach-mode')">Teach Mode</a>. Simulation teach mode works but you lose the kinesthetic signal that makes teach mode useful.</li>
   <li><strong>Teleoperation?</strong> Both peers should run hardware nodes when possible; sim on one side is a useful dry-run but the force feedback then comes from the simulated arm (its wrench estimated from the simulated joint torques, or the simulated F/T sensor with <code>wrench_from_api</code>), not from physical sensing. See <a href="#teleoperation" onclick="showPage('teleoperation')">Teleoperation</a>.</li>
 </ul>

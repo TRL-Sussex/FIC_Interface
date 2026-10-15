@@ -135,6 +135,17 @@ struct RobotConfig {
     double teleop_wrench_deadband_f  = 0.5;   // N
     double teleop_wrench_deadband_t  = 0.1;   // Nm
 
+    // The real arm as the simulator reproduces it (robots_config.yaml `hardware_model:`). Absent,
+    // or enabled: false, the simulator stays ideal, as before. When enabled, mujoco_native applies
+    // the block's joint friction, damping, armature, torque-sensor noise and command delay, and
+    // fic_simulation measures torque as fic_hardware does: filtered at torque_filter_hz, H-PMP's
+    // task-space admittance on the wrench estimated from that torque (not MuJoCo's contact force),
+    // and H-PMP's task deadband from admittance_deadbands.
+    struct HardwareModel {
+        bool enabled = false;
+        double torque_filter_hz = 0.0;   // 0: the simulator's own measured-torque filter
+    } hardware_model;
+
     // Per-robot velocity safety, from robots_config.yaml `safety_zones.velocity`
     // (the same block the GUI persists and broadcasts on
     // `robot{N}_safety/velocity_limits`). std::nullopt means the key is absent,
@@ -356,6 +367,13 @@ public:
                     config.teleop_wrench_max_torque = tw["max_torque"].as<double>(5.0);
                     config.teleop_wrench_deadband_f = tw["deadband_force"].as<double>(0.5);
                     config.teleop_wrench_deadband_t = tw["deadband_torque"].as<double>(0.1);
+                }
+
+                // How the simulator reproduces the real arm (optional; absent -> ideal simulator).
+                if (robot_node["hardware_model"]) {
+                    auto hm = robot_node["hardware_model"];
+                    config.hardware_model.enabled = hm["enabled"].as<bool>(true);
+                    config.hardware_model.torque_filter_hz = hm["torque_filter_hz"].as<double>(0.0);
                 }
 
                 // Per-robot velocity safety (optional). Absent -> leave unset so

@@ -17,7 +17,7 @@ Localization</a>. The Contact readout to its right is likewise hardware-only now
 <table>
   <tr><th>Button</th><th>Behaviour</th></tr>
   <tr><td><strong>▲ Joint</strong></td><td>Opens the joint menu. Owns modes 1&ndash;4, the Admittance-planner option, and a config selector.</td></tr>
-  <tr><td><strong>▲ Cart</strong></td><td>Opens the Cartesian menu. Owns modes 5&ndash;8, the Postural / Elbow / <a href="#hapfic" onclick="showPage('hapfic')">Hapfic</a> options, and a config selector. Disabled entirely for legged robots, which configure <code>kinematics_solver: none</code> and cannot run Cartesian modes.</td></tr>
+  <tr><td><strong>▲ Cart</strong></td><td>Opens the Cartesian menu. Owns modes 5&ndash;8, the Postural / Elbow / <a href="#hpmp" onclick="showPage('hpmp')">H-PMP</a> options, and a config selector. Disabled entirely for legged robots, which configure <code>kinematics_solver: none</code> and cannot run Cartesian modes.</td></tr>
   <tr><td><strong>▲ Gripper</strong></td><td>Gripper width. Hidden for robots whose config sets <code>has_gripper: false</code>.</td></tr>
   <tr><td><strong>⌂ Home</strong></td><td>Fires immediately, no panel. See <em>Home</em> below.</td></tr>
   <tr><td><strong>◈ Contact</strong></td><td><strong>Calibrate</strong> (calls <code>{rid}/contact/calibrate</code>) and a <strong>Ground truth</strong> combo (none plus the seven link names, set on the contact node's <code>link_truth</code> parameter) for a recorded run. The viewer launch toggle itself lives in the top toolbar now, not this panel &mdash; see the note above.</td></tr>
@@ -36,7 +36,7 @@ J1  0.0      °  ▇▇▇▇▏      J2  15.0     °  ▇▇▇▇▏
 J3 −180.0    °  ▇▇▏        J4 −129.8    °  ▇▇▇▏</code></pre>
 
 <h3>Each menu owns its own modifiers</h3>
-<p>The joint menu permanently carries the Admittance planner; the Cartesian menu permanently carries Postural, Elbow and Hapfic. Previously one shared row was shown or hidden per mode. Because a menu now owns only the modifiers that apply to its kind, <strong>a modifier can no longer be visible for a mode it does not apply to</strong> &mdash; that class of bug is structurally impossible rather than prevented by a visibility pass.</p>
+<p>The joint menu permanently carries the Admittance planner; the Cartesian menu permanently carries Postural, Elbow and H-PMP. Previously one shared row was shown or hidden per mode. Because a menu now owns only the modifiers that apply to its kind, <strong>a modifier can no longer be visible for a mode it does not apply to</strong> &mdash; that class of bug is structurally impossible rather than prevented by a visibility pass.</p>
 
 <h3>Pressing a menu commits to its base mode</h3>
 <p>Opening <strong>Cart</strong> while a joint mode is running selects Cartesian Impedance, so the controls beneath are live immediately rather than commanding the other space. A menu already holding the active mode is left alone &mdash; re-opening <strong>Joint</strong> during Joint Admittance does not drop you back to Impedance.</p>

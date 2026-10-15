@@ -88,7 +88,12 @@
   {
    "name": "robot.mode.hapfic",
    "signature": "(enabled)",
-   "doc": "Enable or disable HapFIC hybrid Cartesian/joint mode."
+   "doc": "Old name of hpmp(), kept for existing scripts."
+  },
+  {
+   "name": "robot.mode.hpmp",
+   "signature": "(enabled)",
+   "doc": "Turn H-PMP on or off in the Cartesian modes: the Cartesian controller nested inside the"
   },
   {
    "name": "robot.mode.postural",

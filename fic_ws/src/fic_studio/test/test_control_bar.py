@@ -161,10 +161,10 @@ class TestModeMenus:
         assert h._rc_admittance_planner_toggle is not None
 
     def test_cart_menu_owns_the_nullspace_modifiers(self):
-        """Postural, Elbow and Hapfic live in the cart panel."""
+        """Postural, Elbow and H-PMP live in the cart panel."""
         h = _Host()
         for attr in ('_rc_postural_toggle', '_rc_elbow_toggle',
-                     '_rc_hapfic_toggle'):
+                     '_rc_hpmp_toggle'):
             assert getattr(h, attr) is not None, attr
 
     def test_cart_menu_owns_the_desired_wrench(self):

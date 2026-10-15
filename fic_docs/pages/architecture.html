@@ -269,7 +269,7 @@ timer.start(10)  # tick every 10 ms, spin ROS for up to 8 ms per tick</code></pr
 <h2>Important Notes</h2>
 <ul>
   <li><strong>Do not publish to <code>robot{N}_selected_robot</code> during active control</strong> — the controller reloads the Pinocchio model and resets its planner state (<code>robotSelectionCallback</code>), causing a Jacobian size mismatch mid-motion</li>
-  <li><strong>config.xml is shared</strong> — changes from the Tuning Panel or auto-tuner affect both simulation and hardware nodes; the controller reads the file into memory once per robot and mode, and again on a control-mode change, a Hapfic toggle that changes the parameter mode, a robot selection, a profile change or a <code>robot{N}_param_update</code> (sent by the Tuning Panel's SAVE TO XML) &mdash; not on a new target, and not on a file write alone. The read runs off the control thread (v4.4.0; see <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a>)</li>
+  <li><strong>config.xml is shared</strong> — changes from the Tuning Panel or auto-tuner affect both simulation and hardware nodes; the controller reads the file into memory once per robot and mode, and again on a control-mode change, a H-PMP toggle that changes the parameter mode, a robot selection, a profile change or a <code>robot{N}_param_update</code> (sent by the Tuning Panel's SAVE TO XML) &mdash; not on a new target, and not on a file write alone. The read runs off the control thread (v4.4.0; see <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a>)</li>
   <li>Scripts directory: <code>~/.fic_studio_scripts/</code> (Script Editor extension; examples under <code>examples/</code>)</li>
 </ul>
 

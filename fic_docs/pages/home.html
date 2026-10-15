@@ -8,7 +8,7 @@
   <a href="#installation-docker" class="card" onclick="showPage('installation-docker')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><rect x='3' y='9' width='18' height='11'/><path d='M7 9V5h4v4M13 9V5h4v4M7 14h10'/></svg><div class="card-title">Installation (Docker)</div><div class="card-desc">Windows, macOS or Linux with only Docker installed. Simulation in the browser.</div></a>
   <a href="#quickstart" class="card" onclick="showPage('quickstart')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M5 19l3-3'/><path d='M13.5 3.5c3.6 0 7 3.4 7 7-2.4 5-6.2 8-11.6 9.4l-4.8-4.8C6.5 9.7 9.5 5.9 13.5 3.5z'/><circle cx='14.5' cy='9.5' r='2'/></svg><div class="card-title">Quick Start</div><div class="card-desc">Simulation in 5 minutes. Hardware in 10.</div></a>
   <a href="#dev-console" class="card" onclick="showPage('dev-console')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M15.5 3.5a5 5 0 0 0-5.9 6.4L3 16.5 7.5 21l6.6-6.6a5 5 0 0 0 6.4-5.9l-3.2 3.2-2.8-.7-.7-2.8z'/></svg><div class="card-title">Dev Console</div><div class="card-desc">Lightweight hardware GUI for a robot workstation — control, tuning, and teleoperation.</div></a>
-  <a href="#control-modes" class="card" onclick="showPage('control-modes')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M4 6h16M4 12h16M4 18h16'/><circle cx='9' cy='6' r='2'/><circle cx='15' cy='12' r='2'/><circle cx='7' cy='18' r='2'/></svg><div class="card-title">Control Modes</div><div class="card-desc">All 8 modes — impedance, planner, admittance, haptic — plus Postural, Elbow, Hapfic, and Admittance Planner overlays.</div></a>
+  <a href="#control-modes" class="card" onclick="showPage('control-modes')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M4 6h16M4 12h16M4 18h16'/><circle cx='9' cy='6' r='2'/><circle cx='15' cy='12' r='2'/><circle cx='7' cy='18' r='2'/></svg><div class="card-title">Control Modes</div><div class="card-desc">All 8 modes — impedance, planner, admittance, haptic — plus Postural, Elbow, H-PMP, and Admittance Planner overlays.</div></a>
   <a href="#simulation" class="card" onclick="showPage('simulation')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M9.5 3v6.2L4.6 18a2 2 0 0 0 1.7 3h11.4a2 2 0 0 0 1.7-3l-4.9-8.8V3'/><path d='M8 3h8M7.8 14h8.4'/></svg><div class="card-title">Simulation</div><div class="card-desc">MuJoCo physics, fic_simulation node, ROS 2 topic interface.</div></a>
   <a href="#control-panel" class="card" onclick="showPage('control-panel')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><rect x='4' y='8' width='16' height='12' rx='2'/><path d='M12 4v4M2 13h2M20 13h2'/><path d='M9 13h.01M15 13h.01'/></svg><div class="card-title">Hardware Control</div><div class="card-desc">Real robot control via shared memory, vendor drivers, safety system.</div></a>
   <a href="#safety" class="card" onclick="showPage('safety')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M12 3l8 3v6c0 4.6-3.2 8.2-8 9.6-4.8-1.4-8-5-8-9.6V6z'/><path d='m8.8 12 2.2 2.2 4.2-4.4'/></svg><div class="card-title">Safety</div><div class="card-desc">Joint + Cartesian safety zones with live feedback, graceful E-STOP ramp, output torque guard.</div></a>
@@ -17,12 +17,33 @@
 </div>
 
 <div class="admonition tip" style="margin-top:24px">
+  <div class="adm-title">What's new in v5.7.0</div>
+  <ul style="margin:6px 0 4px 0">
+    <li><strong>H-PMP, on by default</strong> &mdash; the overlay that nests the Cartesian controller inside the joint
+      HAP-FIC (formerly the HAP-FIC toggle) is now called H-PMP, is on by default in the Cartesian modes and also works in
+      mode 5. On mode 8 (Cartesian HAP-FIC) it is the H-PMP of the Whole-Arm experiments. Turn it off to send the Cartesian torques directly. Scripts call <code>robot.mode.hpmp()</code>; the topic
+      is <code>robot{N}_hpmp_enable</code> (the old names still work). See
+      <a href="#hpmp" onclick="showPage('hpmp')">H-PMP</a>.</li>
+    <li><strong>Steadier H-PMP elbow</strong> &mdash; H-PMP's inverse kinematics starts from its previous solution, so
+      the elbow posture is held by the joints: a push on the elbow no longer drags the set-point with it, and the arm
+      no longer drifts after a push.</li>
+    <li><strong>Mode names</strong> &mdash; mode 4 is Joint HAP-FIC, mode 6 Cartesian Impedance with Planner and mode 8
+      Cartesian HAP-FIC.</li>
+    <li><strong>Simulating like the real robot</strong> &mdash; give a robot its measured joint friction, damping and
+      torque-sensor noise (Robot Config &rarr; Hardware, or measure them on the arm with
+      <code>python3 -m fic_studio.hardware_model</code>) and the simulator behaves like the arm, so tunes made in
+      simulation carry over. See <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Simulation vs.
+      Hardware</a>.</li>
+  </ul>
+</div>
+
+<div class="admonition tip" style="margin-top:24px">
   <div class="adm-title">What's new in v5.6.0</div>
   <ul style="margin:6px 0 4px 0">
     <li><strong>Teach Mode and Sequences in the web interface</strong> &mdash; each has its own page, like the Script
       Editor's: teach by hand and record waypoints, then play, step, edit and type them, with the page asking before the
       robot moves and again on the real robot.</li>
-    <li><strong>Desired wrench for the Cartesian admittance</strong> &mdash; modes 7 and 8, and Hapfic on them, move
+    <li><strong>Desired wrench for the Cartesian admittance</strong> &mdash; modes 7 and 8, and H-PMP on them, move
       the goal until the measured wrench equals a desired one (zero at start-up). Set it from the Cart options, the
       web interface, the Script Editor or <code>robot{N}_desired_wrench</code>. See
       <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>.</li>
@@ -216,7 +237,7 @@ ros2 run fic_studio fic_dev          # FIC Dev Console (lightweight hardware GUI
 <table>
   <tr><th>Topic</th><th>Pages</th></tr>
   <tr><td>Getting started</td><td><a href="#installation" onclick="showPage('installation')">Installation</a> · <a href="#quickstart" onclick="showPage('quickstart')">Quick Start</a> · <a href="#first-motion" onclick="showPage('first-motion')">First Motion</a> · <a href="#glossary" onclick="showPage('glossary')">Glossary</a></td></tr>
-  <tr><td>Concepts</td><td><a href="#architecture" onclick="showPage('architecture')">Architecture</a> · <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Sim vs Hardware</a> · <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a> · <a href="#hapfic" onclick="showPage('hapfic')">Hapfic</a></td></tr>
+  <tr><td>Concepts</td><td><a href="#architecture" onclick="showPage('architecture')">Architecture</a> · <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Sim vs Hardware</a> · <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a> · <a href="#hpmp" onclick="showPage('hpmp')">H-PMP</a></td></tr>
   <tr><td>Tuning</td><td><a href="#tuning" onclick="showPage('tuning')">Tuning</a> · <a href="#autotuning" onclick="showPage('autotuning')">Auto-Tuning</a> · <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a></td></tr>
   <tr><td>Programming</td><td><a href="#sequences" onclick="showPage('sequences')">Sequences</a> · <a href="#teach-mode" onclick="showPage('teach-mode')">Teach Mode</a> · <a href="#script-editor" onclick="showPage('script-editor')">Script Editor</a> · <a href="#api-reference" onclick="showPage('api-reference')">Script API</a></td></tr>
   <tr><td>Teleoperation</td><td><a href="#gamepad" onclick="showPage('gamepad')">Gamepad</a> · <a href="#teleoperation" onclick="showPage('teleoperation')">Teleoperation</a> · <a href="#tracker" onclick="showPage('tracker')">Trackers</a> · <a href="#vr-zed-teleop" onclick="showPage('vr-zed-teleop')">VR ZED Teleop</a></td></tr>

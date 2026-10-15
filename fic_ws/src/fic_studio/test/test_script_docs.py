@@ -53,7 +53,7 @@ class _StubNode:
     def publish_elbow_enable(self, *_a, **_kw):
         """No-op publish stub."""
 
-    def publish_hapfic_enable(self, *_a, **_kw):
+    def publish_hpmp_enable(self, *_a, **_kw):
         """No-op publish stub."""
 
     def publish_admittance_planner(self, *_a, **_kw):

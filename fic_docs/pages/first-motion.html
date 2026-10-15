@@ -118,7 +118,7 @@
 <ol>
   <li><strong>Switch to Mode 5.</strong> Click the <strong>Cart Imp</strong> tab (<em>Cartesian Impedance</em>). The control area rebuilds from joint fields to EE pose fields automatically.</li>
   <li><strong>Hold the EE pose.</strong> Don't command anything — the controller snapped the Cartesian target to the current EE pose on engage, so just confirm the arm holds it. Perturb a mid-chain link in the viewer; the EE should recover but the elbow may "swim" in the null space.</li>
-  <li><strong>Enable postural.</strong> In the Control Panel's <em>Null-space</em> row, tick <strong>Postural</strong>. Perturb the elbow again — it should return to the IK-preferred configuration without the EE moving noticeably. (The row also has <strong>Elbow</strong>, <strong>Hapfic</strong> and <strong>Admittance Planner</strong> toggles; Postural and Elbow both work in every Cartesian mode, the admittance Modes 7/8 included. See <a href="#hapfic" onclick="showPage('hapfic')">Hapfic</a>.)</li>
+  <li><strong>Enable postural.</strong> In the Control Panel's <em>Null-space</em> row, tick <strong>Postural</strong>. Perturb the elbow again — it should return to the IK-preferred configuration without the EE moving noticeably. (The row also has <strong>Elbow</strong>, <strong>H-PMP</strong> and <strong>Admittance Planner</strong> toggles; Postural and Elbow both work in every Cartesian mode, the admittance Modes 7/8 included. See <a href="#hpmp" onclick="showPage('hpmp')">H-PMP</a>.)</li>
   <li><strong>Commanded EE step.</strong> Offset the Cartesian target by 5 cm in one axis and click <strong>▶ Send command</strong>. The EE should move smoothly, not jump.</li>
 </ol>
 

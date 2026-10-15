@@ -24,19 +24,19 @@ from PyQt5.QtWidgets import (
 
 CONTROL_MODES = {
     1: {"name": "Joint Impedance",              "type": "joint",     "has_planner": False, "has_admittance": False},
-    2: {"name": "Joint Impedance With Planner", "type": "joint",     "has_planner": True,  "has_admittance": False},
+    2: {"name": "Joint Impedance with Planner", "type": "joint",     "has_planner": True,  "has_admittance": False},
     3: {"name": "Joint Admittance",             "type": "joint",     "has_planner": True,  "has_admittance": True},
-    4: {"name": "Joint Admittance Haptic",      "type": "joint",     "has_planner": True,  "has_admittance": True},
+    4: {"name": "Joint HAP-FIC",                "type": "joint",     "has_planner": True,  "has_admittance": True},
     5: {"name": "Cartesian Impedance",          "type": "cartesian", "has_planner": False, "has_admittance": False},
-    6: {"name": "Cartesian Planner",            "type": "cartesian", "has_planner": True,  "has_admittance": False},
+    6: {"name": "Cartesian Impedance with Planner","type": "cartesian", "has_planner": True,  "has_admittance": False},
     7: {"name": "Cartesian Admittance",         "type": "cartesian", "has_planner": True,  "has_admittance": True},
-    8: {"name": "Cartesian Admittance Haptic",  "type": "cartesian", "has_planner": True,  "has_admittance": True},
+    8: {"name": "Cartesian HAP-FIC",            "type": "cartesian", "has_planner": True,  "has_admittance": True},
 }
 
-#: HAP-FIC's own tuning (xml_manager.HAPFIC_MODE): not a control mode, it is used instead of the mode's
-#: own tuning whenever HAP-FIC is on in modes 6-8. Its joint layer is a joint admittance with a planner,
+#: H-PMP's own tuning (xml_manager.HPMP_MODE): not a control mode, it is used instead of the mode's
+#: own tuning whenever H-PMP is on in modes 5-8. Its joint layer is a joint admittance with a planner,
 #: its Cartesian layer a Cartesian planner (no admittance).
-HAPFIC_MODE = 100
+HPMP_MODE = 100
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -847,7 +847,7 @@ class TuningMixin:
         self.control_mode_dropdown.setMinimumWidth(240)
         for num, info in CONTROL_MODES.items():
             self.control_mode_dropdown.addItem(f"Mode {num}: {info['name']}", num)
-        self.control_mode_dropdown.addItem('HAP-FIC (modes 6-8 with HAP-FIC on)', HAPFIC_MODE)
+        self.control_mode_dropdown.addItem('H-PMP (modes 5-8 with H-PMP on)', HPMP_MODE)
         self.control_mode_dropdown.currentIndexChanged.connect(self._on_control_mode_changed)
         sel_row.addWidget(self.control_mode_dropdown)
 
@@ -856,15 +856,15 @@ class TuningMixin:
         self.mode_info_label = QLabel('(NO damping)')
         sel_row.addWidget(self.mode_info_label)
 
-        self.hapfic_layer_label = QLabel('Layer:')
-        sel_row.addWidget(self.hapfic_layer_label)
-        self.hapfic_layer_dropdown = QComboBox()
-        self.hapfic_layer_dropdown.addItem('Joint layer', 'joint')
-        self.hapfic_layer_dropdown.addItem('Cartesian layer', 'cartesian')
-        self.hapfic_layer_dropdown.currentIndexChanged.connect(self._on_control_mode_changed)
-        sel_row.addWidget(self.hapfic_layer_dropdown)
-        self.hapfic_layer_label.setVisible(False)
-        self.hapfic_layer_dropdown.setVisible(False)
+        self.hpmp_layer_label = QLabel('Layer:')
+        sel_row.addWidget(self.hpmp_layer_label)
+        self.hpmp_layer_dropdown = QComboBox()
+        self.hpmp_layer_dropdown.addItem('Joint layer', 'joint')
+        self.hpmp_layer_dropdown.addItem('Cartesian layer', 'cartesian')
+        self.hpmp_layer_dropdown.currentIndexChanged.connect(self._on_control_mode_changed)
+        sel_row.addWidget(self.hpmp_layer_dropdown)
+        self.hpmp_layer_label.setVisible(False)
+        self.hpmp_layer_dropdown.setVisible(False)
 
         sel_row.addSpacing(16)
         self.joint_id_label = QLabel('Joint ID:')
@@ -1241,11 +1241,11 @@ class TuningMixin:
     # ── mode change ──────────────────────────────────────────────────────────
 
     def _tuning_set(self):
-        """(mode, is_joint, has_planner, has_admittance) of the set being edited. HAP-FIC's own tuning
+        """(mode, is_joint, has_planner, has_admittance) of the set being edited. H-PMP's own tuning
         is a joint set on its joint layer and a set of axes on its Cartesian layer (no admittance)."""
         mode = self._get_current_mode()
-        if mode == HAPFIC_MODE:
-            joint = self.hapfic_layer_dropdown.currentData() == 'joint'
+        if mode == HPMP_MODE:
+            joint = self.hpmp_layer_dropdown.currentData() == 'joint'
             return mode, joint, True, joint
         info = CONTROL_MODES.get(mode, CONTROL_MODES[1])
         return mode, info['type'] == 'joint', info['has_planner'], info['has_admittance']
@@ -1273,9 +1273,9 @@ class TuningMixin:
 
     def _on_control_mode_changed(self):
         mode, is_joint, has_planner, has_admittance = self._tuning_set()
-        hapfic = mode == HAPFIC_MODE
-        self.hapfic_layer_label.setVisible(hapfic)
-        self.hapfic_layer_dropdown.setVisible(hapfic)
+        hpmp = mode == HPMP_MODE
+        self.hpmp_layer_label.setVisible(hpmp)
+        self.hpmp_layer_dropdown.setVisible(hpmp)
 
         # Units depend on the control space (joint vs Cartesian).
         u_stiff = 'Nm/rad' if is_joint else 'N/m'
@@ -1293,10 +1293,10 @@ class TuningMixin:
                 _w.set_unit(_u)
 
         self.mode_type_label.setText('Type: %s' % (
-            ('HAP-FIC, %s layer' % ('joint' if is_joint else 'Cartesian')) if hapfic
+            ('H-PMP, %s layer' % ('joint' if is_joint else 'Cartesian')) if hpmp
             else 'Joint' if is_joint else 'Cartesian'))
-        if hapfic:
-            self.mode_info_label.setText("(used instead of the mode's own tuning whenever HAP-FIC is on)")
+        if hpmp:
+            self.mode_info_label.setText("(used instead of the mode's own tuning whenever H-PMP is on)")
         elif has_planner:
             self.mode_info_label.setText('(HAS damping_ratio)')
         elif has_admittance:

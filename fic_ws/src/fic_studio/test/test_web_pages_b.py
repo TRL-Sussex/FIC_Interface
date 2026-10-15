@@ -234,7 +234,7 @@ def test_safety_edit_is_blocked_for_a_simulation_only_account_on_hardware(studio
 def test_tuning_info_lists_configs_modes_and_axes(studio):
     info = run(studio, 'tuning_info')
     assert info['ok'] and info['robot'] == ROBOT and 'default' in info['profiles']
-    assert [m['id'] for m in info['modes']] == list(range(1, 9)) + [100]          # and HAP-FIC's own tuning
+    assert [m['id'] for m in info['modes']] == list(range(1, 9)) + [100]          # and H-PMP's own tuning
     assert info['axes'] == ['x', 'y', 'z', 'q', 'elbow', 'postural']
 
 
@@ -403,9 +403,9 @@ def test_a_trial_left_behind_is_found_again_from_the_file(trial_studio):
     assert run(studio, 'tuning_trial', op='discard', confirm=True)['ok']
 
 
-def test_hapfic_is_a_tuning_set_of_its_own_with_a_joint_and_a_cartesian_layer(studio):
+def test_hpmp_is_a_tuning_set_of_its_own_with_a_joint_and_a_cartesian_layer(studio):
     info = run(studio, 'tuning_info')
-    assert {'id': 100, 'name': 'HAP-FIC', 'type': 'hapfic', 'planner': True, 'admittance': True} in info['modes']
+    assert {'id': 100, 'name': 'H-PMP', 'type': 'hpmp', 'planner': True, 'admittance': True} in info['modes']
     joint = run(studio, 'tuning_get', mode=100, layer='joint', joint=1)
     assert joint['ok'] and joint['target']['kind'] == 'joint'
     assert {f['group'] for f in joint['fields']} == {'controller', 'planner', 'admittance'}
@@ -415,7 +415,7 @@ def test_hapfic_is_a_tuning_set_of_its_own_with_a_joint_and_a_cartesian_layer(st
     assert 'diff_effort_max' not in {f['key'] for f in joint['fields'] + axis['fields']}   # no controller reads it
 
 
-def test_saving_hapfic_leaves_modes_4_and_6_alone(studio):
+def test_saving_hpmp_leaves_modes_4_and_6_alone(studio):
     mgr = XMLManager(studio._web_config_path)
     before4, before6 = mgr.load_joint_params(ROBOT, 1, 4), mgr.load_cartesian_axis(ROBOT, 6, 'x')
     assert run(studio, 'tuning_save', mode=100, layer='joint', joint=1, confirm=True,
@@ -429,12 +429,12 @@ def test_saving_hapfic_leaves_modes_4_and_6_alone(studio):
     assert mgr.load_joint_params(ROBOT, 1, 100).diff_effort_max == before4.diff_effort_max   # kept, not offered
 
 
-def test_a_config_can_be_added_from_hapfic(studio):
+def test_a_config_can_be_added_from_hpmp(studio):
     assert run(studio, 'tuning_profile', op='add', name='soft', mode=100, confirm=True)['ok']
     assert 'soft' in XMLManager(studio._web_config_path).get_available_profiles(ROBOT, 100)
 
 
-def test_without_a_hapfic_block_the_page_shows_what_hapfic_runs_on(studio):
+def test_without_a_hpmp_block_the_page_shows_what_hpmp_runs_on(studio):
     import xml.etree.ElementTree as ET
     tree = ET.parse(studio._web_config_path)
     for robot in tree.getroot().iter('robot'):
@@ -442,13 +442,13 @@ def test_without_a_hapfic_block_the_page_shows_what_hapfic_runs_on(studio):
             robot.remove(m)
     tree.write(studio._web_config_path)
     reply = run(studio, 'tuning_get', mode=100, layer='joint', joint=2)
-    assert reply['hapfic_layers'] and not reply['fallback']
+    assert reply['hpmp_layers'] and not reply['fallback']
     assert reply['values']['admittance_damping'] == XMLManager(studio._web_config_path).load_joint_params(ROBOT, 2, 4).admittance_damping
     assert run(studio, 'tuning_save', mode=100, layer='joint', joint=2, confirm=True, values={'stiffness': 150.0})['ok']
     mgr = XMLManager(studio._web_config_path)
     assert mgr.get_available_profiles(ROBOT, 100) == ['default']
     assert mgr.load_joint_params(ROBOT, 5, 100) == mgr.load_joint_params(ROBOT, 5, 4)   # the whole block came along
-    assert not run(studio, 'tuning_get', mode=100, layer='joint', joint=2)['hapfic_layers']
+    assert not run(studio, 'tuning_get', mode=100, layer='joint', joint=2)['hpmp_layers']
 
 
 def test_tuning_profile_add_and_delete(studio):

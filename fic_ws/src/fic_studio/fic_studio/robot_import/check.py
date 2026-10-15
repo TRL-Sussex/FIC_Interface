@@ -153,6 +153,15 @@ def check_robot(cfg, ws_src):
             if not {'force_sensor', 'torque_sensor'} <= names['sensor']:
                 out.append((WARN, 'No force_sensor / torque_sensor in the MuJoCo model: '
                             'simulated wrench readings will be zero.'))
+    hm = cfg.get('hardware_model')
+    if isinstance(hm, dict) and hm.get('enabled', True):
+        out.append((OK, 'Simulated like the real robot (hardware_model%s).'
+                    % (': ' + hm['source'] if hm.get('source') else '')))
+    elif cfg.get('is_supported'):
+        out.append((WARN, 'Simulated as an ideal arm: tunes made in simulation may not hold on '
+                    'the real one. Measure it (python3 -m fic_studio.hardware_model --env '
+                    'hardware --robot <name> --write) and turn on "Simulate like the real '
+                    'robot" (Hardware tab).'))
     order = {ERROR: 0, WARN: 1, OK: 2}
     return sorted(out, key=lambda m: order[m[0]])
 

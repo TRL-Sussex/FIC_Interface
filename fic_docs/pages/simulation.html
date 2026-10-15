@@ -95,7 +95,7 @@
   <tr><td><code>robot{N}_active_profile</code></td><td>String</td><td>Active <a href="#tuning" onclick="showPage('tuning')">tuning profile</a> used when (re-)loading controller parameters</td></tr>
   <tr><td><code>robot{N}_number_of_joints</code></td><td>Int32</td><td>Joint count; resizes internal buffers</td></tr>
   <tr><td><code>robot{N}_safety/*</code></td><td>Float64MultiArray</td><td><code>cartesian_limits</code>, <code>joint_limits</code>, <code>velocity_limits</code> from the <a href="#safety" onclick="showPage('safety')">Safety panel</a></td></tr>
-  <tr><td><code>robot{N}_postural_enable</code> / <code>_elbow_enable</code> / <code>_hapfic_enable</code> / <code>_admittance_planner_enable</code></td><td>Bool</td><td>Null-space helper and planner toggles (see <a href="#hapfic" onclick="showPage('hapfic')">Hapfic</a>)</td></tr>
+  <tr><td><code>robot{N}_postural_enable</code> / <code>_elbow_enable</code> / <code>_hpmp_enable</code> / <code>_admittance_planner_enable</code></td><td>Bool</td><td>Null-space helper and planner toggles (see <a href="#hpmp" onclick="showPage('hpmp')">H-PMP</a>)</td></tr>
   <tr><td><code>robot{N}_desired_wrench</code></td><td>Wrench</td><td>Desired wrench of the Cartesian admittance (modes 7/8); zero at start-up (see <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>)</td></tr>
   <tr><td><code>robot{N}_gravity_compensated</code> / <code>_wrench_gravity_compensated</code> / <code>_wrench_from_api</code></td><td>Bool (transient local)</td><td>Runtime overrides of the robot-config flags</td></tr>
 </table>
@@ -167,10 +167,10 @@ tau[i]  = clamp(fic_torque[i] − kd[i] × joint_velocity[i], ±torque_limit[i])
 <ol>
   <li>Guard — skip until a robot and joint count have been received and the Pinocchio model is loaded</li>
   <li>Snapshot state (under mutex) → release mutex before computing</li>
-  <li>Detect mode change → reset init flag (also reset by the hapfic toggle, robot selection, and new joint targets)</li>
+  <li>Detect mode change → reset init flag (also reset by the hpmp toggle, robot selection, and new joint targets)</li>
   <li>Compute EE velocity = Jacobian × q̇</li>
-  <li>Initialise controllers when the init flag is down — loads <code>(robot, mode, profile)</code> parameters from the installed <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a> (<code>&lt;fic_simulation share&gt;/config/config.xml</code>, installed from <code>fic_library/config/config.xml</code>). With hapfic active on modes 6/7/8, its joint and Cartesian parameters load from the HAP-FIC block (<code>&lt;mode id="100"&gt;</code>; modes 4 and 6 on a robot without one)</li>
-  <li>Compute FIC torques per joint/axis; modes 1&ndash;4 and hapfic add MuJoCo's gravity torque <code>g(q)</code> on top (the FIC law has no gravity term), and in modes 3/4 it is also the commanded effort the interaction torque is measured against</li>
+  <li>Initialise controllers when the init flag is down — loads <code>(robot, mode, profile)</code> parameters from the installed <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a> (<code>&lt;fic_simulation share&gt;/config/config.xml</code>, installed from <code>fic_library/config/config.xml</code>). With hpmp active on modes 6/7/8, its joint and Cartesian parameters load from the H-PMP block (<code>&lt;mode id="100"&gt;</code>; modes 4 and 6 on a robot without one)</li>
+  <li>Compute FIC torques per joint/axis; modes 1&ndash;4 and hpmp add MuJoCo's gravity torque <code>g(q)</code> on top (the FIC law has no gravity term), and in modes 3/4 it is also the commanded effort the interaction torque is measured against</li>
   <li>Apply null-space helpers (postural / elbow) on Cartesian modes if enabled</li>
   <li>Hard-fault check — if any joint exceeds the config's physical position limits, latch a fault and output gravity compensation only until a new robot is loaded</li>
   <li>Output guard, optional velocity damping, then publish trajectory_data, torque commands, actuator commands</li>
@@ -185,7 +185,7 @@ tau[i]  = clamp(fic_torque[i] − kd[i] × joint_velocity[i], ±torque_limit[i])
 </table>
 
 <h2>Inverse Kinematics</h2>
-<p>Iterative damped Jacobian pseudo-inverse using Pinocchio. It runs asynchronously in a detached thread on each incoming Cartesian target, so the 1 kHz loop never waits for it. Its result, <code>q_target_ik</code>, is hapfic's joint set-point and the target of the postural/elbow null-space helpers:</p>
+<p>Iterative damped Jacobian pseudo-inverse using Pinocchio. It runs asynchronously in a detached thread on each incoming Cartesian target, so the 1 kHz loop never waits for it. Its result, <code>q_target_ik</code>, is hpmp's joint set-point and the target of the postural/elbow null-space helpers:</p>
 <table>
   <tr><th>Parameter</th><th>Value</th></tr>
   <tr><td>Convergence</td><td>1e-6 (SE3 log-map error norm)</td></tr>
@@ -300,7 +300,7 @@ contract as the CPU simulator:</p>
   <tr><td><code>odom</code></td><td>floating-base pose/twist (zero for fixed-base robots)</td><td>same</td></tr>
   <tr><td><code>imu_data</code></td><td>from MJCF accelerometer/gyro/framequat sensors</td><td>stamped-but-empty (Newton solver doesn't expose <code>sensordata</code>)</td></tr>
   <tr><td><code>gravity_torques</code></td><td>g(q): <code>qfrc_bias</code> at zero velocity, on a scratch copy of the live state</td><td><strong>real values</strong> — <code>mj_inverse</code> on the CPU <code>mj_model</code>/<code>mj_data</code> mirror that <code>SolverMuJoCo</code> builds internally, with the current pose synced in and damper/spring/frictionloss disabled (verified to match a standalone MuJoCo ground-truth computation exactly)</td></tr>
-  <tr><td><code>contact_torques</code></td><td>joint torques of the constraint and applied forces (<code>qfrc_constraint + qfrc_applied</code>), one per hinge; Hapfic's task-space admittance in Modes 7/8 estimates its wrench from them</td><td>not published (Hapfic in Modes 7/8 falls back to the joint-effort estimate)</td></tr>
+  <tr><td><code>contact_torques</code></td><td>joint torques of the constraint and applied forces (<code>qfrc_constraint + qfrc_applied</code>), one per hinge; H-PMP's task-space admittance in Modes 7/8 estimates its wrench from them</td><td>not published (H-PMP in Modes 7/8 falls back to the joint-effort estimate)</td></tr>
   <tr><td><code>force_torque</code></td><td>from MJCF <code>force_sensor</code> + <code>torque_sensor</code> (or <code>*force_sensor</code>/<code>*torque_sensor</code>)</td><td>empty Wrench</td></tr>
   <tr><td><code>actuators_cmds</code> (sub)</td><td>writes to <code>data.ctrl[i]</code> (by actuator name, merged across publishers)</td><td>writes to <code>control.joint_f</code> (generalised forces → <code>qfrc_applied</code>), resolved through an <strong>actuator-name → DoF map</strong> parsed from the MJCF's <code>&lt;actuator&gt;</code> block — <em>not</em> <code>joint_act</code>, which is for position/velocity-mode actuators</td></tr>
 </table>

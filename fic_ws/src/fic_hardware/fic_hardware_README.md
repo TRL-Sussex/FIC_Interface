@@ -130,8 +130,8 @@ Selected with `String` messages on `{rid}_mode_select`:
 | 8 | `"Cartesian Admittance Haptic"` | `RC.admittance(..., m=2)` | Task-space haptic admittance |
 | — | `"Start"` | N/A | **Launches the vendor robot driver** in a new terminal |
 
-HAP-FIC is not a mode string: switch it on with `{rid}_hapfic_enable` (`Bool`).
-It acts in modes 6-8 and reads the `HAP-FIC` block (id 100) of `config.xml`.
+H-PMP is not a mode string: switch it on with `{rid}_hpmp_enable` (`Bool`).
+It acts in modes 6-8 and reads the `H-PMP` block (id 100) of `config.xml`.
 Modes 5-8 are refused when the robot has no kinematics solver.
 
 **Mode switch:** on any mode message the joint and Cartesian targets snap to the current pose so the robot holds position — but only once real joint feedback has arrived. Before that, `q_current_` is the zero fill from `initSharedMemory()`, so the startup target (`q_home`) is kept instead. The Studio re-sends the mode ~5 s after launching this node, which used to land exactly in that window while the driver was still homing.
@@ -156,12 +156,12 @@ Modes 5-8 are refused when the robot has no kinematics solver.
 | `{rid}_active_profile` | `std_msgs/String` | Tuning profile to use |
 | `{rid}_param_update` | `std_msgs/String` | Re-read the tuning in `config.xml` |
 | `{rid}_gripper_width` | `std_msgs/Float32` | Gripper aperture (metres) |
-| `{rid}_desired_wrench` | `geometry_msgs/Wrench` | Desired wrench of the Cartesian admittance (modes 7/8, and HAP-FIC on them); zero at start-up |
+| `{rid}_desired_wrench` | `geometry_msgs/Wrench` | Desired wrench of the Cartesian admittance (modes 7/8, and H-PMP on them); zero at start-up |
 | `{rid}_safety/cartesian_limits` | `std_msgs/Float64MultiArray` | Workspace box per axis |
 | `{rid}_safety/joint_limits` | `std_msgs/Float64MultiArray` | Per-joint position limits (radians) |
 | `{rid}_safety/velocity_limits` | `std_msgs/Float64MultiArray` | Maximum joint and Cartesian velocities |
 | `{rid}_postural_enable`, `{rid}_elbow_enable` | `std_msgs/Bool` | Redundancy layers |
-| `{rid}_hapfic_enable` | `std_msgs/Bool` | HAP-FIC on modes 6-8 |
+| `{rid}_hpmp_enable` | `std_msgs/Bool` | H-PMP on modes 6-8 |
 | `{rid}_admittance_planner_enable` | `std_msgs/Bool` | Planner on the admittance target |
 | `{rid}_gravity_compensated`, `{rid}_wrench_gravity_compensated`, `{rid}_wrench_from_api` | `std_msgs/Bool` | How the measured torque and wrench are read |
 | `{rid}_wrench_external` | `geometry_msgs/Wrench` | A teleoperation partner's contact, reflected onto this arm |
@@ -269,7 +269,7 @@ Runs via a 1 ms wall timer. The entire loop executes under a single mutex lock.
 10. Publish /trajectory_data
 ```
 
-The `initControllerPLanner` flag is reset to `false` on a mode change, a robot selection, a HAP-FIC toggle (a repeat of the current value is ignored), a new joint target on `{rid}_desired_joint_angles` in mode 2 or, outside mode 1, while the admittance planner is on, and when a new tuning set is installed; a new EE target does not reset it. Since v4.4.0 clearing it only re-seeds the controllers from the tuning already in memory. `config.xml` is read by `refreshTuning()` into a `fic::TuningSet` on a background thread (`std::async`), only when the `fic::TuningKey` (robot, joint count, joint mode, Cartesian mode, postural block) changes or after `{rid}_param_update` / a new `{rid}_active_profile`; the loop sends nothing until the set for the current key is in memory, and on the MCU path the joint parameters are sent to the MCU when a set is installed.
+The `initControllerPLanner` flag is reset to `false` on a mode change, a robot selection, a H-PMP toggle (a repeat of the current value is ignored), a new joint target on `{rid}_desired_joint_angles` in mode 2 or, outside mode 1, while the admittance planner is on, and when a new tuning set is installed; a new EE target does not reset it. Since v4.4.0 clearing it only re-seeds the controllers from the tuning already in memory. `config.xml` is read by `refreshTuning()` into a `fic::TuningSet` on a background thread (`std::async`), only when the `fic::TuningKey` (robot, joint count, joint mode, Cartesian mode, postural block) changes or after `{rid}_param_update` / a new `{rid}_active_profile`; the loop sends nothing until the set for the current key is in memory, and on the MCU path the joint parameters are sent to the MCU when a set is installed.
 
 ---
 
@@ -285,7 +285,7 @@ Iterative **damped Jacobian pseudo-inverse** solver using Pinocchio:
 | Damping factor | 1e-6 (Levenberg-Marquardt regularisation) |
 | Method | `Jlog6` local Jacobian, `(JJᵀ + λI)` LDLT solve |
 
-IK never runs on the control thread: `targetPositionCallback` only stores the new target, and an IK worker thread (`ikWorker`) solves the newest pending one (a target that arrives during a solve replaces any older pending one). The worker extracts the elbow pose from the solution, clamps the IK result to the joint safety limits, and stores both under `data_mutex_`. The IK result is HAP-FIC's joint set-point and the postural target; the elbow pose becomes the elbow target while elbow hold is off. Cartesian modes act on a new target at once; only these follow one solve later.
+IK never runs on the control thread: `targetPositionCallback` only stores the new target, and an IK worker thread (`ikWorker`) solves the newest pending one (a target that arrives during a solve replaces any older pending one). The worker extracts the elbow pose from the solution, clamps the IK result to the joint safety limits, and stores both under `data_mutex_`. The IK result is H-PMP's joint set-point and the postural target; the elbow pose becomes the elbow target while elbow hold is off. Cartesian modes act on a new target at once; only these follow one solve later.
 
 ---
 
@@ -388,7 +388,7 @@ ros2 launch fic_hardware robot_control_launch.py robot_name:=KinovaGen3_7DOF
 
 - **Robot selection triggers a full model reload** under the data mutex — new Pinocchio model, resized vectors, fresh Butterworth filters, and controller re-init. Avoid publishing to `selected_robot` during active control.
 
-- **Controller re-init re-seeds from memory.** A re-init (mode change, HAP-FIC toggle, some streamed joint targets) no longer reads `config.xml` (v4.4.0); the file is read in the background only when the tuning key changes or after `{rid}_param_update` / a profile change. Before v4.4.0 each re-init re-read the file inside the 1 ms loop, which dropped the loop rate badly while targets streamed.
+- **Controller re-init re-seeds from memory.** A re-init (mode change, H-PMP toggle, some streamed joint targets) no longer reads `config.xml` (v4.4.0); the file is read in the background only when the tuning key changes or after `{rid}_param_update` / a profile change. Before v4.4.0 each re-init re-read the file inside the 1 ms loop, which dropped the loop rate badly while targets streamed.
 
 - **The wrench comes from shared memory only with `wrench_from_api`**, read directly from `tool_wrench[6]` each loop iteration; otherwise it is estimated from the joint torques as `pinv(Jᵀ)(τ_meas − g(q))`. There is no ROS subscriber for the measured force/torque.
 

@@ -1191,6 +1191,18 @@ def _write_report(path, plan, stats, config, messages):
         '- `xml/scene.xml` — floor, light and sky around it; this is what the simulator loads.',
         '- `xml/assets/` — meshes MuJoCo reads (.dae converted to .obj).', '',
         'Re-importing the URDF regenerates everything here.', '',
+        '## Simulating it like the real robot', '',
+        'Until the real arm is measured the simulator is ideal: no joint friction beyond the '
+        "damping above, a noise-free joint torque that is the controller's own command, and "
+        "the exact contact force for H-PMP's push. Tunes made on it can be unstable on the "
+        'arm. With the controller running on the real robot (Hardware target) and room for '
+        'each joint to swing 10° either way, run on its PC:', '',
+        '    python3 -m fic_studio.hardware_model --env hardware --robot %s --write'
+        % plan.robot_id, '',
+        "It writes the robot's `hardware_model` (joint friction and damping, torque-sensor "
+        'noise, the measured-torque filter); the simulator then behaves like the arm. Robot '
+        'config → Hardware → "Simulate like the real robot" shows and edits it. See fic_docs: '
+        'Simulation vs. Hardware.', '',
     ]
     with open(path, 'w') as fh:
         fh.write('\n'.join(lines))

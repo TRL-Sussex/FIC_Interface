@@ -253,7 +253,7 @@ static void testJointLimitFault() {
     CHECK(std::fabs(out.tau[1] - pl.g(1, pl.q)) < 0.5);
 }
 
-// Modes 3, 4 and hapfic at rest, nothing pushing: the measured torque is gravity (in the
+// Modes 3, 4 and hpmp at rest, nothing pushing: the measured torque is gravity (in the
 // hardware convention, joint_torques_ = -g at rest, so torque_sign -1 with this plant).
 // The admittances are driven by the interaction torque alone, so their offsets stay at 0,
 // and gravity is fed forward, so the joint law carries none of the weight: the arm holds.
@@ -261,7 +261,7 @@ static void testAdmittanceHold() {
     std::printf("admittance modes hold at rest\n");
     static InnerLoop L[3];
     const InnerMode modes[3] = {InnerMode::Admittance, InnerMode::AdmittanceHaptic, InnerMode::Hapfic};
-    const char* names[3] = {"mode 3", "mode 4", "hapfic"};
+    const char* names[3] = {"mode 3", "mode 4", "hpmp"};
     for (int m = 0; m < 3; ++m) {
         Plant pl;
         ArmCommand out;

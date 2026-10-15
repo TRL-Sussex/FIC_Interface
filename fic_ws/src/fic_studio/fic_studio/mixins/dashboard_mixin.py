@@ -473,7 +473,7 @@ class DashboardMixin:
         mods = []
         for attr, name in (('_rc_postural_toggle', 'POST'),
                            ('_rc_elbow_toggle', 'ELB'),
-                           ('_rc_hapfic_toggle', 'HAP'),
+                           ('_rc_hpmp_toggle', 'PMP'),
                            ('_rc_admittance_planner_toggle', 'ADM')):
             w = getattr(self, attr, None)
             if w is not None and w.isChecked():

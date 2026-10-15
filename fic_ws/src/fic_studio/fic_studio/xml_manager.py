@@ -42,33 +42,33 @@ logger = logging.getLogger(__name__)
 
 CONTROL_MODES = {
     1: {"name": "Joint Impedance",               "type": "joint",     "has_planner": False, "has_admittance": False, "has_damping": False},
-    2: {"name": "Joint Impedance With Planner",  "type": "joint",     "has_planner": True,  "has_admittance": False, "has_damping": True},
+    2: {"name": "Joint Impedance with Planner",  "type": "joint",     "has_planner": True,  "has_admittance": False, "has_damping": True},
     3: {"name": "Joint Admittance",              "type": "joint",     "has_planner": False, "has_admittance": True,  "has_damping": True},
-    4: {"name": "Joint Admittance Haptic",       "type": "joint",     "has_planner": False, "has_admittance": True,  "has_damping": True},
+    4: {"name": "Joint HAP-FIC",                 "type": "joint",     "has_planner": False, "has_admittance": True,  "has_damping": True},
     5: {"name": "Cartesian Impedance",           "type": "cartesian", "has_planner": False, "has_admittance": False, "has_damping": False},
-    6: {"name": "Cartesian Planner",             "type": "cartesian", "has_planner": True,  "has_admittance": False, "has_damping": True},
+    6: {"name": "Cartesian Impedance with Planner", "type": "cartesian", "has_planner": True,  "has_admittance": False, "has_damping": True},
     7: {"name": "Cartesian Admittance",          "type": "cartesian", "has_planner": True,  "has_admittance": True,  "has_damping": True},
-    8: {"name": "Cartesian Admittance Haptic",   "type": "cartesian", "has_planner": True,  "has_admittance": True,  "has_damping": True},
+    8: {"name": "Cartesian HAP-FIC",             "type": "cartesian", "has_planner": True,  "has_admittance": True,  "has_damping": True},
 }
 
-#: HAP-FIC's own tuning block, <mode id="100" name="HAP-FIC">: its joint layer in <joint> (FIC
+#: H-PMP's own tuning block, <mode id="100" name="H-PMP">: its joint layer in <joint> (FIC
 #: controller, planner and admittance per joint) and its Cartesian layer in <cartesian> (FIC
-#: controller and planner per axis). HAP-FIC is switched on in modes 6-8, never selected, so 100
-#: is not in CONTROL_MODES. A robot with no HAP-FIC block runs HAP-FIC on mode 4's joints and mode
+#: controller and planner per axis). H-PMP is switched on in modes 5-8, never selected, so 100
+#: is not in CONTROL_MODES. A robot with no H-PMP block runs H-PMP on mode 4's joints and mode
 #: 6's Cartesian block, as the controller's loader does (fic_param_loader.hpp, loadTuningSet).
-HAPFIC_MODE = 100
-HAPFIC_FALLBACK_JOINT_MODE = 4
-HAPFIC_FALLBACK_CART_MODE = 6
-HAPFIC_INFO = {"name": "HAP-FIC", "type": "hapfic", "has_planner": True, "has_admittance": True, "has_damping": True}
+HPMP_MODE = 100
+HPMP_FALLBACK_JOINT_MODE = 4
+HPMP_FALLBACK_CART_MODE = 6
+HPMP_INFO = {"name": "H-PMP", "type": "hpmp", "has_planner": True, "has_admittance": True, "has_damping": True}
 
 
 def get_mode_info(mode: int) -> dict:
-    if mode == HAPFIC_MODE:
-        return HAPFIC_INFO
+    if mode == HPMP_MODE:
+        return HPMP_INFO
     return CONTROL_MODES.get(mode, CONTROL_MODES[1])
 
-def is_hapfic_mode(mode: int) -> bool:
-    return mode == HAPFIC_MODE
+def is_hpmp_mode(mode: int) -> bool:
+    return mode == HPMP_MODE
 
 def mode_name(mode: int) -> str:
     return get_mode_info(mode)["name"]
@@ -141,23 +141,23 @@ def find_mode_element(robot: ET.Element, mode: int, profile: str = "default") ->
     return fallback
 
 
-def build_hapfic_block(robot: ET.Element, profile: str = "default",
+def build_hpmp_block(robot: ET.Element, profile: str = "default",
                        from_layers: bool = False) -> Optional[ET.Element]:
-    """A whole <mode id="100" name="HAP-FIC" profile=...> with what HAP-FIC runs on for `profile`.
+    """A whole <mode id="100" name="H-PMP" profile=...> with what H-PMP runs on for `profile`.
 
-    That is the HAP-FIC block it falls back to (the default profile's), or, with none or with
+    That is the H-PMP block it falls back to (the default profile's), or, with none or with
     `from_layers`, mode 4's joints and mode 6's Cartesian block (each the profile's own or the
     default's). None if the robot has none of them. Always whole: the controller reads every joint
     and axis from the block, so one holding a single joint would leave the rest on the loader's
     defaults.
     """
     import copy
-    src = None if from_layers else find_mode_element(robot, HAPFIC_MODE, profile)
+    src = None if from_layers else find_mode_element(robot, HPMP_MODE, profile)
     if src is not None:
         block = copy.deepcopy(src)
     else:
-        joints = find_mode_element(robot, HAPFIC_FALLBACK_JOINT_MODE, profile)
-        cart = find_mode_element(robot, HAPFIC_FALLBACK_CART_MODE, profile)
+        joints = find_mode_element(robot, HPMP_FALLBACK_JOINT_MODE, profile)
+        cart = find_mode_element(robot, HPMP_FALLBACK_CART_MODE, profile)
         cart = cart.find("cartesian") if cart is not None else None
         if joints is None and cart is None:
             return None
@@ -167,8 +167,8 @@ def build_hapfic_block(robot: ET.Element, profile: str = "default",
         if cart is not None:
             block.append(copy.deepcopy(cart))
     block.attrib.clear()
-    block.set("id", str(HAPFIC_MODE))
-    block.set("name", HAPFIC_INFO["name"])
+    block.set("id", str(HPMP_MODE))
+    block.set("name", HPMP_INFO["name"])
     block.set("profile", profile)
     return block
 
@@ -380,14 +380,14 @@ class XMLManager:
         the requested one does not exist for this mode."""
         return find_mode_element(robot, mode, profile)
 
-    def ensure_hapfic_block(self, robot_name: str, profile: str = "default") -> bool:
-        """Give `profile` a HAP-FIC block of its own, copied from what HAP-FIC runs on for it now
-        (build_hapfic_block), unless it has one. Returns whether one was made."""
+    def ensure_hpmp_block(self, robot_name: str, profile: str = "default") -> bool:
+        """Give `profile` a H-PMP block of its own, copied from what H-PMP runs on for it now
+        (build_hpmp_block), unless it has one. Returns whether one was made."""
         robot = self.ensure_robot(robot_name)
         for m in robot.findall("mode"):
-            if m.get("id") == str(HAPFIC_MODE) and (m.get("profile", "default") or "default") == profile:
+            if m.get("id") == str(HPMP_MODE) and (m.get("profile", "default") or "default") == profile:
                 return False
-        block = build_hapfic_block(robot, profile)
+        block = build_hpmp_block(robot, profile)
         if block is None:
             return False
         modes = [i for i, c in enumerate(robot) if c.tag == "mode"]
@@ -556,12 +556,12 @@ class XMLManager:
                           profile: str = "default") -> JointParams:
         """Load joint parameters. Auto-creates the robot entry if missing.
         Falls back to the default profile if the requested one does not exist."""
-        if not (is_joint_mode(mode) or is_hapfic_mode(mode)):
-            raise ValueError(f"Mode {mode} is not a joint mode (must be 1-4, or HAP-FIC's {HAPFIC_MODE})")
+        if not (is_joint_mode(mode) or is_hpmp_mode(mode)):
+            raise ValueError(f"Mode {mode} is not a joint mode (must be 1-4, or H-PMP's {HPMP_MODE})")
 
         robot = self.ensure_robot(robot_name)
-        if is_hapfic_mode(mode) and self._find_mode_element(robot, mode, profile) is None:
-            mode = HAPFIC_FALLBACK_JOINT_MODE          # no HAP-FIC block: it runs on mode 4's joints
+        if is_hpmp_mode(mode) and self._find_mode_element(robot, mode, profile) is None:
+            mode = HPMP_FALLBACK_JOINT_MODE          # no H-PMP block: it runs on mode 4's joints
 
         mode_el = self._find_mode_element(robot, mode, profile)
         if mode_el is None:
@@ -637,12 +637,12 @@ class XMLManager:
         Auto-creates the robot entry if missing.
         Returns a CartesianParams with defaults for any axis not found.
         """
-        if not (is_cartesian_mode(mode) or is_hapfic_mode(mode)):
-            raise ValueError(f"Mode {mode} is not a Cartesian mode (must be 5-8, or HAP-FIC's {HAPFIC_MODE})")
+        if not (is_cartesian_mode(mode) or is_hpmp_mode(mode)):
+            raise ValueError(f"Mode {mode} is not a Cartesian mode (must be 5-8, or H-PMP's {HPMP_MODE})")
 
         robot = self.ensure_robot(robot_name)
-        if is_hapfic_mode(mode) and self._find_mode_element(robot, mode, profile) is None:
-            mode = HAPFIC_FALLBACK_CART_MODE           # no HAP-FIC block: it runs on mode 6's Cartesian block
+        if is_hpmp_mode(mode) and self._find_mode_element(robot, mode, profile) is None:
+            mode = HPMP_FALLBACK_CART_MODE           # no H-PMP block: it runs on mode 6's Cartesian block
 
         result = CartesianParams()
 
@@ -718,12 +718,12 @@ class XMLManager:
                           profile: str = "default"):
         """Save joint parameters. Auto-creates the robot entry and the
         <mode id=N profile=P> block if either is missing."""
-        if not (is_joint_mode(mode) or is_hapfic_mode(mode)):
+        if not (is_joint_mode(mode) or is_hpmp_mode(mode)):
             raise ValueError(f"Mode {mode} is not a joint mode")
 
         robot = self.ensure_robot(robot_name)
-        if is_hapfic_mode(mode):
-            self.ensure_hapfic_block(robot_name, profile)
+        if is_hpmp_mode(mode):
+            self.ensure_hpmp_block(robot_name, profile)
 
         # Exact match (don't fall back to default — we want to write into the
         # requested profile, creating it if needed).
@@ -787,12 +787,12 @@ class XMLManager:
                              profile: str = "default"):
         """Save a single Cartesian axis. Auto-creates the robot entry and
         <mode id=N profile=P> block if missing."""
-        if not (is_cartesian_mode(mode) or is_hapfic_mode(mode)):
+        if not (is_cartesian_mode(mode) or is_hpmp_mode(mode)):
             raise ValueError(f"Mode {mode} is not a Cartesian mode")
 
         robot = self.ensure_robot(robot_name)
-        if is_hapfic_mode(mode):
-            self.ensure_hapfic_block(robot_name, profile)
+        if is_hpmp_mode(mode):
+            self.ensure_hpmp_block(robot_name, profile)
 
         mode_el = None
         for m in robot.findall("mode"):
@@ -836,7 +836,7 @@ class XMLManager:
             self._set_element_text(planner, "damping_ratio",f"{params.planner_damping_ratio:.6f}")
             self._set_element_text(planner, "frequency",    f"{params.planner_frequency:.1f}")
 
-        if mode_uses_admittance(mode) and not is_hapfic_mode(mode):   # HAP-FIC's Cartesian layer has none
+        if mode_uses_admittance(mode) and not is_hpmp_mode(mode):   # H-PMP's Cartesian layer has none
             adm = axis_el.find("admittance")
             if adm is None:
                 adm = ET.SubElement(axis_el, "admittance")

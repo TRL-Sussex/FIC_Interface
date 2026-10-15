@@ -262,7 +262,7 @@ class ModeAPI:
     """
     Control-mode publishing for a single robot.
 
-    publish_mode, postural, elbow, hapfic, admittance_planner are all
+    publish_mode, postural, elbow, hpmp (hpmp), admittance_planner are all
     thread-safe direct publishes.  publish_mode also triggers a GUI sync via
     marshal so the studio mode-selector reflects the change.
     """
@@ -306,9 +306,15 @@ class ModeAPI:
         """Enable or disable the elbow-up constraint."""
         self._node.publish_elbow_enable(bool(enabled), self._rid)
 
+    def hpmp(self, enabled):
+        """Turn H-PMP on or off in the Cartesian modes: the Cartesian controller nested inside the
+        joint HAP-FIC (on by default in the Studio; on mode 8, Cartesian HAP-FIC, it is the H-PMP of
+        the Whole-Arm experiments). Off sends the Cartesian torques directly."""
+        self._node.publish_hpmp_enable(bool(enabled), self._rid)
+
     def hapfic(self, enabled):
-        """Enable or disable HapFIC hybrid Cartesian/joint mode."""
-        self._node.publish_hapfic_enable(bool(enabled), self._rid)
+        """Old name of hpmp(), kept for existing scripts."""
+        self.hpmp(enabled)
 
     def admittance_planner(self, enabled):
         """Enable or disable the admittance planner inside admittance modes."""

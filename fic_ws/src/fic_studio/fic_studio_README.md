@@ -99,7 +99,7 @@ Defined in `ros_node.py`. For each active robot `N` (1 to 4) it publishes:
 | `robotN_gripper_width` | `Float32` | Gripper |
 | `robotN_selected_robot`, `robotN_number_of_joints` | `String`, `Int32` | Robot selection |
 | `robotN_param_update`, `robotN_active_profile` | `String` | Tuning reload and profile |
-| `robotN_postural_enable`, `robotN_elbow_enable`, `robotN_hapfic_enable`, `robotN_admittance_planner_enable` | `Bool` | Controller layers |
+| `robotN_postural_enable`, `robotN_elbow_enable`, `robotN_hpmp_enable`, `robotN_admittance_planner_enable` | `Bool` | Controller layers |
 | `robotN_gravity_compensated`, `robotN_wrench_gravity_compensated`, `robotN_wrench_from_api` | `Bool` | How torque and wrench are measured |
 | `robotN_wrench_external` | `Wrench` | A teleoperation partner's contact |
 | `robotN_safety/*` | `Float64MultiArray` | Safety limits (from the Safety page) |
@@ -140,7 +140,7 @@ and any browser can E-STOP. Settings are under `web_remote:`. See
 
 `xml_manager.py` reads and writes the FIC tuning in `config.xml`:
 
-- parameters per robot and per mode (1 to 8, and the HAP-FIC block, id 100),
+- parameters per robot and per mode (1 to 8, and the H-PMP block, id 100),
   with named profiles;
 - per-joint scalar, list, planner and admittance parameters;
 - per-axis Cartesian parameters (X/Y/Z and rotation);

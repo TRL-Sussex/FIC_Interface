@@ -94,8 +94,8 @@ Docker image serves it to this computer only; started with <code>--lan</code>, i
   <tr><td><code>robot.mode.set(mode_int)</code></td><td>Publish control mode 1&ndash;8 and synchronise the GUI mode selector. Modes 5&ndash;8 are Cartesian. See <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>.</td></tr>
   <tr><td><code>robot.mode.postural(bool)</code></td><td>Enable/disable the postural (null-space) controller.</td></tr>
   <tr><td><code>robot.mode.elbow(bool)</code></td><td>Enable/disable the elbow-up null-space constraint.</td></tr>
-  <tr><td><code>robot.mode.hapfic(bool)</code></td><td>Enable/disable the <a href="#hapfic" onclick="showPage('hapfic')">HapFIC</a> hybrid Cartesian+joint helper. The toggle is layered on Cartesian modes, but the controller only engages in modes 6&ndash;8.</td></tr>
-  <tr><td><code>robot.mode.desired_wrench(force, torque)</code></td><td>Set the desired wrench of the Cartesian admittance (modes 7&ndash;8, and HapFIC on them): the goal moves until the measured wrench equals it. Zero, the default, is plain compliance. See <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>.</td></tr>
+  <tr><td><code>robot.mode.hpmp(bool)</code></td><td>Enable/disable the <a href="#hpmp" onclick="showPage('hpmp')">H-PMP</a> hybrid Cartesian+joint helper. The toggle is layered on Cartesian modes, but the controller only engages in modes 5&ndash;8.</td></tr>
+  <tr><td><code>robot.mode.desired_wrench(force, torque)</code></td><td>Set the desired wrench of the Cartesian admittance (modes 7&ndash;8, and H-PMP on them): the goal moves until the measured wrench equals it. Zero, the default, is plain compliance. See <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>.</td></tr>
   <tr><td><code>robot.mode.admittance_planner(bool)</code></td><td>Enable/disable the admittance planner inside admittance modes.</td></tr>
   <tr><td><code>robot.mode.active_profile(name)</code></td><td>Publish a named tuning profile on the transient-local <code>active_profile</code> topic. See <a href="#tuning" onclick="showPage('tuning')">Tuning</a>.</td></tr>
 </table>
@@ -194,7 +194,7 @@ while time.monotonic() &lt; deadline and not is_stopped():
     wait(0.05)</code></pre>
 
 <h2>Cooperative Stop</h2>
-<p>Clicking <strong>Stop</strong> sets a per-run <code>threading.Event</code>. Calls that poll it &mdash; <code>move_joints(wait=True)</code>, <code>wait()</code>, <code>wait_until_stopped()</code>, and your own <code>is_stopped()</code> checks &mdash; abort cleanly. The Studio then waits up to a <strong>2-second grace period</strong>; if the thread is still alive, <code>terminate()</code> is used as a last resort and the console prints <code>[FORCE TERMINATED — grace period expired]</code> instead of <code>[Stopped cooperatively]</code>. Pressing the global <a href="#estop" onclick="showPage('estop')">E-STOP</a> sets the same event and additionally fires <code>robot.safety.estop()</code>. When the extension is torn down, latched flags (<code>admittance_planner</code>, <code>hapfic</code>) are restored to safe defaults.</p>
+<p>Clicking <strong>Stop</strong> sets a per-run <code>threading.Event</code>. Calls that poll it &mdash; <code>move_joints(wait=True)</code>, <code>wait()</code>, <code>wait_until_stopped()</code>, and your own <code>is_stopped()</code> checks &mdash; abort cleanly. The Studio then waits up to a <strong>2-second grace period</strong>; if the thread is still alive, <code>terminate()</code> is used as a last resort and the console prints <code>[FORCE TERMINATED — grace period expired]</code> instead of <code>[Stopped cooperatively]</code>. Pressing the global <a href="#estop" onclick="showPage('estop')">E-STOP</a> sets the same event and additionally fires <code>robot.safety.estop()</code>. When the extension is torn down, latched flags (<code>admittance_planner</code>, <code>hpmp</code>) are restored to safe defaults.</p>
 <div class="admonition warning"><div class="adm-title">sleep() is not interruptible</div>
 <p><code>sleep()</code> is plain <code>time.sleep</code> &mdash; it does <strong>not</strong> poll the stop flag. A loop built on <code>sleep()</code> (or a tight <code>while True: pass</code>) can only be killed by the hard <code>terminate()</code> fallback. Use <code>wait()</code> for delays and check <code>is_stopped()</code> in loop conditions so Stop works cooperatively.</p></div>
 
@@ -306,12 +306,12 @@ print("Wrench (Fx,Fy,Fz,Tx,Ty,Tz):", robot.state.wrench)
 print("Target:", robot.target_mode)
 print("Robot id:", robot.rid)</code></pre>
 
-<h3>Example: Change Mode and Enable HapFIC</h3>
-<pre><code># Switch to Cartesian planner mode 6 and enable HapFIC
+<h3>Example: Change Mode and Enable H-PMP</h3>
+<pre><code># Switch to Cartesian planner mode 6 and enable H-PMP
 robot.mode.set(6)
 wait(0.2)
-robot.mode.hapfic(True)
-print("HapFIC toggle sent (engages in modes 6-8)")</code></pre>
+robot.mode.hpmp(True)
+print("H-PMP toggle sent (engages in modes 5-8)")</code></pre>
 
 <h3>Example: E-Stop on Force Threshold</h3>
 <pre><code># Emergency stop if measured Fz exceeds a threshold

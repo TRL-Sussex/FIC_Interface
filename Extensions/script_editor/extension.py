@@ -715,7 +715,7 @@ class Extension(ExtensionBase):
 
         # Latched flags to restore on teardown
         self._latched_admittance_planner = False
-        self._latched_hapfic = False
+        self._latched_hpmp = False
 
         # Live telemetry QTimer (~10 Hz); created here so teardown can
         # stop it; wired to the telemetry labels in build_page.
@@ -770,8 +770,8 @@ class Extension(ExtensionBase):
                 node = self.host.node
                 if self._latched_admittance_planner:
                     node.publish_admittance_planner(False, rid)
-                if self._latched_hapfic:
-                    node.publish_hapfic_enable(False, rid)
+                if self._latched_hpmp:
+                    node.publish_hpmp_enable(False, rid)
             except Exception:  # noqa: BLE001
                 pass
             self._robot_api = None
@@ -1828,7 +1828,7 @@ print("Script completed!")
         self._stop_event = threading.Event()
         # Reset latched flags
         self._latched_admittance_planner = False
-        self._latched_hapfic = False
+        self._latched_hpmp = False
 
         namespace = self._create_robot_api(target)
         self.script_runner = ScriptRunner(code, namespace, self._stop_event)

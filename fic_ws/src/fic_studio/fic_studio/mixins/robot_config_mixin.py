@@ -184,6 +184,9 @@ OPTIONAL_ROBOT_KEYS = (
     # Inner-loop MCU (fic/robot_config_loader.hpp McuSettings): with an
     # adapter, the joint layer runs on the MCU whenever one answers.
     'mcu',
+    # How the simulator reproduces the real arm (mujoco_native/hardware_model.py,
+    # fic/robot_config_loader.hpp HardwareModel).
+    'hardware_model',
 )
 
 #: Inner-loop MCU adapters the editor offers ('' = none: standard path only).
@@ -1789,7 +1792,7 @@ class RobotConfigMixin:
         self._rc_mcu_routing.setMaximumWidth(160)
         self._rc_mcu_routing.setToolTip(
             'haptic: Cartesian modes send tau_des = J^T w to the MCU\'s joint admittance '
-            'haptic layer (as hapfic does). direct: as a feed-forward torque.')
+            'haptic layer (as hpmp does). direct: as a feed-forward torque.')
         for label, widget in (('Adapter', self._rc_mcu_adapter),
                               ('Arm address', self._rc_mcu_arm_ip),
                               ('Setup command', self._rc_mcu_setup),

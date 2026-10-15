@@ -448,8 +448,8 @@ def test_tuning_page_draws_the_live_operating_point_the_bars_and_a_draggable_plo
     assert "class: 'plot big'" in js and js.count("el('svg'") == 1
     assert "'hd ' + hd.kind" not in js                        # 'sr' is the screen-reader-only class: it hid the S·x_b handles
     # the live trial: applied as you go, kept or discarded
-    # HAP-FIC's own tuning: a mode entry with a joint and a Cartesian layer, opened when HAP-FIC is on
-    for needle in ('HAPFIC = 100', "t.layer = st.sel.layer", "'Joint layer'", "'Cartesian layer'", 's.options.hapfic', 'hapfic_layers'):
+    # H-PMP's own tuning: a mode entry with a joint and a Cartesian layer, opened when H-PMP is on
+    for needle in ('HPMP = 100', "t.layer = st.sel.layer", "'Joint layer'", "'Cartesian layer'", 's.options.hpmp', 'hpmp_layers'):
         assert needle in js, needle
     assert 'diff_effort_max' not in js                                  # no controller reads it
     for needle in ("'tuning_trial'", "op: 'apply'", "op: 'start'", "op: 'keep'", "op: 'discard'", 'Live trial', 'LIVE TRIAL', 'APPLY_MS'):

@@ -16,8 +16,13 @@ Usage:
 
 model_file overrides the built-in map; FIC Studio always passes it, so robots
 imported from a URDF need no entry here and no rebuild.
+
+The robot's `hardware_model` block of robots_config.yaml (joint friction, damping, armature,
+torque-sensor noise, command delay), when it has one, is passed to the node: the simulated arm
+then behaves like the real one (mujoco_native/hardware_model.py).
 """
 
+import json
 import os
 import sys
 
@@ -26,6 +31,8 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.actions import ExecuteProcess
 from launch.substitutions import LaunchConfiguration
+
+from mujoco_native import hardware_model
 
 
 # Built-in robot -> MJCF map (mujoco_newton keeps a subset) — keep in sync.
@@ -104,6 +111,16 @@ def _configure(context, *_, **__):
     initial = LaunchConfiguration("initial_joint_positions").perform(context).strip()
     if initial:
         cmd += ["-p", f"initial_joint_positions:='{initial}'"]
+
+    # The real arm as the simulator reproduces it (robots_config.yaml hardware_model).
+    robot_name = LaunchConfiguration("robot_name").perform(context)
+    try:
+        hm = hardware_model.load(robot_name)
+    except Exception as e:   # a broken YAML must not stop the simulator
+        print(f"[simulation_launch] hardware_model of {robot_name} not read: {e}")
+        hm = {}
+    if hm:
+        cmd += ["-p", f"hardware_model:='{json.dumps(hm)}'"]
 
     # macOS: `ros2 launch` does NOT propagate DYLD_LIBRARY_PATH to the process
     # it spawns, so the rosidl Python typesupport .so — whose baked @rpath

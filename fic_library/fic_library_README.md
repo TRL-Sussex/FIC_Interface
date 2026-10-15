@@ -90,7 +90,7 @@ The `ficControl<T>` class wraps `FIC<T>` and exposes two high-level sub-modules:
 | `RC.impedance(...)` | 5 | Task-space impedance via Jacobian transpose |
 | `RC.planner(...)` | 6 | Task-space with trajectory planning |
 | `RC.admittance(...)` | 7/8 | Task-space admittance (m=1 or m=2), driven by `setDesiredWrench()` (zero by default) minus the measured wrench |
-| `RC.hapfic(...)` | 6-8 | HAP-FIC: task-space admittance nested over the joint layer (`HAP-FIC` block, id 100) |
+| `RC.hpmp(...)` | 6-8 | H-PMP: task-space admittance nested over the joint layer (`H-PMP` block, id 100) |
 
 Both sub-modules also provide initialisation methods (`initJointController`, `initJointPlanner`, `initJointAdmittance`, `initCartesianController`, etc.) that configure the underlying FIC components from parameter structs.
 

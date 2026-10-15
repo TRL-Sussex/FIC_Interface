@@ -108,13 +108,13 @@ namespace fic {
                 p->cartesianAdmittanceControl(traj, torq, q_curr, grav, X, Xt, J, mode, wrench, measured_joint_torques, q_t, V, n_j, gravity_compensated);
             }
 
-            void hapfic(std::vector<double>& traj, std::vector<double>& torq,
+            void hpmp(std::vector<double>& traj, std::vector<double>& torq,
                         Eigen::VectorXd& q_curr, const Eigen::VectorXd& grav,
                         const std::vector<double>& X, const std::vector<double>& Xt,
                         const Eigen::MatrixXd& J, int mode, const std::vector<double>& wrench,
                         const std::vector<double>& measured_joint_torques,
                         Eigen::VectorXd& q_t, size_t n_j) {
-                p->cartesianHapfic(traj, torq, q_curr, grav, X, Xt, J, mode, wrench, measured_joint_torques, q_t, n_j);
+                p->cartesianHpmp(traj, torq, q_curr, grav, X, Xt, J, mode, wrench, measured_joint_torques, q_t, n_j);
             }
         } RC;
 
@@ -154,7 +154,7 @@ namespace fic {
             deadband_cart_torque_ = cart_torque;
         }
 
-        // Desired wrench of the task-space admittance (modes 7/8, and HAP-FIC on host modes 7/8):
+        // Desired wrench of the task-space admittance (modes 7/8, and H-PMP on host modes 7/8):
         // [Fx, Fy, Fz, Mx, My, Mz] in the frame and sign of the measured wrench. The admittance is
         // driven by desired - measured (after the deadbands), so it settles where the measured wrench
         // equals this one; zero (the start-up value) leaves the pure compliant behaviour. A message
@@ -169,27 +169,27 @@ namespace fic {
         }
         const std::vector<double>& desiredWrench() const { return desired_wrench_; }
 
-        // HAP-FIC's admittance drive, split (14 Oct 2026). The joint torque gap u = tau_des - tau_meas is
+        // H-PMP's admittance drive, split (14 Oct 2026). The joint torque gap u = tau_des - tau_meas is
         // split into the part that produces an end-effector wrench, u_task = J^T w_gap with
         // w_gap = pinv(J^T) u, which passes a deadband in task space on w_gap (force and torque
-        // magnitudes, with hysteresis: engaged at the deadband, released below kHapficDeadbandRelease
+        // magnitudes, with hysteresis: engaged at the deadband, released below kHpmpDeadbandRelease
         // of it), and the rest, u_null = u - u_task, which passes the joint deadband per joint. Without
         // the deadbands the recombined drive is u, as before. With the joint deadband alone a held
         // contact kept up to b on every joint, which the arm's lever arms turn into several newtons at the
         // end-effector (Kinova, b = 2 N m: 1.7-5.2 N in simulation); with the split it ends within the
         // task release level of the task-layer law, whatever the lever arms. Host path only: with
-        // hapfic_export_only_ (the inner-loop MCU runs the joint layer) the per-joint deadband is kept.
-        bool   hapfic_split_drive_    = true;
-        double hapfic_task_db_force_  = 1.0;    // N, engage (release 0.25 N)
-        double hapfic_task_db_torque_ = 0.1;    // N m, engage (release 0.025 N m)
-        bool   hapfic_task_engaged_f_ = false;
-        bool   hapfic_task_engaged_t_ = false;
+        // hpmp_export_only_ (the inner-loop MCU runs the joint layer) the per-joint deadband is kept.
+        bool   hpmp_split_drive_    = true;
+        double hpmp_task_db_force_  = 1.0;    // N, engage (release 0.25 N)
+        double hpmp_task_db_torque_ = 0.1;    // N m, engage (release 0.025 N m)
+        bool   hpmp_task_engaged_f_ = false;
+        bool   hpmp_task_engaged_t_ = false;
 
-        void setHapficSplitDrive(bool on, double force_db, double torque_db) {
-            hapfic_split_drive_    = on;
-            hapfic_task_db_force_  = force_db;
-            hapfic_task_db_torque_ = torque_db;
-            hapfic_task_engaged_f_ = hapfic_task_engaged_t_ = false;
+        void setHpmpSplitDrive(bool on, double force_db, double torque_db) {
+            hpmp_split_drive_    = on;
+            hpmp_task_db_force_  = force_db;
+            hpmp_task_db_torque_ = torque_db;
+            hpmp_task_engaged_f_ = hpmp_task_engaged_t_ = false;
         }
 
         // Per-instance joint-admittance state, promoted out of function-local
@@ -208,51 +208,51 @@ namespace fic {
             return (i < joint_adm_offset_.size()) ? joint_adm_offset_[i] : 0.0;
         }
 
-        // Hapfic: Cartesian planner+impedance channels at a dedicated offset so they
+        // Hpmp: Cartesian planner+impedance channels at a dedicated offset so they
         // don't collide with joint controllers at 0..n_j or postural at 9..9+n_j.
-        int hapfic_cart_planner_offset_ = 16;
+        int hpmp_cart_planner_offset_ = 16;
 
-        // Inner-loop MCU: when set, cartesianHapfic stops after the Cartesian
-        // layer and leaves tau_des = J^T*w + g in hapfic_tau_des_ instead of
+        // Inner-loop MCU: when set, cartesianHpmp stops after the Cartesian
+        // layer and leaves tau_des = J^T*w + g in hpmp_tau_des_ instead of
         // running the joint admittance layer here — the MCU runs that layer.
-        bool hapfic_export_only_ = false;
-        Eigen::VectorXd hapfic_tau_des_;
+        bool hpmp_export_only_ = false;
+        Eigen::VectorXd hpmp_tau_des_;
 
-        // Hapfic on host modes 7/8: the host's task-space admittance shifts the task layer's
+        // Hpmp on host modes 7/8: the host's task-space admittance shifts the task layer's
         // goal. It runs on its own integrators (the admittance blocks of channels off+0..off+5,
-        // off = hapfic_cart_planner_offset_; the joint layer uses 0..n_j-1) with its own state.
-        // hapfic_q_shift_ is the first-order shift of the IK set-point, J# dx, that follows the
+        // off = hpmp_cart_planner_offset_; the joint layer uses 0..n_j-1) with its own state.
+        // hpmp_q_shift_ is the first-order shift of the IK set-point, J# dx, that follows the
         // shifted goal; the MCU path adds it to the set-point it sends.
-        std::vector<double> hapfic_cadm_offset_     = std::vector<double>(6, 0.0);
-        std::vector<double> hapfic_cadm_last_delta_ = std::vector<double>(6, 0.0);
-        int                 hapfic_cadm_last_mode_  = -1;
-        Eigen::VectorXd     hapfic_q_shift_;
-        static constexpr double kHapficIkDamping = 0.01;   // DLS lambda of J#, as the elbow helper
+        std::vector<double> hpmp_cadm_offset_     = std::vector<double>(6, 0.0);
+        std::vector<double> hpmp_cadm_last_delta_ = std::vector<double>(6, 0.0);
+        int                 hpmp_cadm_last_mode_  = -1;
+        Eigen::VectorXd     hpmp_q_shift_;
+        static constexpr double kHpmpIkDamping = 0.01;   // DLS lambda of J#, as the elbow helper
 
-        void resetHapficTaskAdmittance(int mode) {
-            std::fill(hapfic_cadm_offset_.begin(), hapfic_cadm_offset_.end(), 0.0);
-            std::fill(hapfic_cadm_last_delta_.begin(), hapfic_cadm_last_delta_.end(), 0.0);
-            for (int k = 0; k < 6; ++k) this->admCtrl(hapfic_cart_planner_offset_ + k).resetState();
-            hapfic_cadm_last_mode_ = mode;
+        void resetHpmpTaskAdmittance(int mode) {
+            std::fill(hpmp_cadm_offset_.begin(), hpmp_cadm_offset_.end(), 0.0);
+            std::fill(hpmp_cadm_last_delta_.begin(), hpmp_cadm_last_delta_.end(), 0.0);
+            for (int k = 0; k < 6; ++k) this->admCtrl(hpmp_cart_planner_offset_ + k).resetState();
+            hpmp_cadm_last_mode_ = mode;
         }
 
-        void initHapficCartesian(const fic::CartesianAllParams& cart_params,
+        void initHpmpCartesian(const fic::CartesianAllParams& cart_params,
                                  const std::vector<double>& current_pose) {
-            int off = hapfic_cart_planner_offset_;
+            int off = hpmp_cart_planner_offset_;
             for (int i = 0; i < 3; ++i) {
                 initCartesianController(off + i, cart_params.pos_axes[i]);
                 initCartesianPlanner(off + i, current_pose[i], cart_params.pos_axes[i]);
             }
             initCartesianController(off + 3, cart_params.rot_axis);
-            // Elbow channels after the HAP-FIC Cartesian ones (off+4 .. off+6), clear
+            // Elbow channels after the H-PMP Cartesian ones (off+4 .. off+6), clear
             // of the joint channels 0..n_j-1 (default 6..8 collides with joint 6).
             initElbowController(cart_params, off + 4);
             // Task-space admittance (host modes 7/8) on the admittance blocks of off..off+5,
             // with the Cartesian layer's admittance parameters; its bounds are set per tick.
             for (int i = 0; i < 3; ++i) initCartesianAdmittance(off + i, cart_params.pos_axes[i]);
             for (int i = 3; i < 6; ++i) initCartesianAdmittance(off + i, cart_params.rot_axis);
-            resetHapficTaskAdmittance(-1);
-            hapfic_task_engaged_f_ = hapfic_task_engaged_t_ = false;   // split drive's hysteresis
+            resetHpmpTaskAdmittance(-1);
+            hpmp_task_engaged_f_ = hpmp_task_engaged_t_ = false;   // split drive's hysteresis
         }
 
         ficControl(T N_s, bool asymmetric = false, T N_negSat = T{}, size_t n_dof = 7, bool enable_adm = true)
@@ -270,14 +270,14 @@ namespace fic {
         auto& planner(size_t i)    { return fic_.getPlanner(i); }
         auto& admCtrl(size_t i)    { return fic_.getAdmittanceController(i); }
 
-        // HAP-FIC: a joint set-point no further than `bound` from where the joint is (wrapped for a
+        // H-PMP: a joint set-point no further than `bound` from where the joint is (wrapped for a
         // continuous joint). With the IK set-point inside the admittance bound, the offset can
         // always cancel it, so a blocked end-effector does not open the joint errors.
         // Smallest set-point window: a narrow free-space bound (+-0.02 rad) would otherwise hold the
         // set-point back in free motion (Kinova lemniscate, simulation: RMSE 26 mm against 9.7 mm).
         static constexpr double kSetpointWindowMin = 0.1;   // rad
-        // HAP-FIC's deadband hysteresis: release at this fraction of the joint deadband.
-        static constexpr double kHapficDeadbandRelease = 0.25;
+        // H-PMP's deadband hysteresis: release at this fraction of the joint deadband.
+        static constexpr double kHpmpDeadbandRelease = 0.25;
         static double setpointWindow(double bound) { return std::max(std::fabs(bound), kSetpointWindowMin); }
 
         static double limitSetpoint(double q_target, double q, double bound, bool continuous) {
@@ -446,9 +446,9 @@ namespace fic {
          * but applies them to indices 6-11.
          */
         // First of the 3 elbow channels; pass it to applyElbowControl. 6 in the
-        // Cartesian modes (after the EE channels 0-5). HAP-FIC runs joint
+        // Cartesian modes (after the EE channels 0-5). H-PMP runs joint
         // channels 0..n_j-1, which on a 7-DoF arm include 6, so it moves the
-        // elbow past its own Cartesian channels (initHapficCartesian).
+        // elbow past its own Cartesian channels (initHpmpCartesian).
         int elbow_offset_ = 6;
         int elbowOffset() const { return elbow_offset_; }
 
@@ -595,9 +595,9 @@ namespace fic {
             int AdmMode_,
             size_t NumJoints,
             bool use_planner = true,
-            double release_tau = 0.0,  // > 0: deadband with hysteresis (HAP-FIC), see step 2
+            double release_tau = 0.0,  // > 0: deadband with hysteresis (H-PMP), see step 2
             double drive = std::numeric_limits<double>::quiet_NaN()   // set: the deadbanded drive,
-            ) {                                                       // from the caller (HAP-FIC split)
+            ) {                                                       // from the caller (H-PMP split)
 
             auto& a = this->admCtrl(i);
 
@@ -608,12 +608,12 @@ namespace fic {
             //    Franka's tau_ext_hat_filtered carries 1-2 Nm of bias in heavy
             //    poses if a tool isn't registered via setLoad() — too low a
             //    deadband makes the admittance integrate that bias and drift.
-            //    With release_tau > 0 (HAP-FIC) the deadband has hysteresis: the joint starts
+            //    With release_tau > 0 (H-PMP) the deadband has hysteresis: the joint starts
             //    yielding when the gap reaches the deadband and keeps yielding until it is below
             //    release_tau, so a held contact ends within release_tau of the desired torque, not
             //    anywhere inside the deadband; at rest a bias below the deadband is still ignored.
             if (!std::isnan(drive)) {
-                ext_tau = drive;   // already deadbanded by the caller (cartesianHapfic, split drive)
+                ext_tau = drive;   // already deadbanded by the caller (cartesianHpmp, split drive)
             } else if (release_tau > 0.0) {
                 if (joint_adm_engaged_.size() < NumJoints) joint_adm_engaged_.resize(NumJoints, 0);
                 char& on = joint_adm_engaged_[i];
@@ -630,7 +630,7 @@ namespace fic {
             //    effort in the drive as well would count it twice: the offset would creep
             //    with no push (gravity alone drives it) and, at a contact, rest where the
             //    joint applies twice the desired torque. Gravity is fed forward to the
-            //    motors by the caller instead (modes 3/4 and HAP-FIC, both nodes).
+            //    motors by the caller instead (modes 3/4 and H-PMP, both nodes).
             a.setDesiredEffort(0.0);
             a.setCurrentEffort(-ext_tau);
             // 4. Get the absolute offset from the admittance math
@@ -711,7 +711,7 @@ namespace fic {
 
         // Returns the shortest-arc rotation from q_curr to q_des.
         // NOTE (13 Oct 2026): not called anywhere yet. It is the candidate replacement for the
-        // orientation law of cartesianimpedancecontrol and cartesianHapfic (see the note there):
+        // orientation law of cartesianimpedancecontrol and cartesianHpmp (see the note there):
         // theta in [0, pi] about the axis of q_err flipped to q_s >= 0, so q_des and -q_des give
         // the same error. To be tried before any switch (C. Tiseo, 13 Oct 2026).
         inline SO3Error quatErrorShortestArc(const Eigen::Quaterniond& q_curr_raw,
@@ -801,7 +801,7 @@ namespace fic {
             // about pi whatever the true error; sign(q_s) only fixes the direction. q and -q are the
             // same orientation (double cover), so a goal whose quaternion arrives with the other
             // sign (teleoperation, VR, scripts) gives q_s < 0 for a small error: e.g. 2 deg gives
-            // the profile's cap (Kinova orientation profile of modes 6-8 and HAP-FIC: 50 N m/rad,
+            // the profile's cap (Kinova orientation profile of modes 6-8 and H-PMP: 50 N m/rad,
             // cap 10 N m) instead of about 1.7 N m, and 0 deg gives the cap about an axis set by
             // noise (|q_v| ~ 0). Every hardware run so far held the orientation read from the arm's own
             // pose (errors < 1 deg, q_s ~ 1), where both forms agree.
@@ -814,9 +814,9 @@ namespace fic {
             // which every Kinova profile is (an asymmetric one would use its negative side).
             // Try before switching: (1) host test: same torque for q_des and -q_des; a small error
             // gives f_3(error); errors near pi (the direction flip at exactly pi stays, as in any
-            // shortest-path law); (2) sim A/B of modes 5-8 and HAP-FIC with the goal quaternion
+            // shortest-path law); (2) sim A/B of modes 5-8 and H-PMP with the goal quaternion
             // sign flipped and with large orientation errors; (3) the robot. Change this law and
-            // its copy in cartesianHapfic (channel 19) together.
+            // its copy in cartesianHpmp (channel 19) together.
             Eigen::Quaterniond q_err = q_des * q_curr.conjugate();
             Eigen::Vector3d q_v = q_err.vec();
             double q_s = q_err.w();
@@ -1143,15 +1143,15 @@ namespace fic {
                             X, Xt_adm, jacobian, CartAdmMode,
                             current_wrench_, measured_joint_torques, q_target, num_joints_);
         }
-        // Hapfic on host modes 7/8: the task-space admittance of cartesianAdmittanceControl,
+        // Hpmp on host modes 7/8: the task-space admittance of cartesianAdmittanceControl,
         // step for step (drive = desired - measured wrench, deadbands, M1 push-and-stay
-        // within ±0.30 m / ±pi/6, M2 live within ±0.05 m / ±pi/36), on Hapfic's own integrators
+        // within ±0.30 m / ±pi/6, M2 live within ±0.05 m / ±pi/36), on Hpmp's own integrators
         // and state. Returns the goal Xt shifted by it.
-        std::vector<double> hapficTaskAdmittance(const std::vector<double>& Xt,
+        std::vector<double> hpmpTaskAdmittance(const std::vector<double>& Xt,
                                                  const std::vector<double>& current_wrench_,
                                                  int CartAdmMode) {
-            const int off = hapfic_cart_planner_offset_;
-            if (CartAdmMode != hapfic_cadm_last_mode_) resetHapficTaskAdmittance(CartAdmMode);
+            const int off = hpmp_cart_planner_offset_;
+            if (CartAdmMode != hpmp_cadm_last_mode_) resetHpmpTaskAdmittance(CartAdmMode);
             const double pose_limit = (CartAdmMode == 1) ? 0.30 : 0.05;
             const double rot_limit  = (CartAdmMode == 1) ? M_PI / 6.0 : M_PI / 36.0;
             for (int ax = 0; ax < 3; ++ax) {
@@ -1169,13 +1169,13 @@ namespace fic {
                 a.setDesiredEffort(0.0);
                 a.setCurrentEffort(-ext_force);
                 const double adm_delta = this->admittance(off + ax, dt);
-                const double step_size = adm_delta - hapfic_cadm_last_delta_[ax];
-                hapfic_cadm_last_delta_[ax] = adm_delta;
+                const double step_size = adm_delta - hpmp_cadm_last_delta_[ax];
+                hpmp_cadm_last_delta_[ax] = adm_delta;
                 if (CartAdmMode == 1) {
-                    hapfic_cadm_offset_[ax] += step_size;
-                    Xt_adm[ax] = Xt[ax] + hapfic_cadm_offset_[ax];
+                    hpmp_cadm_offset_[ax] += step_size;
+                    Xt_adm[ax] = Xt[ax] + hpmp_cadm_offset_[ax];
                 } else {
-                    hapfic_cadm_offset_[ax] = 0.0;
+                    hpmp_cadm_offset_[ax] = 0.0;
                     Xt_adm[ax] = Xt[ax] + adm_delta;
                 }
             }
@@ -1189,16 +1189,16 @@ namespace fic {
                     a.setDesiredEffort(0.0);
                     a.setCurrentEffort(-ext_torque);
                     const double adm_delta = this->admittance(off + idx, dt);
-                    const double step_size = adm_delta - hapfic_cadm_last_delta_[idx];
-                    hapfic_cadm_last_delta_[idx] = adm_delta;
+                    const double step_size = adm_delta - hpmp_cadm_last_delta_[idx];
+                    hpmp_cadm_last_delta_[idx] = adm_delta;
                     if (CartAdmMode == 1) {
-                        hapfic_cadm_offset_[idx] += step_size;
-                        const double before = hapfic_cadm_offset_[idx];
-                        hapfic_cadm_offset_[idx] = std::clamp(before, -rot_limit, rot_limit);
-                        if (hapfic_cadm_offset_[idx] != before) hapfic_cadm_offset_[idx] = before - step_size;
-                        orient_axis_angle[ax] = hapfic_cadm_offset_[idx];
+                        hpmp_cadm_offset_[idx] += step_size;
+                        const double before = hpmp_cadm_offset_[idx];
+                        hpmp_cadm_offset_[idx] = std::clamp(before, -rot_limit, rot_limit);
+                        if (hpmp_cadm_offset_[idx] != before) hpmp_cadm_offset_[idx] = before - step_size;
+                        orient_axis_angle[ax] = hpmp_cadm_offset_[idx];
                     } else {
-                        hapfic_cadm_offset_[idx] = 0.0;
+                        hpmp_cadm_offset_[idx] = 0.0;
                         orient_axis_angle[ax] = adm_delta;
                     }
                 }
@@ -1214,7 +1214,10 @@ namespace fic {
             return Xt_adm;
         }
 
-        void cartesianHapfic(
+        // CartAdmMode value of cartesianHpmp for host mode 5 (Cartesian impedance): no planner.
+        static constexpr int kHpmpHostImpedance = -1;
+
+        void cartesianHpmp(
             std::vector<double>&        traj_msg,
             std::vector<double>&        torque_msg,
             Eigen::VectorXd&            q_current,
@@ -1229,11 +1232,13 @@ namespace fic {
             size_t                      num_joints_
         ) {
             // Host modes 7/8: the task-space admittance shifts the task layer's goal (mode 6: none).
+            // Host mode 5 (CartAdmMode = kHpmpHostImpedance): no admittance and no planner, the
+            // task layer's law acts on the goal itself, as Cartesian impedance does.
             std::vector<double> Xt_task = Xt;
             if (CartAdmMode == 1 || CartAdmMode == 2) {
-                Xt_task = hapficTaskAdmittance(Xt, current_wrench_, CartAdmMode);
-            } else if (hapfic_cadm_last_mode_ != 0) {
-                resetHapficTaskAdmittance(0);
+                Xt_task = hpmpTaskAdmittance(Xt, current_wrench_, CartAdmMode);
+            } else if (hpmp_cadm_last_mode_ != 0) {
+                resetHpmpTaskAdmittance(0);
             }
 
             Eigen::Vector3d curr_pos(X[0], X[1], X[2]);
@@ -1241,11 +1246,13 @@ namespace fic {
 
             Eigen::Vector3d pos_plan;
             for (int ax = 0; ax < 3; ++ax)
-                pos_plan[ax] = this->plan(hapfic_cart_planner_offset_ + ax, des_pos[ax], dt);
+                pos_plan[ax] = (CartAdmMode == kHpmpHostImpedance)
+                    ? des_pos[ax]
+                    : this->plan(hpmp_cart_planner_offset_ + ax, des_pos[ax], dt);
 
             Eigen::Matrix<double,6,1> wrench_cmd;
             for (int ax = 0; ax < 3; ++ax)
-                wrench_cmd[ax] = this->control(hapfic_cart_planner_offset_ + ax, pos_plan[ax] - curr_pos[ax]);
+                wrench_cmd[ax] = this->control(hpmp_cart_planner_offset_ + ax, pos_plan[ax] - curr_pos[ax]);
 
             Eigen::Quaterniond q_curr(X[6], X[3], X[4], X[5]);
             Eigen::Quaterniond q_des(Xt_task[6], Xt_task[3], Xt_task[4], Xt_task[5]);
@@ -1254,7 +1261,7 @@ namespace fic {
             // The IK set-point (the node's IK of the unshifted goal Xt) follows the shifted goal
             // to first order, q_shift = J# dx with J# = J^T (J J^T + lambda^2 I)^-1; zero in mode 6.
             const size_t nq = static_cast<size_t>(jacobian.cols());
-            if (hapfic_q_shift_.size() != static_cast<Eigen::Index>(nq)) hapfic_q_shift_ = Eigen::VectorXd::Zero(nq);
+            if (hpmp_q_shift_.size() != static_cast<Eigen::Index>(nq)) hpmp_q_shift_ = Eigen::VectorXd::Zero(nq);
             if (CartAdmMode == 1 || CartAdmMode == 2) {
                 Eigen::Matrix<double,6,1> dx;
                 dx.head<3>() = des_pos - Eigen::Vector3d(Xt[0], Xt[1], Xt[2]);
@@ -1264,13 +1271,13 @@ namespace fic {
                 dx.tail<3>() = d_rot.angle() * d_rot.axis();
                 if (dx.norm() > 1e-12 && jacobian.rows() == 6) {
                     const Eigen::MatrixXd JJt = jacobian * jacobian.transpose()
-                        + kHapficIkDamping * kHapficIkDamping * Eigen::MatrixXd::Identity(6, 6);
-                    hapfic_q_shift_ = jacobian.transpose() * JJt.ldlt().solve(dx);
+                        + kHpmpIkDamping * kHpmpIkDamping * Eigen::MatrixXd::Identity(6, 6);
+                    hpmp_q_shift_ = jacobian.transpose() * JJt.ldlt().solve(dx);
                 } else {
-                    hapfic_q_shift_.setZero();
+                    hpmp_q_shift_.setZero();
                 }
             } else {
-                hapfic_q_shift_.setZero();
+                hpmp_q_shift_.setZero();
             }
 
             // NOTE (13 Oct 2026): same orientation law as cartesianimpedancecontrol, on channel 19;
@@ -1282,14 +1289,14 @@ namespace fic {
             double vnorm = q_v.norm();
             double theta = 2.0 * std::atan(vnorm / std::max(q_s, 1e-12));
 
-            double tau_cq = this->control(hapfic_cart_planner_offset_ + 3, theta);
+            double tau_cq = this->control(hpmp_cart_planner_offset_ + 3, theta);
             vnorm = std::max(vnorm, 1e-12);
             Eigen::Vector3d ori_torque = (q_s >= 0.0 ? 1.0 : -1.0) * tau_cq * (q_v / vnorm);
             wrench_cmd.tail<3>() = ori_torque;
 
             Eigen::VectorXd tau_des = jacobian.transpose() * wrench_cmd + gravity_torques_;
 
-            if (hapfic_export_only_) hapfic_tau_des_ = tau_des;
+            if (hpmp_export_only_) hpmp_tau_des_ = tau_des;
             // measured_joint_torques arrives in the Cartesian-mode convention
             // (sim: -effort, hardware: joint_torques_), the negative of what
             // handleJointAdmitanceControl takes (joint admittance passes
@@ -1297,24 +1304,24 @@ namespace fic {
             // The IK set-point of each joint is limited to the admittance bound (the joint law's
             // outer breakpoint) about the reached joint position, never narrower than
             // kSetpointWindowMin, on a copy: q_target (the node's IK solution of the goal) is kept.
-            // Admittance drive (see hapfic_split_drive_): empty = each joint deadbands its own gap.
+            // Admittance drive (see hpmp_split_drive_): empty = each joint deadbands its own gap.
             Eigen::VectorXd drive;
-            if (hapfic_split_drive_ && !hapfic_export_only_ && jacobian.rows() == 6 && nq == num_joints_) {
+            if (hpmp_split_drive_ && !hpmp_export_only_ && jacobian.rows() == 6 && nq == num_joints_) {
                 Eigen::VectorXd u(num_joints_);
                 for (size_t i = 0; i < num_joints_; ++i) u[i] = tau_des[i] + measured_joint_torques[i];
                 const Eigen::MatrixXd JJt = jacobian * jacobian.transpose()
-                    + kHapficIkDamping * kHapficIkDamping * Eigen::MatrixXd::Identity(6, 6);
+                    + kHpmpIkDamping * kHpmpIkDamping * Eigen::MatrixXd::Identity(6, 6);
                 const Eigen::Matrix<double,6,1> w_gap = JJt.ldlt().solve(jacobian * u);   // pinv(J^T) u
                 const Eigen::VectorXd u_null = u - jacobian.transpose() * w_gap;
-                const double rel = kHapficDeadbandRelease;
+                const double rel = kHpmpDeadbandRelease;
                 const double fn = w_gap.head<3>().norm(), tn = w_gap.tail<3>().norm();
-                if (!hapfic_task_engaged_f_ && fn >= hapfic_task_db_force_) hapfic_task_engaged_f_ = true;
-                else if (hapfic_task_engaged_f_ && fn < rel * hapfic_task_db_force_) hapfic_task_engaged_f_ = false;
-                if (!hapfic_task_engaged_t_ && tn >= hapfic_task_db_torque_) hapfic_task_engaged_t_ = true;
-                else if (hapfic_task_engaged_t_ && tn < rel * hapfic_task_db_torque_) hapfic_task_engaged_t_ = false;
+                if (!hpmp_task_engaged_f_ && fn >= hpmp_task_db_force_) hpmp_task_engaged_f_ = true;
+                else if (hpmp_task_engaged_f_ && fn < rel * hpmp_task_db_force_) hpmp_task_engaged_f_ = false;
+                if (!hpmp_task_engaged_t_ && tn >= hpmp_task_db_torque_) hpmp_task_engaged_t_ = true;
+                else if (hpmp_task_engaged_t_ && tn < rel * hpmp_task_db_torque_) hpmp_task_engaged_t_ = false;
                 Eigen::Matrix<double,6,1> w_db = Eigen::Matrix<double,6,1>::Zero();
-                if (hapfic_task_engaged_f_) w_db.head<3>() = w_gap.head<3>();
-                if (hapfic_task_engaged_t_) w_db.tail<3>() = w_gap.tail<3>();
+                if (hpmp_task_engaged_f_) w_db.head<3>() = w_gap.head<3>();
+                if (hpmp_task_engaged_t_) w_db.tail<3>() = w_gap.tail<3>();
                 drive = jacobian.transpose() * w_db;
                 if (joint_adm_engaged_.size() < num_joints_) joint_adm_engaged_.resize(num_joints_, 0);
                 for (size_t i = 0; i < num_joints_; ++i) {   // the joint deadband on the rest
@@ -1324,15 +1331,15 @@ namespace fic {
                     if (on) drive[i] += u_null[i];
                 }
             }
-            for (size_t i = 0; i < num_joints_ && !hapfic_export_only_; ++i) {
+            for (size_t i = 0; i < num_joints_ && !hpmp_export_only_; ++i) {
                 const Eigen::VectorXd xb = this->controller(i).get_x_b();
                 const bool cont = i < jointIsContinuous_.size() && jointIsContinuous_[i];
-                const double q_ik_i = q_target[i] + (i < nq ? hapfic_q_shift_[i] : 0.0);
+                const double q_ik_i = q_target[i] + (i < nq ? hpmp_q_shift_[i] : 0.0);
                 double q_t_i = limitSetpoint(q_ik_i, q_current[i], setpointWindow(xb(xb.size() - 1)), cont);
                 handleJointAdmitanceControl(
                     i, traj_msg, torque_msg, q_t_i, q_current[i],
                     tau_des[i], -measured_joint_torques[i], 2, num_joints_, true,
-                    kHapficDeadbandRelease * deadband_joint_tau_,
+                    kHpmpDeadbandRelease * deadband_joint_tau_,
                     drive.size() ? drive[i] : std::numeric_limits<double>::quiet_NaN()
                 );
             }

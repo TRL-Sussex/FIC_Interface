@@ -43,7 +43,7 @@ def main():
     app.setOrganizationName("RoboticsLab")
     app.setDesktopFileName("fic-control-studio")
 
-    splash = make_splash("FIC Control Studio", version="v5.6.0")
+    splash = make_splash("FIC Control Studio", version="v5.7.0")
 
     # ── Settings (lazy yaml import) ──────────────────────────────────────────
     splash_status(splash, "Loading settings…")

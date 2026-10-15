@@ -364,7 +364,7 @@ function updateNavVisibility(s) {
 }
 
 // ── Keyboard: the classic shortcuts, plus mode keys ───────────────────────
-const OPTION_KEY = { hapfic: 'f', postural: 'p', elbow: 'e', admittance_planner: 'p' };
+const OPTION_KEY = { hpmp: 'f', postural: 'p', elbow: 'e', admittance_planner: 'p' };
 function onKey(e) {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const t = e.target, tag = t && t.tagName;

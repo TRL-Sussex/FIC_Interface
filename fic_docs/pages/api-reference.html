@@ -117,8 +117,8 @@ robot.motion.move_cartesian(0.4, 0.0, 0.3, rx=0.0, ry=0.0, rz=0.0)</code></pre>
   <tr><td><code>robot.mode.publish_mode</code></td><td><code>(mode_int)</code></td><td>Same as <code>set</code> &mdash; explicit alias.</td></tr>
   <tr><td><code>robot.mode.postural</code></td><td><code>(enabled)</code></td><td>Enable/disable null-space postural controller.</td></tr>
   <tr><td><code>robot.mode.elbow</code></td><td><code>(enabled)</code></td><td>Enable/disable null-space elbow constraint.</td></tr>
-  <tr><td><code>robot.mode.hapfic</code></td><td><code>(enabled)</code></td><td>Enable/disable HapFIC hybrid mode (controller engages it only on modes 6&ndash;8).</td></tr>
-  <tr><td><code>robot.mode.desired_wrench</code></td><td><code>(force=(0, 0, 0), torque=(0, 0, 0))</code></td><td>Desired wrench of the Cartesian admittance (modes 7&ndash;8, and HapFIC on them), N and N&middot;m; zero is plain compliance.</td></tr>
+  <tr><td><code>robot.mode.hpmp</code></td><td><code>(enabled)</code></td><td>Turn H-PMP on or off (engaged on modes 5&ndash;8; on by default in the Studio). <code>robot.mode.hapfic</code> is the old name.</td></tr>
+  <tr><td><code>robot.mode.desired_wrench</code></td><td><code>(force=(0, 0, 0), torque=(0, 0, 0))</code></td><td>Desired wrench of the Cartesian admittance (modes 7&ndash;8, and H-PMP on them), N and N&middot;m; zero is plain compliance.</td></tr>
   <tr><td><code>robot.mode.admittance_planner</code></td><td><code>(enabled)</code></td><td>Enable/disable admittance planner (modes 3&ndash;4).</td></tr>
   <tr><td><code>robot.mode.active_profile</code></td><td><code>(profile_name)</code></td><td>Publish a named parameter profile.</td></tr>
 </table>
@@ -129,13 +129,13 @@ robot.motion.move_cartesian(0.4, 0.0, 0.3, rx=0.0, ry=0.0, rz=0.0)</code></pre>
   <tr><td>1</td><td>Joint Impedance</td></tr>
   <tr><td>2</td><td>Joint Impedance With Planner</td></tr>
   <tr><td>3</td><td>Joint Admittance</td></tr>
-  <tr><td>4</td><td>Joint Admittance Haptic</td></tr>
+  <tr><td>4</td><td>Joint HAP-FIC</td></tr>
   <tr><td>5</td><td>Cartesian Impedance</td></tr>
-  <tr><td>6</td><td>Cartesian Planner</td></tr>
+  <tr><td>6</td><td>Cartesian Impedance with Planner</td></tr>
   <tr><td>7</td><td>Cartesian Admittance</td></tr>
-  <tr><td>8</td><td>Cartesian Admittance Haptic</td></tr>
+  <tr><td>8</td><td>Cartesian HAP-FIC</td></tr>
 </table>
-<p><code>publish_mode</code> sends both the integer (<code>Int32</code> on <code>robot{N}_control_mode</code>) and the mode-name string (<code>String</code> on <code>{rid}_mode_select</code>). Mode 0 (idle) exists at the controller level but is not published by the script API &mdash; use <code>robot.safety.pause()</code> to park. HapFIC engages only on Cartesian modes 6&ndash;8; see <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a> and <a href="#hapfic" onclick="showPage('hapfic')">HapFIC</a>.</p>
+<p><code>publish_mode</code> sends both the integer (<code>Int32</code> on <code>robot{N}_control_mode</code>) and the mode-name string (<code>String</code> on <code>{rid}_mode_select</code>). Mode 0 (idle) exists at the controller level but is not published by the script API &mdash; use <code>robot.safety.pause()</code> to park. H-PMP engages only on Cartesian modes 5&ndash;8; see <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a> and <a href="#hpmp" onclick="showPage('hpmp')">H-PMP</a>.</p>
 <pre><code>robot.mode.set(2)            # Joint Impedance With Planner
 robot.mode.postural(True)    # Enable null-space postural
 robot.wait(0.5)

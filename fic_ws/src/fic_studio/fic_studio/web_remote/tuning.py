@@ -61,7 +61,7 @@ _KEYS = ('key', 'label', 'unit', 'type', 'group', 'min', 'max')
 
 
 def _specs(kind, mode):
-    """The fields of one parameter set. HAP-FIC (mode 100) has a joint layer (controller, planner,
+    """The fields of one parameter set. H-PMP (mode 100) has a joint layer (controller, planner,
     admittance) and a Cartesian layer (controller, planner: no admittance)."""
     from fic_studio import xml_manager as xm
     fields = list(_CONTROLLER)
@@ -74,7 +74,7 @@ def _specs(kind, mode):
     elif kind == 'axis':
         if xm.mode_uses_planner(mode):
             fields += _PLANNER_AXIS
-        if xm.mode_uses_admittance(mode) and not xm.is_hapfic_mode(mode):
+        if xm.mode_uses_admittance(mode) and not xm.is_hpmp_mode(mode):
             fields += _ADMITTANCE
     elif kind == 'postural':
         fields.append(_VELOCITY)
@@ -105,14 +105,14 @@ def _joint_count(w, robot):
 def _target(args):
     """Validate which parameter set the request means.
 
-    HAP-FIC (mode 100) is a joint set with layer 'joint' and a Cartesian axis otherwise."""
+    H-PMP (mode 100) is a joint set with layer 'joint' and a Cartesian axis otherwise."""
     from fic_studio import xml_manager as xm
     try:
         mode = int(args.get('mode', 1))
     except (TypeError, ValueError):
-        raise Refused('mode must be 1 to 8, or %d for HAP-FIC' % xm.HAPFIC_MODE, 'bad_args')
-    if mode not in xm.CONTROL_MODES and not xm.is_hapfic_mode(mode):
-        raise Refused('mode must be 1 to 8, or %d for HAP-FIC' % xm.HAPFIC_MODE, 'bad_args')
+        raise Refused('mode must be 1 to 8, or %d for H-PMP' % xm.HPMP_MODE, 'bad_args')
+    if mode not in xm.CONTROL_MODES and not xm.is_hpmp_mode(mode):
+        raise Refused('mode must be 1 to 8, or %d for H-PMP' % xm.HPMP_MODE, 'bad_args')
     profile = str(args.get('profile') or 'default')
     if profile != profile.strip() or not profile or len(profile) > 48:
         raise Refused('Bad config name', 'bad_args')
@@ -120,7 +120,7 @@ def _target(args):
     if axis in SCOPED_AXES:
         return {'mode': mode, 'profile': profile, 'kind': axis if axis == 'postural' else 'elbow',
                 'axis': axis}
-    if xm.is_joint_mode(mode) or (xm.is_hapfic_mode(mode) and args.get('layer') == 'joint'):
+    if xm.is_joint_mode(mode) or (xm.is_hpmp_mode(mode) and args.get('layer') == 'joint'):
         try:
             joint = int(args.get('joint', 0))
         except (TypeError, ValueError):
@@ -284,8 +284,8 @@ def info(w, args, client):
     profiles = mgr.get_all_profiles(robot) or ['default']
     modes = [{'id': i, 'name': m['name'], 'type': m['type'], 'planner': m['has_planner'],
               'admittance': m['has_admittance']} for i, m in sorted(xm.CONTROL_MODES.items())]
-    modes.append({'id': xm.HAPFIC_MODE, 'name': xm.HAPFIC_INFO['name'], 'type': 'hapfic', 'planner': True,
-                  'admittance': True})       # not a control mode: HAP-FIC's own tuning, used in modes 6-8
+    modes.append({'id': xm.HPMP_MODE, 'name': xm.HPMP_INFO['name'], 'type': 'hpmp', 'planner': True,
+                  'admittance': True})       # not a control mode: H-PMP's own tuning, used in modes 5-8
     return {'ok': True, 'robot': robot, 'joints': _joint_count(w, robot), 'profiles': profiles,
             'active': _active(w), 'modes': modes, 'axes': list(CART_AXES) + list(SCOPED_AXES),
             'config_path': str(mgr.config_path), 'trial': _trial(w, mgr, robot)}
@@ -305,14 +305,14 @@ def get(w, args, client):
     params = _load(mgr, w, t)
     values = _to_dict(params, t['kind'])
     specs = _specs(t['kind'], t['mode'])
-    fallback = hapfic_layers = False
+    fallback = hpmp_layers = False
     if t['kind'] in ('joint', 'axis'):
         have = mgr.get_available_profiles(_robot(w), t['mode'])
         fallback = t['profile'] not in have
-        # HAP-FIC with no block of its own on this robot runs on mode 4's joints and mode 6's axes
-        hapfic_layers = xm.is_hapfic_mode(t['mode']) and not {t['profile'], 'default'} & set(have)
+        # H-PMP with no block of its own on this robot runs on mode 4's joints and mode 6's axes
+        hpmp_layers = xm.is_hpmp_mode(t['mode']) and not {t['profile'], 'default'} & set(have)
     return {'ok': True, 'target': t, 'values': values, 'fields': specs,
-            'fallback': fallback and not hapfic_layers, 'hapfic_layers': hapfic_layers, 'plot': curve(values)}
+            'fallback': fallback and not hpmp_layers, 'hpmp_layers': hpmp_layers, 'plot': curve(values)}
 
 
 def plot(w, args, client):
@@ -395,8 +395,8 @@ def profile(w, args, client):
     robot = _robot(w)
     if op == 'add':
         mode = int(_num(args.get('mode'), 1))
-        if mode not in xm.CONTROL_MODES and not xm.is_hapfic_mode(mode):
-            raise Refused('mode must be 1 to 8, or %d for HAP-FIC' % xm.HAPFIC_MODE, 'bad_args')
+        if mode not in xm.CONTROL_MODES and not xm.is_hpmp_mode(mode):
+            raise Refused('mode must be 1 to 8, or %d for H-PMP' % xm.HPMP_MODE, 'bad_args')
         src = str(args.get('from') or 'default')
         try:
             mgr.clone_profile(robot, mode, src, name)

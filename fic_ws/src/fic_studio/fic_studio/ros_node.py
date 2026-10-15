@@ -26,9 +26,10 @@ _PER_ROBOT_PUB_SPECS = [
     ("active_profile",       String,            "{rid}_active_profile",             "tl"),
     ("postural_enable",      Bool,              "{rid}_postural_enable",            "tl"),
     ("elbow_enable",         Bool,              "{rid}_elbow_enable",               "tl"),
-    ("hapfic_enable",        Bool,              "{rid}_hapfic_enable",              "tl"),
+    # H-PMP on/off; the nodes also accept the old {rid}_hpmp_enable.
+    ("hpmp_enable",        Bool,              "{rid}_hpmp_enable",                "tl"),
     ("admittance_planner",   Bool,              "{rid}_admittance_planner_enable",  "tl"),
-    # Desired wrench of the Cartesian admittance (modes 7/8, and HAP-FIC on them). Not
+    # Desired wrench of the Cartesian admittance (modes 7/8, and H-PMP on them). Not
     # transient-local: a controller that (re)starts begins at zero, not at a stale wrench.
     ("desired_wrench",       Wrench,            "{rid}_desired_wrench",             10),
     ("desired_joint_angles", Float32MultiArray, "{rid}_desired_joint_angles",       10),
@@ -153,6 +154,9 @@ class FicStudioNode(Node):
                 q = qos
             pubs[key] = self.create_publisher(msg_type, topic, q)
         self.pubs[rid] = pubs
+        # H-PMP is on by default in the Cartesian modes (latched: a controller started later
+        # gets it); the toggle turns it off, sending the Cartesian torques directly.
+        pubs["hpmp_enable"].publish(Bool(data=True))
         self._active_robots.append(n)
         self._refresh_legacy_aliases()
         self.get_logger().info(f'Added robot {rid}')
@@ -304,9 +308,9 @@ class FicStudioNode(Node):
         rid = self._resolve_rid(robot_id)
         self.pubs[rid]["elbow_enable"].publish(Bool(data=bool(enabled)))
 
-    def publish_hapfic_enable(self, enabled: bool, robot_id=None):
+    def publish_hpmp_enable(self, enabled: bool, robot_id=None):
         rid = self._resolve_rid(robot_id)
-        self.pubs[rid]["hapfic_enable"].publish(Bool(data=bool(enabled)))
+        self.pubs[rid]["hpmp_enable"].publish(Bool(data=bool(enabled)))
 
     def publish_admittance_planner(self, enabled: bool, robot_id=None):
         rid = self._resolve_rid(robot_id)

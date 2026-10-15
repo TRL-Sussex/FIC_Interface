@@ -209,6 +209,21 @@ robots:
       joint_tau: 2.0
       cart_force: 4.0
       cart_torque: 0.2
+    # The real arm as the simulator reproduces it (fic_docs: Simulation vs. Hardware). With it on,
+    # the simulated Kinova has the arm's joint friction and torque-sensor noise and measures torque
+    # as fic_hardware does (200 Hz filter, H-PMP's push estimated from the joint torques, the
+    # deadbands above), so tunes made in simulation carry over. torque_noise: measured at rest on
+    # Robot1 (14 Oct 2026). joint_friction/joint_damping: estimated from the wall runs of that day
+    # (about 2 N of apparent push along the motion at the gripper at 10-20 mm/s); replace them with
+    # the values of `python3 -m fic_studio.hardware_model` on the arm.
+    hardware_model:
+      enabled: true
+      source: estimated, Robot1 wall runs 14 Oct 2026 (friction); measured at rest (noise)
+      joint_friction: [0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6]
+      joint_damping: [15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0]
+      torque_noise: [0.08, 0.09, 0.07, 0.1, 0.03, 0.025, 0.015]
+      torque_filter_hz: 200.0
+      command_delay_ms: 0.0
     # How hard a teleoperation partner's contact may push this arm, per axis,
     # on robot{N}_wrench_external. Only the Cartesian admittance modes (6, 7, 8)
     # act on it. Start low and raise it once bilateral is trusted on hardware:
@@ -240,7 +255,7 @@ robots:
     #
     # They stay off until after ROSCon UK 2026 because hands-on 1 of the
     # workshop quotes force numbers measured with them off (Mode 5 leaning at
-    # about 7 N, Mode 8 driving 35 mm in at 25 N, Hapfic stopping short at
+    # about 7 N, Mode 8 driving 35 mm in at 25 N, Hpmp stopping short at
     # under 2 N), and those numbers are printed in a worksheet that goes to
     # registrants. A virtual wall could change exactly those figures.
     #

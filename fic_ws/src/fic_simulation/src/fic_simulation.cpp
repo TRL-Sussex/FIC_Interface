@@ -1,7 +1,9 @@
 // fic_simulation.cpp — FIC Simulation Node implementation
 #include "fic_simulation/fic_simulation.h"
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 // ── geometry_msgs::Pose ↔ Eigen::Isometry3d (solver interface boundary) ──
 // Wrap an angle to (-pi, pi], as fic_hardware and the Kinova driver do.
@@ -34,6 +36,22 @@ static geometry_msgs::msg::Pose isoToPoseMsg(const Eigen::Isometry3d& iso) {
 // ═══════════════════════════════════════════════════════════════════════════════
 //  CONSTRUCTOR
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// H-PMP's IK seed (5.7.0): the previous IK solution while H-PMP runs, so the arm's redundant
+// (self-motion) posture is held by the joint layer and a push moves it only through the
+// admittance offsets; the measured posture otherwise, or when the previous solution is more than
+// kHpmpIkSeedMaxRad from it on any joint (after a mode switch or a large push). Seeding from the
+// measured posture under H-PMP let the joint set-point follow a push in the null space and drift
+// on from there.
+static constexpr double kHpmpIkSeedMaxRad = 0.5;
+static inline Eigen::VectorXd hpmpIkSeed(bool hpmp, const Eigen::VectorXd& q_meas,
+                                         const Eigen::VectorXd& q_prev) {
+    if (!hpmp || q_prev.size() != q_meas.size() || q_meas.size() == 0) return q_meas;
+    for (Eigen::Index i = 0; i < q_meas.size(); ++i)
+        if (!std::isfinite(q_prev[i]) || std::abs(q_prev[i] - q_meas[i]) > kHpmpIkSeedMaxRad)
+            return q_meas;
+    return q_prev;
+}
 
 template <typename T>
 FicSimulationNode<T>::FicSimulationNode(int num_joints)
@@ -184,9 +202,14 @@ FicSimulationNode<T>::FicSimulationNode(int num_joints)
         rid + "_elbow_enable", 10,
         std::bind(&FicSimulationNode::elbowEnableCallback, this, std::placeholders::_1));
 
-    hapfic_enable_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+    // the old topic name, still accepted
+    hpmp_enable_legacy_sub_ = this->create_subscription<std_msgs::msg::Bool>(
         rid + "_hapfic_enable", 10,
-        std::bind(&FicSimulationNode::hapficEnableCallback, this, std::placeholders::_1));
+        std::bind(&FicSimulationNode::hpmpEnableCallback, this, std::placeholders::_1));
+    // H-PMP's topic (since 5.7.0).
+    hpmp_enable_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+        rid + "_hpmp_enable", 10,
+        std::bind(&FicSimulationNode::hpmpEnableCallback, this, std::placeholders::_1));
 
     desired_wrench_sub_ = this->create_subscription<geometry_msgs::msg::Wrench>(
         rid + "_desired_wrench", 10,
@@ -275,7 +298,7 @@ void FicSimulationNode<T>::resizeJointState(size_t n) {
     // Seeded exactly as the constructor used to seed them: zero history, then
     // re-seeded from the first genuine sample in jointStateCallback. Rebuilt at
     // filter_rate_hz_, which by now may hold the measured feedback rate.
-    torque_filters_.assign(n, ButterworthFilter(kTorqueCutoffHz, filter_rate_hz_, 0.0));
+    torque_filters_.assign(n, ButterworthFilter(torqueCutoffHz(), filter_rate_hz_, 0.0));
     position_filters_.assign(n, ButterworthFilter(kStateCutoffHz, filter_rate_hz_, 0.0));
     raw_unwrapped_.assign(n, 0.0);
     prev_raw_.assign(n, 0.0);
@@ -336,6 +359,15 @@ void FicSimulationNode<T>::loadRobotModel(const std::string& robot_name) {
     } else {
         current_robot_config_ = fic::getDefaultConfig(robot_name);
         RCLCPP_WARN(this->get_logger(), "Using built-in defaults for: %s", robot_name.c_str());
+    }
+
+    // FIC_HARDWARE_MODEL=off: the ideal simulator for this run whatever robots_config.yaml says
+    // (mujoco_native/hardware_model.py reads the same variable).
+    if (const char* hm = std::getenv("FIC_HARDWARE_MODEL")) {
+        std::string v(hm);
+        std::transform(v.begin(), v.end(), v.begin(), ::tolower);
+        if (v == "off" || v == "0" || v == "false" || v == "ideal")
+            current_robot_config_.hardware_model.enabled = false;
     }
 
     relevant_joints = current_robot_config_.joint_names;
@@ -490,8 +522,9 @@ void FicSimulationNode<T>::loadRobotModel(const std::string& robot_name) {
     // messages on the topic still override it.
     if (current_robot_config_.safety_max_joint_vel)
         max_joint_velocity_ = *current_robot_config_.safety_max_joint_vel;
-    // A simulation-only limit (sim_max_joint_vel) takes precedence here.
-    if (current_robot_config_.safety_sim_max_joint_vel)
+    // A simulation-only limit (sim_max_joint_vel) takes precedence here, unless the robot's
+    // hardware_model is on: the simulated arm then has the robot's velocity damper.
+    if (current_robot_config_.safety_sim_max_joint_vel && !current_robot_config_.hardware_model.enabled)
         max_joint_velocity_ = *current_robot_config_.safety_sim_max_joint_vel;
     if (current_robot_config_.safety_max_cart_vel)
         max_cart_velocity_ = *current_robot_config_.safety_max_cart_vel;
@@ -513,12 +546,21 @@ void FicSimulationNode<T>::loadRobotModel(const std::string& robot_name) {
         current_robot_config_.deadband_joint_tau,
         current_robot_config_.deadband_cart_force,
         current_robot_config_.deadband_cart_torque);
-    // HAP-FIC's split admittance drive keeps the library's task deadband: the simulated measured
-    // torque is the node's own command, with no sensor bias for a wider deadband to absorb.
+    // H-PMP's split admittance drive keeps the library's task deadband: the simulated measured
+    // torque is the node's own command, with no sensor bias for a wider deadband to absorb. With the
+    // robot's hardware_model the measured torque carries the arm's friction and sensor noise, and the
+    // deadband is the robot's, as fic_hardware sets it.
+    if (current_robot_config_.hardware_model.enabled)
+        fic_ctrl_.setHpmpSplitDrive(true, current_robot_config_.deadband_cart_force,
+                                    current_robot_config_.deadband_cart_torque);
+    else
+        fic_ctrl_.setHpmpSplitDrive(true, 1.0, 0.1);
+    RCLCPP_INFO(this->get_logger(), "Hardware model (robots_config.yaml hardware_model): %s, measured-torque filter %.0f Hz",
+        current_robot_config_.hardware_model.enabled ? "on" : "off (ideal simulator)", torqueCutoffHz());
     RCLCPP_INFO(this->get_logger(),
-        "HAP-FIC admittance drive: %s, task deadband %.2f N / %.3f N m, joint deadband %.2f N m",
-        fic_ctrl_.hapfic_split_drive_ ? "split" : "per joint", fic_ctrl_.hapfic_task_db_force_,
-        fic_ctrl_.hapfic_task_db_torque_, fic_ctrl_.deadband_joint_tau_);
+        "H-PMP admittance drive: %s, task deadband %.2f N / %.3f N m, joint deadband %.2f N m",
+        fic_ctrl_.hpmp_split_drive_ ? "split" : "per joint", fic_ctrl_.hpmp_task_db_force_,
+        fic_ctrl_.hpmp_task_db_torque_, fic_ctrl_.deadband_joint_tau_);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -681,12 +723,12 @@ void FicSimulationNode<T>::elbowEnableCallback(const std_msgs::msg::Bool::Shared
 }
 
 template <typename T>
-void FicSimulationNode<T>::hapficEnableCallback(const std_msgs::msg::Bool::SharedPtr msg) {
+void FicSimulationNode<T>::hpmpEnableCallback(const std_msgs::msg::Bool::SharedPtr msg) {
     std::lock_guard<std::mutex> lock(data_mutex_);
-    if (hapfic_enabled_ == msg->data) return;   // a repeat changes nothing
-    hapfic_enabled_ = msg->data;
+    if (hpmp_enabled_ == msg->data) return;   // a repeat changes nothing
+    hpmp_enabled_ = msg->data;
     initControllerPLanner = false;
-    RCLCPP_INFO(this->get_logger(), "Hapfic %s", hapfic_enabled_ ? "ENABLED" : "DISABLED");
+    RCLCPP_INFO(this->get_logger(), "H-PMP %s", hpmp_enabled_ ? "ENABLED" : "DISABLED");
 }
 
 template <typename T>
@@ -857,7 +899,7 @@ void FicSimulationNode<T>::calibrateFilterRate(double stamp_s) {
     // Rebuild seeded from the current filtered state, so swapping coefficients
     // is a bumpless transfer rather than a step into the impedance law.
     for (size_t i = 0; i < torque_filters_.size(); ++i) {
-        torque_filters_[i]   = ButterworthFilter(kTorqueCutoffHz, filter_rate_hz_,
+        torque_filters_[i]   = ButterworthFilter(torqueCutoffHz(), filter_rate_hz_,
                                                  static_cast<double>(current_effort[i]));
         velocity_filters_[i] = ButterworthFilter(kStateCutoffHz, filter_rate_hz_,
                                                  static_cast<double>(currentVelocities_[i]));
@@ -925,6 +967,15 @@ void FicSimulationNode<T>::jointStateCallback(const sensor_msgs::msg::JointState
     // then correctly refuses to accept as feedback. checkedJointCount logs the
     // mismatch; with resizeJointState as the only writer it returns num_joints_.
     const size_t n_safe = checkedJointCount("jointStateCallback");
+    if (torqueCutoffHz() != torque_cutoff_applied_hz_) {
+        // The robot (and so its hardware_model) changed: rebuild the torque filters, seeded from
+        // the current filtered value (bumpless).
+        torque_cutoff_applied_hz_ = torqueCutoffHz();
+        if (joint_state_received_)
+            for (size_t i = 0; i < torque_filters_.size() && i < current_effort.size(); ++i)
+                torque_filters_[i] = ButterworthFilter(torque_cutoff_applied_hz_, filter_rate_hz_,
+                                                       static_cast<double>(current_effort[i]));
+    }
     for (size_t i = 0; i < n_safe; ++i) {
         // Nor past the configured joint names — a joint with no name cannot be
         // located in the message anyway.
@@ -942,7 +993,7 @@ void FicSimulationNode<T>::jointStateCallback(const sensor_msgs::msg::JointState
         // there yields ~100 ms of fictitious state — enough to trip the
         // joint-limit hard fault on a robot whose range excludes 0°.
         if (!joint_state_received_) {
-            torque_filters_[i]   = ButterworthFilter(kTorqueCutoffHz, filter_rate_hz_, msg->effort[idx]);
+            torque_filters_[i]   = ButterworthFilter(torqueCutoffHz(), filter_rate_hz_, msg->effort[idx]);
             position_filters_[i] = ButterworthFilter(kStateCutoffHz,  filter_rate_hz_, msg->position[idx]);
             velocity_filters_[i] = ButterworthFilter(kStateCutoffHz,  filter_rate_hz_, msg->velocity[idx]);
             if (i < raw_unwrapped_.size() && i < prev_raw_.size()) {
@@ -1090,7 +1141,8 @@ void FicSimulationNode<T>::targetPositionCallback(const geometry_msgs::msg::Pose
         Eigen::VectorXd q_start;
         {
             std::lock_guard<std::mutex> lock(data_mutex_);
-            q_start = q_current_;
+            q_start = hpmpIkSeed(fic::hpmpActive(current_control_mode_, hpmp_enabled_),
+                                 q_current_, q_target_ik_);
         }
         Eigen::VectorXd q_result = solveFullIterativeIK(q_start, ee_target_copy);
         applyJointSafetyLimits(q_result);
@@ -1298,12 +1350,12 @@ bool FicSimulationNode<T>::refreshTuning(const fic::TuningKey& want, const std::
                 initControllerPLanner = false;   // switch the controllers to the new set
                 RCLCPP_INFO(this->get_logger(), "Controllers Initialized for Mode %d (tuning read from config.xml)",
                             static_cast<int>(current_control_mode_));
-                if (tuning_.key.joint_mode == fic::kHapficTuningMode) {
-                    if (tuning_.hapfic_fallback)
-                        RCLCPP_WARN(this->get_logger(), "HAP-FIC tuning: config.xml has no HAP-FIC block for %s, "
-                                    "so HAP-FIC runs on mode 4's joints and mode 6's Cartesian block", want.robot.c_str());
+                if (tuning_.key.joint_mode == fic::kHpmpTuningMode) {
+                    if (tuning_.hpmp_fallback)
+                        RCLCPP_WARN(this->get_logger(), "H-PMP tuning: config.xml has no H-PMP block for %s, "
+                                    "so H-PMP runs on mode 4's joints and mode 6's Cartesian block", want.robot.c_str());
                     else
-                        RCLCPP_INFO(this->get_logger(), "HAP-FIC tuning: its own block (mode 100), config \"%s\"",
+                        RCLCPP_INFO(this->get_logger(), "H-PMP tuning: its own block (mode 100), config \"%s\"",
                                     tuning_.profile.c_str());
                 }
             }
@@ -1353,7 +1405,7 @@ void FicSimulationNode<T>::controlLoop() {
     bool local_postural = false;
     bool local_postural_reset = false;
     bool local_elbow = false;
-    bool local_hapfic = false;
+    bool local_hpmp = false;
     std::vector<double> local_desired_wrench;
     bool local_solver_ok = false;
 
@@ -1406,7 +1458,7 @@ void FicSimulationNode<T>::controlLoop() {
         local_postural_reset = postural_reset_;
         postural_reset_ = false;
         local_elbow = elbow_enabled_;
-        local_hapfic = hapfic_enabled_;
+        local_hpmp = hpmp_enabled_;
         local_desired_wrench = desired_wrench_;
     }
     fic_ctrl_.setDesiredWrench(local_desired_wrench);
@@ -1493,21 +1545,21 @@ void FicSimulationNode<T>::controlLoop() {
     };
 
     const int mode_int = static_cast<int>(local_control_mode);
-    const bool hapfic_active = fic::hapficActive(mode_int, local_hapfic);
-    // The blocks fic_hardware reads for the same mode (fic::tuningKeyFor): HAP-FIC its own.
-    const fic::TuningKey tuning_want = fic::tuningKeyFor(selected_robot_, local_num_joints, mode_int, local_hapfic);
+    const bool hpmp_active = fic::hpmpActive(mode_int, local_hpmp);
+    // The blocks fic_hardware reads for the same mode (fic::tuningKeyFor): H-PMP its own.
+    const fic::TuningKey tuning_want = fic::tuningKeyFor(selected_robot_, local_num_joints, mode_int, local_hpmp);
     // Nothing to run until the tuning for this robot and mode is in memory.
     if (!refreshTuning(tuning_want, local_active_profile)) return;
 
     if (!initControllerPLanner) {
         try {
-            if (hapfic_active) {
+            if (hpmp_active) {
                 initJointControllers(local_num_joints, local_q_current, joint_scalars_, joint_lists_, joint_planners_, joint_admittance_);
                 std::vector<double> ee_curr_vec = {
                     local_ee_current.position.x, local_ee_current.position.y, local_ee_current.position.z,
                     local_ee_current.orientation.x, local_ee_current.orientation.y, local_ee_current.orientation.z, local_ee_current.orientation.w
                 };
-                fic_ctrl_.initHapficCartesian(cart_params_, ee_curr_vec);
+                fic_ctrl_.initHpmpCartesian(cart_params_, ee_curr_vec);
             } else if (mode_int <= 4 || mode_int == 9) {
                 initJointControllers(local_num_joints, local_q_current, joint_scalars_, joint_lists_, joint_planners_, joint_admittance_);
             } else {
@@ -1515,12 +1567,12 @@ void FicSimulationNode<T>::controlLoop() {
             }
             if (mode_int >= 5 && mode_int <= 8) {
                 // Null-space postural task (channels 9..9+n, clear of the Cartesian 0..5,
-                // elbow 6..8 / 20..22, HAP-FIC 0..n-1 and 16..19 channels). Without this the
+                // elbow 6..8 / 20..22, H-PMP 0..n-1 and 16..19 channels). Without this the
                 // sim never initialised them, so postural.apply() ran on default profiles.
                 fic_ctrl_.postural.init(local_num_joints, postural_scalars_, postural_lists_);
             }
             initControllerPLanner = true;
-            RCLCPP_DEBUG(this->get_logger(), "Controllers Initialized for Mode %d%s", mode_int, hapfic_active ? " (hapfic)" : "");
+            RCLCPP_DEBUG(this->get_logger(), "Controllers Initialized for Mode %d%s", mode_int, hpmp_active ? " (hpmp)" : "");
         } catch (const std::exception& e) {
             RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Init Failed: %s", e.what());
             return;
@@ -1610,11 +1662,19 @@ void FicSimulationNode<T>::controlLoop() {
             neg_torques[i] = -local_current_effort[i];
         }
 
-        if (local_control_mode == ControlMode::CARTESIAN_IMPEDANCE)
-            fic_ctrl_.RC.impedance(loop_traj_data_, loop_torque_data_, local_q_current, Compensation, loop_current_pose_, loop_target_pose_, local_jacobian, 0, loop_wrench_data_, neg_torques, q_target_ik_, local_num_joints);
+        if (local_control_mode == ControlMode::CARTESIAN_IMPEDANCE) {
+            if (local_hpmp) {
+                fic_ctrl_.RC.hpmp(loop_traj_data_, loop_torque_data_, local_q_current, Compensation,
+                    loop_current_pose_, loop_target_pose_, local_jacobian,
+                    fic::ficControl<double>::kHpmpHostImpedance,
+                    loop_wrench_data_, neg_torques, q_target_ik_, local_num_joints);
+            } else {
+                fic_ctrl_.RC.impedance(loop_traj_data_, loop_torque_data_, local_q_current, Compensation, loop_current_pose_, loop_target_pose_, local_jacobian, 0, loop_wrench_data_, neg_torques, q_target_ik_, local_num_joints);
+            }
+        }
         else if (local_control_mode == ControlMode::CARTESIAN_PLANNER) {
-            if (local_hapfic) {
-                fic_ctrl_.RC.hapfic(loop_traj_data_, loop_torque_data_, local_q_current, Compensation,
+            if (local_hpmp) {
+                fic_ctrl_.RC.hpmp(loop_traj_data_, loop_torque_data_, local_q_current, Compensation,
                     loop_current_pose_, loop_target_pose_, local_jacobian, 0,
                     loop_wrench_data_, neg_torques, q_target_ik_, local_num_joints);
             } else {
@@ -1622,34 +1682,35 @@ void FicSimulationNode<T>::controlLoop() {
             }
         } else if (static_cast<int>(local_control_mode) >= 7) {
             CartAdmMode = (local_control_mode == ControlMode::CARTESIAN_ADMITTANCE_M1) ? 1 : 2;
-            if (local_hapfic) {
-                // HAP-FIC's task-space admittance: external wrench estimated from the joint torques
+            if (local_hpmp) {
+                // H-PMP's task-space admittance: external wrench estimated from the joint torques
                 // the environment applies (MuJoCo constraint and applied forces), pinv(J^T)(-tau_c),
                 // in the sign of the estimate above (at rest in contact tau_act - g = -tau_c). The
                 // applied effort of joint_states is the node's own command, whose estimate makes the
                 // admittance yield to the arm's own tracking effort. Without the topic: as above.
-                std::vector<double> hapfic_wrench = loop_wrench_data_;
-                if (local_contact_ok && local_solver_ok && local_jacobian.rows() == 6 &&
+                std::vector<double> hpmp_wrench = loop_wrench_data_;
+                // With the robot's hardware_model: the estimate above, as on the robot.
+                if (!current_robot_config_.hardware_model.enabled && local_contact_ok && local_solver_ok && local_jacobian.rows() == 6 &&
                     (size_t)local_jacobian.cols() == local_num_joints &&
                     local_contact_torques.size() >= local_num_joints) {
                     Eigen::VectorXd tau_c(local_num_joints);
                     for (size_t i = 0; i < local_num_joints; ++i) tau_c[i] = -local_contact_torques[i];
                     const Eigen::MatrixXd JJt = local_jacobian * local_jacobian.transpose();
                     const Eigen::VectorXd F_c = JJt.ldlt().solve(local_jacobian * tau_c);
-                    for (int k = 0; k < 6; ++k) hapfic_wrench[k] = F_c[k];
+                    for (int k = 0; k < 6; ++k) hpmp_wrench[k] = F_c[k];
                 }
-                fic_ctrl_.RC.hapfic(loop_traj_data_, loop_torque_data_, local_q_current, Compensation,
+                fic_ctrl_.RC.hpmp(loop_traj_data_, loop_torque_data_, local_q_current, Compensation,
                     loop_current_pose_, loop_target_pose_, local_jacobian, CartAdmMode,
-                    hapfic_wrench, neg_torques, q_target_ik_, local_num_joints);
+                    hpmp_wrench, neg_torques, q_target_ik_, local_num_joints);
             } else {
                 fic_ctrl_.RC.admittance(loop_traj_data_, loop_torque_data_, local_q_current, Compensation, loop_current_pose_, loop_target_pose_, local_jacobian, CartAdmMode, loop_wrench_data_, neg_torques, q_target_ik_, ee_velocity, local_num_joints,
                     current_robot_config_.wrench_gravity_compensated);
             }
         }
 
-        // HAP-FIC's joint loop sends no gravity of its own (its admittance is driven by the
+        // H-PMP's joint loop sends no gravity of its own (its admittance is driven by the
         // interaction torque alone): feed it forward, as in modes 1-4.
-        if (hapfic_active) {
+        if (hpmp_active) {
             for (size_t i = 0; i < local_num_joints; ++i) loop_torque_data_[i] += Compensation[i];
         }
 

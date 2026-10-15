@@ -49,7 +49,7 @@ def need_confirm(args, message):
 def scoped_to_selected(w):
     """Make the Studio's "first robot" publishers follow the selected robot.
 
-    The classic control bar publishes the mode, the postural / elbow / HAP-FIC /
+    The classic control bar publishes the mode, the postural / elbow / H-PMP /
     planner toggles, the active config and a tuning reload to the Studio's own
     robot, whichever robot the bar is driving (joint, pose and gripper targets
     already follow ``_rc_active_rid``). From the web UI every command must reach

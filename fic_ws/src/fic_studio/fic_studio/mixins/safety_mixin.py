@@ -86,6 +86,10 @@ class SafetyMixin:
         
         config = self.robot_configs.get(robot_name, {})
         self.safety_limits = config.get('safety_zones', self._get_default_safety_limits())
+        # Simulated like the real robot (hardware_model): the robot's velocity damper in
+        # simulation too.
+        self._safety_like_hardware = bool(
+            (config.get('hardware_model') or {}).get('enabled'))
 
         # Publish the limits
         self._publish_safety_limits()
@@ -151,11 +155,13 @@ class SafetyMixin:
 
             def vel_msg_for(rid):
                 # A robot driven in simulation gets sim_max_joint_vel when its
-                # config has one (a weaker velocity damper than on hardware).
+                # config has one (a weaker velocity damper than on hardware),
+                # unless it is simulated like the real robot (hardware_model).
                 joint_vel = vel.get('max_joint_vel', 1.0)
                 target = (self.robot_target(rid) if hasattr(self, 'robot_target')
                           else getattr(self, 'control_target', 'simulation'))
-                if target == 'simulation' and vel.get('sim_max_joint_vel'):
+                if (target == 'simulation' and vel.get('sim_max_joint_vel')
+                        and not getattr(self, '_safety_like_hardware', False)):
                     joint_vel = vel['sim_max_joint_vel']
                 msg = Float64MultiArray()
                 msg.data = [float(joint_vel), float(vel.get('max_cart_vel', 0.5)),

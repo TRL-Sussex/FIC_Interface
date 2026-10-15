@@ -176,7 +176,7 @@ class _Phase_C(object):
         self._rc_live_publish = _Toggle(False)
         self._cb_gt_combo = _GT()
         self._rc_postural_toggle, self._rc_elbow_toggle = _Toggle(False), _Toggle(False)
-        self._rc_hapfic_toggle, self._rc_admittance_planner_toggle = _Toggle(False), _Toggle(True)
+        self._rc_hpmp_toggle, self._rc_admittance_planner_toggle = _Toggle(False), _Toggle(True)
         self.robot_configs['KinovaGen3_7DOF'].update({
             'joint_names': ['Actuator%d' % i for i in range(1, 8)], 'q_home_deg': [0, 15, 180, 230, 0, 55, 90],
             'urdf_path': 'menagerie/model/KinovaGen3_7DOF/URDF/gen3.urdf', 'mujoco_xml_path': 'menagerie/model/KinovaGen3_7DOF/xml/scene.xml',
@@ -621,7 +621,7 @@ class MockStudio:
                 'admittance_planner': {'value': self.w._rc_admittance_planner_toggle.on, 'kind': 'joint', 'label': 'Admittance planner', 'tip': ''},
                 'postural': {'value': self.w._rc_postural_toggle.on, 'kind': 'cart', 'label': 'Postural task', 'tip': ''},
                 'elbow': {'value': self.w._rc_elbow_toggle.on, 'kind': 'cart', 'label': 'Elbow control', 'tip': ''},
-                'hapfic': {'value': self.w._rc_hapfic_toggle.on, 'kind': 'cart', 'label': 'HAP-FIC', 'tip': ''}},
+                'hpmp': {'value': self.w._rc_hpmp_toggle.on, 'kind': 'cart', 'label': 'H-PMP', 'tip': ''}},
             'profiles': {'items': [{'name': n, 'label': n} for n in self.w.profile_names()],
                          'current': self.profile},
             'availability': {'command': True, 'joint': True, 'cart': True, 'gripper': True, 'home': True,

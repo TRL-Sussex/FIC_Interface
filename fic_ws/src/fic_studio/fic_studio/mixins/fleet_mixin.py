@@ -196,7 +196,7 @@ class FleetMixin:
 
     # ── This Studio's presence card ──────────────────────────────────────
     def _fleet_card(self):
-        from fic_studio.mixins.robot_control_mixin import CONTROL_MODE_NAMES
+        from fic_studio.mixins.robot_control_mixin import mode_display_name
         from fic_studio.ros_node import _host_tag
         robot = self.robot_dropdown.currentText()
         cfg = (getattr(self, 'robot_configs', {}) or {}).get(robot, {})
@@ -217,7 +217,8 @@ class FleetMixin:
             'target': getattr(self, 'control_target', 'simulation'),
             'running': running,
             'has_joints': bool(self.joint_positions_for(self.node.station_robot_id)),
-            'mode': CONTROL_MODE_NAMES[idx] if idx < len(CONTROL_MODE_NAMES) else '',
+            'mode': mode_display_name(idx, bool(getattr(self, '_rc_hpmp_toggle', None) is not None
+                                                and self._rc_hpmp_toggle.isChecked())),
             'teleop': [p for p in pairs if p['state'] in ('active', 'pending', 'requested')],
             'urls': list(getattr(self, '_web_urls', []) or []),
             'version': getattr(self, 'APP_VERSION', ''),

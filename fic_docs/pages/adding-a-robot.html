@@ -190,6 +190,7 @@
   <tr><td>tune its controller</td><td>The <a href="#tuning" onclick="showPage('tuning')">Tuning</a> page: the robot starts with <code>config.xml</code>'s defaults.</td></tr>
   <tr><td>switch on safety limits</td><td><strong>Safety</strong>: the values are already filled in.</td></tr>
   <tr><td>drive the real robot</td><td><strong>Hardware</strong>: drop its driver library on <em>Add the driver library</em> (see <em>Real robot</em> below), set the torque sign, gravity and wrench flags, then tick <em>This robot has a hardware driver</em>. Check the torque limits first &mdash; defaults are marked on the review screen.</td></tr>
+  <tr><td>make the simulator behave like the real arm</td><td>With the controller running on the real robot, run <code>python3 -m fic_studio.hardware_model --env hardware --robot &lt;ID&gt; --write</code> on its PC: it measures the joints' friction and the torque-sensor noise and writes the robot's <code>hardware_model</code>. Until then the robot is simulated as an ideal arm, and tunes made in simulation may not hold on it (the Overview says so). <strong>Hardware</strong> &rarr; <em>Simulate like the real robot</em> shows and edits the values. See <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Simulation vs. Hardware</a>.</td></tr>
   <tr><td>re-import after changing the URDF</td><td>Delete the robot (&hellip; menu), answering <em>Yes</em> to deleting its files, and drop the URDF again. Or import under a new ID.</td></tr>
 </table>
 

@@ -1,4 +1,4 @@
-// HAP-FIC's split admittance drive (fic_control.h cartesianHapfic, hapfic_split_drive_): the joint
+// H-PMP's split admittance drive (fic_control.h cartesianHpmp, hpmp_split_drive_): the joint
 // torque gap u = tau_des - tau_meas is split into the part that produces an end-effector wrench,
 // which passes a deadband in task space, and the rest, which passes the joint deadband.
 //
@@ -74,14 +74,14 @@ struct Rig {
             c.initJointPlanner(i, 0.0, p);
             c.initJointAdmittance(i, l, p, a);
         }
-        c.initHapficCartesian(cp, X);
-        c.setHapficSplitDrive(split, task_f, task_t);
+        c.initHpmpCartesian(cp, X);
+        c.setHpmpSplitDrive(split, task_f, task_t);
     }
-    // One HAP-FIC tick (host mode 6) with the measured torque `meas` (the Cartesian-mode convention, so
+    // One H-PMP tick (host mode 6) with the measured torque `meas` (the Cartesian-mode convention, so
     // the gap is tau_des + meas = meas at the goal); returns each joint's admittance set-point.
     Eigen::VectorXd tick(const Eigen::VectorXd& meas) {
         std::vector<double> traj(N * 8 + 16, 0.0), torq(N, 0.0), w(6, 0.0), m(meas.data(), meas.data() + N);
-        c.cartesianHapfic(traj, torq, q, g, X, X, J, 0, w, m, q_ik, N);
+        c.cartesianHpmp(traj, torq, q, g, X, X, J, 0, w, m, q_ik, N);
         Eigen::VectorXd qa(N);
         for (int i = 0; i < N; ++i) qa[i] = traj[i + 5 * N];
         return qa;

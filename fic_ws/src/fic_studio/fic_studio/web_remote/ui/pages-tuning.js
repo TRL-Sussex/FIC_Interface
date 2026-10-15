@@ -21,7 +21,7 @@ const TRAIL = 24;                         // ~2.4 s of operating-point history, 
 const W = 1000, H = 340, PL = 58, PR = 16, PT = 16, PB = 40;
 const GRAB = 18;
 const APPLY_MS = 450;
-const HAPFIC = 100;                       // HAP-FIC's own tuning block: not a control mode, used by 6-8 with HAP-FIC on                     // a live trial applies this long after the last edit                          // screen px from a handle that still picks it up
+const HPMP = 100;                       // H-PMP's own tuning block: not a control mode, used by 5-8 with H-PMP on                     // a live trial applies this long after the last edit                          // screen px from a handle that still picks it up
 let clipSeq = 0;
 
 window.FIC.pages.tuning = function buildTuning(root) {
@@ -38,7 +38,7 @@ window.FIC.pages.tuning = function buildTuning(root) {
   const bar = h('div', { class: 'btn-row sticky-actions', hidden: true });
   const profSel = h('select', { class: 'select', 'aria-label': 'Config' }), modeSel = h('select', { class: 'select', 'aria-label': 'Control mode' });
   const jointSel = h('select', { class: 'select', 'aria-label': 'Joint' }), axisSel = h('select', { class: 'select', 'aria-label': 'Axis' });
-  const layerSel = h('select', { class: 'select', 'aria-label': 'HAP-FIC layer' });
+  const layerSel = h('select', { class: 'select', 'aria-label': 'H-PMP layer' });
   const typeNote = h('span', { class: 'tn-type' }), infoNote = h('span', { class: 'faint', style: 'font-size:var(--fs-m)' });
   const jointField = h('div', { class: 'field' }, h('label', { text: 'Joint ID' }), jointSel), axisField = h('div', { class: 'field' }, h('label', { text: 'Axis' }), axisSel);
   const layerField = h('div', { class: 'field', hidden: true }, h('label', { text: 'Layer' }), layerSel);
@@ -84,11 +84,11 @@ window.FIC.pages.tuning = function buildTuning(root) {
     else ask();
   }
   const modeOf = () => st.info.modes.find(x => x.id === st.sel.mode) || st.info.modes[0];
-  /** A joint set: a joint mode, or HAP-FIC's joint layer (its Cartesian layer is a set of axes). */
-  const jointSet = () => modeOf().type === 'joint' || (modeOf().type === 'hapfic' && st.sel.layer === 'joint');
+  /** A joint set: a joint mode, or H-PMP's joint layer (its Cartesian layer is a set of axes). */
+  const jointSet = () => modeOf().type === 'joint' || (modeOf().type === 'hpmp' && st.sel.layer === 'joint');
   const target = () => {
     const t = { mode: st.sel.mode, profile: st.sel.profile };
-    if (modeOf().type === 'hapfic') t.layer = st.sel.layer;
+    if (modeOf().type === 'hpmp') t.layer = st.sel.layer;
     if (jointSet()) t.joint = st.sel.joint; else t.axis = st.sel.axis;
     return t;
   };
@@ -104,8 +104,8 @@ window.FIC.pages.tuning = function buildTuning(root) {
     const s = window.FIC.state();
     st.sel.profile = st.trial ? st.trial.name : r.active && r.profiles.includes(r.active) ? r.active : 'default';
     st.sel.mode = s && s.mode ? s.mode.index + 1 : 1;
-    // HAP-FIC on in a Cartesian planner or admittance mode runs its own tuning, not the mode's: open on that
-    if (st.sel.mode >= 6 && st.sel.mode <= 8 && s.options && s.options.hapfic && s.options.hapfic.value) st.sel.mode = HAPFIC;
+    // H-PMP on in a Cartesian planner or admittance mode runs its own tuning, not the mode's: open on that
+    if (st.sel.mode >= 6 && st.sel.mode <= 8 && s.options && s.options.hpmp && s.options.hpmp.value) st.sel.mode = HPMP;
     selectors(); load();
   }
   async function load() {
@@ -117,15 +117,15 @@ window.FIC.pages.tuning = function buildTuning(root) {
   function selectors() {
     const i = st.info;
     setSelect(profSel, i.profiles.map(p => ({ value: p, label: p + (p === i.active ? '  (active)' : '') })), st.sel.profile, v => guard(() => { st.sel.profile = v; load(); }));
-    setSelect(modeSel, i.modes.map(m => ({ value: String(m.id), label: m.type === 'hapfic' ? m.name + ' (modes 6-8 with HAP-FIC on)' : 'Mode ' + m.id + ': ' + m.name })), String(st.sel.mode), v => guard(() => { st.sel.mode = Number(v); selectors(); load(); }));
+    setSelect(modeSel, i.modes.map(m => ({ value: String(m.id), label: m.type === 'hpmp' ? m.name + ' (modes 5-8 with H-PMP on)' : 'Mode ' + m.id + ': ' + m.name })), String(st.sel.mode), v => guard(() => { st.sel.mode = Number(v); selectors(); load(); }));
     setSelect(jointSel, Array.from({ length: i.joints }, (_, k) => ({ value: String(k), label: String(k) })), String(st.sel.joint), v => guard(() => { st.sel.joint = Number(v); load(); }));
-    const m = modeOf(), isJoint = jointSet(), hap = m.type === 'hapfic';
+    const m = modeOf(), isJoint = jointSet(), hap = m.type === 'hpmp';
     layerField.hidden = !hap;
     setSelect(layerSel, [{ value: 'joint', label: 'Joint layer' }, { value: 'cartesian', label: 'Cartesian layer' }], st.sel.layer, v => guard(() => { st.sel.layer = v; selectors(); load(); }));
     jointField.hidden = !isJoint; axisField.hidden = isJoint;
     setSelect(axisSel, i.axes.map(a => ({ value: a, label: a })), st.sel.axis, v => guard(() => { st.sel.axis = v; selectors(); load(); }));
-    setText(typeNote, 'Type: ' + (hap ? 'HAP-FIC, ' + (isJoint ? 'joint layer' : 'Cartesian layer') : isJoint ? 'Joint' : 'Cartesian'));
-    setText(infoNote, hap ? '  (used instead of the mode’s own tuning whenever HAP-FIC is on)' : m.planner ? '  (HAS damping_ratio)' : m.admittance ? '  (HAS Kv damping)' : '  (NO damping — use lower stiffness!)');
+    setText(typeNote, 'Type: ' + (hap ? 'H-PMP, ' + (isJoint ? 'joint layer' : 'Cartesian layer') : isJoint ? 'Joint' : 'Cartesian'));
+    setText(infoNote, hap ? '  (used instead of the mode’s own tuning whenever H-PMP is on)' : m.planner ? '  (HAS damping_ratio)' : m.admittance ? '  (HAS Kv damping)' : '  (NO damping — use lower stiffness!)');
     setText(activeNote, 'Active for control: ' + (i.active || '—') + (st.sel.profile !== i.active ? '  ·  editing ' + st.sel.profile : ''));
     trialState();
   }
@@ -163,9 +163,9 @@ window.FIC.pages.tuning = function buildTuning(root) {
     form.textContent = '';
     const d = st.data; if (!d) return;
     const t = d.target;
-    setText($('#lede'), st.info.robot + ' · ' + (scoped() ? st.sel.axis + ' (robot-wide, shared by all Cartesian modes)' : st.sel.profile + ' · ' + (modeOf().type === 'hapfic' ? 'HAP-FIC' : 'mode ' + st.sel.mode) + ' · ' + (t.kind === 'joint' ? 'joint ' + t.joint : 'axis ' + t.axis)));
+    setText($('#lede'), st.info.robot + ' · ' + (scoped() ? st.sel.axis + ' (robot-wide, shared by all Cartesian modes)' : st.sel.profile + ' · ' + (modeOf().type === 'hpmp' ? 'H-PMP' : 'mode ' + st.sel.mode) + ' · ' + (t.kind === 'joint' ? 'joint ' + t.joint : 'axis ' + t.axis)));
     if (d.fallback) form.append(h('p', { class: 'note-warn' }, 'The config “' + st.sel.profile + '” has no block for this mode yet, so these are the default values. ' + (live() ? 'The first change creates it in the trial.' : 'Saving creates it.')));
-    if (d.hapfic_layers) form.append(h('p', { class: 'note-warn' }, 'HAP-FIC has no tuning of its own on this robot yet, so it runs on mode 4’s joints and mode 6’s Cartesian axes: these are those values. The first change gives HAP-FIC its own, copied from them, and leaves modes 4 and 6 as they are.'));
+    if (d.hpmp_layers) form.append(h('p', { class: 'note-warn' }, 'H-PMP has no tuning of its own on this robot yet, so it runs on mode 4’s joints and mode 6’s Cartesian axes: these are those values. The first change gives H-PMP its own, copied from them, and leaves modes 4 and 6 as they are.'));
     if (st.trial && scoped()) form.append(h('p', { class: 'note-warn' }, st.sel.axis + ' is robot-wide, not part of a config, so it is not in the live trial: Save to XML writes it directly.'));
     for (const [g, title, hint] of GROUPS) {
       const fields = d.fields.filter(f => f.group === g && shown(f));

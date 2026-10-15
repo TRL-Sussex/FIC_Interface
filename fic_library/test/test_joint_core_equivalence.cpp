@@ -68,7 +68,7 @@ static JointSet randomParams(std::mt19937& rng, int variant) {
     return js;
 }
 
-// mode 1..4 as fic_hardware; 5 = the hapfic joint layer (admittance mode 2,
+// mode 1..4 as fic_hardware; 5 = the hpmp joint layer (admittance mode 2,
 // desired effort from the Cartesian law, measured torque with + sign).
 static int runCase(int mode, int variant, unsigned seed, bool continuous_j3) {
     std::mt19937 rng(seed);

@@ -175,14 +175,14 @@ The mode is shown in the status bar after the pipe character. See
 <table>
   <tr><th>#</th><th>Joint Space</th><th>#</th><th>Cartesian Space</th></tr>
   <tr><td>1</td><td>Joint Impedance</td><td>5</td><td>Cartesian Impedance</td></tr>
-  <tr><td>2</td><td>Joint Impedance With Planner</td><td>6</td><td>Cartesian Planner</td></tr>
+  <tr><td>2</td><td>Joint Impedance With Planner</td><td>6</td><td>Cartesian Impedance with Planner</td></tr>
   <tr><td>3</td><td>Joint Admittance</td><td>7</td><td>Cartesian Admittance</td></tr>
-  <tr><td>4</td><td>Joint Admittance Haptic</td><td>8</td><td>Cartesian Admittance Haptic</td></tr>
+  <tr><td>4</td><td>Joint HAP-FIC</td><td>8</td><td>Cartesian HAP-FIC</td></tr>
 </table>
 <p>Switching sub-mode publishes both the <code>control_mode</code> integer and the
 <code>mode_select</code> string to reach both simulation and hardware nodes. The sub-mode
 <em>slot</em> is preserved when toggling control space with <strong>Back</strong>: if you are on
-Cartesian Planner (slot 2) and switch to joint space, you land on Joint Impedance
+Cartesian Impedance with Planner (slot 2) and switch to joint space, you land on Joint Impedance
 With Planner (also slot 2).</p>
 
 <h2>Speed Presets</h2>

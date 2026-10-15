@@ -120,9 +120,9 @@ class FakeNode:
         """Record a publish_elbow_enable call."""
         self._rec('publish_elbow_enable', enabled=enabled, robot_id=robot_id)
 
-    def publish_hapfic_enable(self, enabled, robot_id=None):
-        """Record a publish_hapfic_enable call."""
-        self._rec('publish_hapfic_enable', enabled=enabled, robot_id=robot_id)
+    def publish_hpmp_enable(self, enabled, robot_id=None):
+        """Record a publish_hpmp_enable call."""
+        self._rec('publish_hpmp_enable', enabled=enabled, robot_id=robot_id)
 
     def publish_admittance_planner(self, enabled, robot_id=None):
         """Record a publish_admittance_planner call."""
@@ -400,11 +400,11 @@ class TestModeAPI:
         assert calls[0]['enabled'] is True
         assert calls[0]['robot_id'] == 'robot1'
 
-    def test_hapfic_enable(self, api):
-        """mode.hapfic(False) calls publish_hapfic_enable(False, rid)."""
+    def test_hpmp_enable(self, api):
+        """mode.hpmp(False) calls publish_hpmp_enable(False, rid)."""
         rapi, node, _, _ = api
-        rapi.mode.hapfic(False)
-        calls = [k for n, k in node.calls if n == 'publish_hapfic_enable']
+        rapi.mode.hpmp(False)
+        calls = [k for n, k in node.calls if n == 'publish_hpmp_enable']
         assert calls[0]['enabled'] is False
 
     def test_desired_wrench(self, api):

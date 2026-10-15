@@ -55,6 +55,7 @@ Usage:
 
 from __future__ import annotations
 
+import collections
 import json
 import os
 import threading
@@ -75,8 +76,10 @@ from communication.srv import SimulationReset
 
 import mujoco
 
+from mujoco_native import hardware_model
+
 from mujoco_native.experiment_hooks import (
-    body_positions, set_wall, site_wrench, step_push,
+    applied_wrench_torques, body_positions, set_wall, site_wrench, step_push,
     wall_contact_force)
 
 # Links whose world positions are published on `body_poses` (flattened xpos).
@@ -202,6 +205,9 @@ class NativeMujocoSimulation(Node):
         # Start pose of a fixed-base arm: comma-separated angles (rad) for its
         # first hinge joints, in model order; empty = MuJoCo's qpos0.
         self.declare_parameter('initial_joint_positions', '')
+        # robots_config.yaml hardware_model of the robot, as JSON (see hardware_model.py); empty =
+        # the ideal simulator.
+        self.declare_parameter('hardware_model', '')
 
         model_file = self.get_parameter('simulation/model_file').value
         if not model_file or not os.path.exists(model_file):
@@ -234,6 +240,22 @@ class NativeMujocoSimulation(Node):
         requested_dt = float(self.get_parameter('sim_dt').value)
         self._dt = requested_dt if requested_dt > 0 else self._mjcf_dt
         self._model.opt.timestep = self._dt
+        # The real arm as the simulator reproduces it (robots_config.yaml hardware_model, passed by
+        # the launch file as JSON): joint friction, damping and armature set on the model here; the
+        # measured-torque noise is added to joint_states' effort, and the torque command is
+        # applied delay_steps late (_apply_latest_cmd).
+        self._hw = {'noise': {}, 'delay_steps': 0, 'applied': []}
+        hm_json = str(self.get_parameter('hardware_model').value or '')
+        if hm_json:
+            self._hw = hardware_model.apply(self._model, json.loads(hm_json), self._dt)
+            self.get_logger().info(
+                f"Hardware model on {len(self._hw['applied'])} joints: friction "
+                f"{[round(float(self._model.dof_frictionloss[self._model.jnt_dofadr[self._model.joint(n).id]]), 3) for n in self._hw['applied']]} N m, "
+                f"damping {[round(float(self._model.dof_damping[self._model.jnt_dofadr[self._model.joint(n).id]]), 3) for n in self._hw['applied']]} N m s/rad, "
+                f"torque noise {list(self._hw['noise'].values())} N m, command delay {self._hw['delay_steps']} steps")
+        self._noise_rng = np.random.default_rng(12345)
+        self._delay_steps = int(self._hw['delay_steps'])
+        self._ctrl_hist = collections.deque()
 
         # Hinge joints only (matches the C++ backend's mjJNT_HINGE filter) —
         # used for joint_states. Precompute (index, name, qposadr, dofadr).
@@ -455,10 +477,13 @@ class NativeMujocoSimulation(Node):
             name = str(r['body'])
             self._model.body(name)  # raises if unknown
             push = dict(body=name, force=[float(v) for v in r['force']],
-                        point=[float(v) for v in r['point']],
+                        # point null/absent: at the body's centre of mass as it moves
+                        point=(None if r.get('point') is None
+                               else [float(v) for v in r['point']]),
                         ramp_s=float(r['ramp_s']), hold_s=float(r['hold_s']),
                         t0=None)  # stamped by the sim loop on first sight
-            if len(push['force']) != 3 or len(push['point']) != 3:
+            if len(push['force']) != 3 or (push['point'] is not None
+                                           and len(push['point']) != 3):
                 raise ValueError("force and point must have 3 entries")
         except Exception as exc:
             self.get_logger().warn(f"apply_wrench rejected: {exc}")
@@ -767,6 +792,12 @@ class NativeMujocoSimulation(Node):
             self._data.ctrl[aid] = min(max(-_CTRL_CLAMP, ctrl), _CTRL_CLAMP)
             n_applied += 1
 
+        if self._delay_steps > 0:
+            self._ctrl_hist.append(self._data.ctrl.copy())
+            if len(self._ctrl_hist) > self._delay_steps:
+                self._data.ctrl[:] = self._ctrl_hist.popleft()
+            else:
+                self._data.ctrl[:] = 0.0
         # Diagnostic: log the first few commands so the user can confirm the FIC
         # controller is wired up correctly, then suppress to avoid 1 kHz spam.
         if not getattr(self, '_cmd_log_done', False):
@@ -802,7 +833,8 @@ class NativeMujocoSimulation(Node):
             # joint_states is its own command.
             ext = Float64MultiArray()
             ext.data = self._hinge_gravity_torques(
-                (d.qfrc_constraint + d.qfrc_applied).tolist(), self._hinge_joints)
+                (d.qfrc_constraint + d.qfrc_applied
+                 + applied_wrench_torques(self._model, d)).tolist(), self._hinge_joints)
             self._pub_contact.publish(ext)
 
         if 'odom' in streams:
@@ -857,6 +889,11 @@ class NativeMujocoSimulation(Node):
         positions = d.qpos[self._js_qadr].tolist()
         velocities = d.qvel[self._js_dadr].tolist()
         efforts = d.qfrc_actuator[self._js_dadr].tolist()
+        if self._hw['noise']:
+            for k, dof in enumerate(self._js_dadr):
+                sd = self._hw['noise'].get(int(dof))
+                if sd:
+                    efforts[k] += float(self._noise_rng.normal(0.0, sd))
         # Ball joints -> roll/pitch/yaw pseudo-joints (view-only orientation).
         for _, name, qposadr, dofadr in self._ball_joints:
             w = float(d.qpos[qposadr]); x = float(d.qpos[qposadr + 1])

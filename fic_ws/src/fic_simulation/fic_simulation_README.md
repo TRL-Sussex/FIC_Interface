@@ -71,8 +71,8 @@ Selected with `Int32` messages on `{rid}_control_mode`:
 | 7 | 7 | `RC.admittance(..., m=1)` | Task-space admittance |
 | 8 | 8 | `RC.admittance(..., m=2)` | Task-space haptic admittance |
 
-The node starts in mode 1 (Joint Impedance). HAP-FIC is switched on with
-`{rid}_hapfic_enable` and acts in modes 6-8.
+The node starts in mode 1 (Joint Impedance). H-PMP is switched on with
+`{rid}_hpmp_enable` and acts in modes 6-8.
 
 ---
 
@@ -84,7 +84,7 @@ The node starts in mode 1 (Joint Impedance). HAP-FIC is switched on with
 |-------|-------------|-----|-------------|
 | `/{prefix}/joint_states` | `sensor_msgs/JointState` | Sensor data | Joint positions, velocities, efforts from MuJoCo |
 | `/{prefix}/gravity_torques` | `std_msgs/Float64MultiArray` | Sensor data | Gravity compensation vector from MuJoCo |
-| `/{prefix}/contact_torques` | `std_msgs/Float64MultiArray` | Sensor data | Joint torques of the environment on the arm (MuJoCo `qfrc_constraint + qfrc_applied`); HAP-FIC's task-space admittance in modes 7/8 estimates its external wrench from them |
+| `/{prefix}/contact_torques` | `std_msgs/Float64MultiArray` | Sensor data | Joint torques of the environment on the arm (MuJoCo `qfrc_constraint + qfrc_applied`); H-PMP's task-space admittance in modes 7/8 estimates its external wrench from them |
 | `/{prefix}/force_torque` | `geometry_msgs/Wrench` | Sensor data | Wrist F/T sensor wrench from MuJoCo; used only with `wrench_from_api` (otherwise the node estimates the external wrench from the joint torques as `pinv(Jᵀ)(τ_meas − g(q))`) |
 | `{rid}_control_mode` | `std_msgs/Int32` | Sensor data | Control mode selection (1–8) |
 | `command_ee_position_change_{rid}` | `geometry_msgs/Pose` | Sensor data | Cartesian EE target (triggers IK solve) |
@@ -99,10 +99,10 @@ The node starts in mode 1 (Joint Impedance). HAP-FIC is switched on with
 | `{rid}_active_profile` | `std_msgs/String` | 10 | Tuning profile to use |
 | `{rid}_param_update` | `std_msgs/String` | 10 | Re-read the tuning in `config.xml` |
 | `{rid}_postural_enable`, `{rid}_elbow_enable` | `std_msgs/Bool` | 10 | Redundancy layers |
-| `{rid}_hapfic_enable` | `std_msgs/Bool` | 10 | HAP-FIC on modes 6-8 |
+| `{rid}_hpmp_enable` | `std_msgs/Bool` | 10 | H-PMP on modes 6-8 |
 | `{rid}_admittance_planner_enable` | `std_msgs/Bool` | 10 | Planner on the admittance target |
 | `{rid}_gravity_compensated`, `{rid}_wrench_gravity_compensated`, `{rid}_wrench_from_api` | `std_msgs/Bool` | 10 | How the measured torque and wrench are read |
-| `{rid}_desired_wrench` | `geometry_msgs/Wrench` | 10 | Desired wrench of the Cartesian admittance (modes 7/8, and HAP-FIC on them); zero at start-up |
+| `{rid}_desired_wrench` | `geometry_msgs/Wrench` | 10 | Desired wrench of the Cartesian admittance (modes 7/8, and H-PMP on them); zero at start-up |
 
 > **`{rid}`** is the station robot ID, e.g. `robot1`, `robot2`, set by the
 > `station_id` parameter. **`{prefix}`** is the `source_prefix` parameter:
@@ -151,9 +151,16 @@ Feedback from MuJoCo is filtered through **second-order Butterworth low-pass fil
 
 | Signal | Cutoff Frequency | Sample Rate |
 |--------|-----------------|-------------|
-| Joint torques (efforts) | 10 Hz | the measured `joint_states` rate |
+| Joint torques (efforts) | 10 Hz, or the robot's `hardware_model.torque_filter_hz` | the measured `joint_states` rate |
 | Joint positions | 10 Hz | the measured `joint_states` rate |
 | Joint velocities | 10 Hz | the measured `joint_states` rate |
+
+With the robot's `hardware_model` on (`robots_config.yaml`; `FIC_HARDWARE_MODEL=off` in the
+environment turns it off) the node measures torque as `fic_hardware` does: the robot's filter
+cutoff, H-PMP's task-space admittance (modes 7/8) on the wrench estimated from the joint torques
+rather than MuJoCo's contact torques, H-PMP's task deadband from `admittance_deadbands`, and the
+hardware velocity limit instead of `sim_max_joint_vel`. The simulator applies the block's joint
+friction and sensor noise (mujoco_native). See fic_docs: Simulation vs. Hardware.
 
 ---
 

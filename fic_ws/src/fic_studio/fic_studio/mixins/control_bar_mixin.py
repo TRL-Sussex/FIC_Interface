@@ -33,7 +33,7 @@ from std_srvs.srv import Trigger
 from fic_studio import theme
 from fic_studio.components.control_panel_host import ControlPanelHost
 from fic_studio.mixins.robot_control_mixin import (
-    CONTROL_MODE_NAMES, CONTROL_MODE_TABS,
+    CONTROL_MODE_NAMES, CONTROL_MODE_TABS, mode_display_name,
 )
 
 try:
@@ -58,7 +58,7 @@ MODE_MENUS = {
 
 #: Row labels inside a menu. The menu button already says Joint / Cart, so
 #: the rows drop the redundant prefix. Published names stay CONTROL_MODE_NAMES.
-MODE_ROW_LABELS = ['Impedance', 'Planner', 'Admittance', 'Adm. Haptic']
+MODE_ROW_LABELS = ['Impedance', 'Imp. + Planner', 'Admittance', 'HAP-FIC']
 
 NO_SEQUENCES = ('The Sequences extension is disabled — enable it in '
                 'Settings ▸ Extensions to play or record sequences.')
@@ -297,22 +297,24 @@ class ControlBarMixin:
             'the EE task.')
         self._rc_elbow_toggle.toggled.connect(self._on_rc_elbow_toggled)
 
-        self._rc_hapfic_toggle = QCheckBox('Hapfic')
-        self._rc_hapfic_toggle.setToolTip(
-            'Haptic FIC overlay for Cartesian modes (5–8). '
-            'Cartesian planner drives EE trajectory; impedance torques feed '
-            'into joint haptic admittance for compliant teleop.')
-        self._rc_hapfic_toggle.toggled.connect(self._on_rc_hapfic_toggled)
+        self._rc_hpmp_toggle = QCheckBox('H-PMP')
+        self._rc_hpmp_toggle.setToolTip(
+            'H-PMP: nests the Cartesian controller (modes 5-8) inside the joint '
+            'HAP-FIC, so every joint yields to a push while the end-effector '
+            'tracks its goal. On by default; off sends the Cartesian torques '
+            'directly to the joints.')
+        self._rc_hpmp_toggle.setChecked(True)      # on by default (ros_node.add_robot sends it)
+        self._rc_hpmp_toggle.toggled.connect(self._on_rc_hpmp_toggled)
 
         self._rc_desired_wrench_btn = QPushButton('Wrench…')
         self._rc_desired_wrench_btn.setToolTip(
             'Desired wrench of the Cartesian admittance (modes 7 and 8, and '
-            'Hapfic on them): the goal moves until the measured wrench '
+            'H-PMP on them): the goal moves until the measured wrench '
             'equals it. Zero at controller start-up.')
         self._rc_desired_wrench_btn.clicked.connect(self._open_desired_wrench_dialog)
 
         return [self._rc_postural_toggle, self._rc_elbow_toggle,
-                self._rc_hapfic_toggle, self._rc_desired_wrench_btn]
+                self._rc_hpmp_toggle, self._rc_desired_wrench_btn]
 
     def _cb_build_quick_panel(self):
         """Build the Quick Actions body: pick a sequence, play/stop/loop."""
@@ -690,7 +692,8 @@ class ControlBarMixin:
         if lbl is None:
             return
         idx = getattr(self, '_rc_selected_mode_idx', 0)
-        mode = CONTROL_MODE_NAMES[idx] if idx < len(CONTROL_MODE_NAMES) else '--'
+        toggle = getattr(self, '_rc_hpmp_toggle', None)
+        mode = mode_display_name(idx, bool(toggle is not None and toggle.isChecked()))
         rid = self.node.station_robot_id if hasattr(self, 'node') else 'robot1'
         target = self.robot_target(rid) if hasattr(self, 'robot_target') else '--'
         rate, age_ms, health = 0.0, None, 'offline'

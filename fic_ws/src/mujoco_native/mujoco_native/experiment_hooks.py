@@ -55,14 +55,31 @@ def wall_contact_force(model, data, geom):
 
 def apply_link_force(model, data, body, force_w, point_w, scale):
     """Set xfrc_applied (world frame, about body CoM). mj_step applies it itself;
-    qfrc_applied is deliberately untouched."""
+    qfrc_applied is deliberately untouched. point_w None applies the force at the CoM."""
     bid = model.body(body).id
     data.xfrc_applied[bid] = 0.0
     if scale == 0.0:
         return
     f = float(scale) * np.asarray(force_w, float)
-    torque = np.cross(np.asarray(point_w, float) - data.xipos[bid], f)
+    # point None: the force acts at the body's centre of mass wherever it moves (no moment)
+    torque = (np.zeros(3) if point_w is None
+              else np.cross(np.asarray(point_w, float) - data.xipos[bid], f))
     data.xfrc_applied[bid] = np.concatenate([f, torque])
+
+
+def applied_wrench_torques(model, data):
+    """Joint torques of the wrenches in xfrc_applied (pushes, a simulated hand), nv-long.
+
+    MuJoCo applies xfrc_applied inside mj_step without writing it to qfrc_applied, so
+    contact_torques (qfrc_constraint + qfrc_applied) would miss a push. On the robot a hand
+    on a link shows in the joint-torque sensors like a contact does; adding J^T xfrc here
+    gives the controller the same view in simulation."""
+    tau = np.zeros(model.nv)
+    for bid in np.flatnonzero(np.any(data.xfrc_applied != 0.0, axis=1)):
+        f = data.xfrc_applied[bid]
+        mujoco.mj_applyFT(model, data, f[:3].copy(), f[3:].copy(),
+                          data.xipos[bid].copy(), int(bid), tau)
+    return tau
 
 
 def body_positions(model, data, bodies):

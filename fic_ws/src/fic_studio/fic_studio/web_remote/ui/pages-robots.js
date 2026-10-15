@@ -139,6 +139,13 @@ window.FIC.pages.robot_config = function buildRobots(root) {
           row('Torque sign', (() => { const s = h('select', { class: 'select' }, h('option', { value: '1', text: 'Positive (+1)' }), h('option', { value: '-1', text: 'Negative (-1)' })); s.value = String(c.torque_sign >= 0 ? 1 : -1); s.addEventListener('change', () => put('torque_sign', Number(s.value))); return s; })()),
           toggle('gravity_compensated', 'Joint torques are gravity-compensated'), toggle('wrench_gravity_compensated', 'Wrench is gravity-compensated'), toggle('wrench_from_api', 'Wrench from the driver API'))),
         section('Sensor deadbands', null, h('div', { class: 'fgrid' }, number('admittance_deadbands.joint_tau', 'Joint torque', 'any', 'N·m'), number('admittance_deadbands.cart_force', 'Cartesian force', 'any', 'N'), number('admittance_deadbands.cart_torque', 'Cartesian torque', 'any', 'N·m'))),
+        section('Simulate like the real robot', null,
+          h('p', { class: 'faint', style: 'font-size:var(--fs-m)' }, 'When on, the simulator gives the arm these joint friction, damping and rotor-inertia values and this torque-sensor noise and command delay, and measures torque as on the robot: filtered at the robot’s cutoff, H-PMP’s push estimated from the joint torques, the deadbands above. Tunes made in simulation then carry over. Off, or left empty, the simulator is ideal. Measure the values on the arm with fic_studio.hardware_model (fic_docs: Simulation vs. Hardware).'),
+          h('div', { class: 'fgrid' }, toggle('hardware_model.enabled', 'Simulate like the real robot'),
+            listField('hardware_model.joint_friction', 'Joint friction', 'N·m, per joint'), listField('hardware_model.joint_damping', 'Joint damping', 'N·m·s/rad, per joint'),
+            listField('hardware_model.armature', 'Rotor inertia', 'kg·m², per joint'), listField('hardware_model.torque_noise', 'Torque noise', 'N·m, per joint'),
+            number('hardware_model.torque_filter_hz', 'Measured-torque filter', 'any', 'Hz'), number('hardware_model.command_delay_ms', 'Command delay', 'any', 'ms'),
+            text('hardware_model.source', 'Where the values come from'))),
         section('Gripper', null, h('div', { class: 'fgrid' }, toggle('has_gripper', 'Has a gripper'), number('gripper_range.0', 'Closed width', '0.001', 'm'), number('gripper_range.1', 'Open width', '0.001', 'm'))),
         h('p', { class: 'faint', style: 'font-size:var(--fs-m);margin-top:var(--s5)' }, 'The inner-loop MCU settings and the driver-library drop zone are set in the classic window.'));
     } else {

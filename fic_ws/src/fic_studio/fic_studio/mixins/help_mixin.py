@@ -1,5 +1,5 @@
 """
-Help page mixin for FIC Control Studio v5.6.0.
+Help page mixin for FIC Control Studio v5.7.0.
 
 Provides ``HelpMixin._build_help_page() -> QWidget`` which assembles a
 searchable, theme-aware help page: a ``QLineEdit`` search bar and a
@@ -57,7 +57,7 @@ HELP_SECTIONS: List[Tuple[str, str, Union[str, Callable]]] = []
 
 _HTML_GETTING_STARTED = """
 <h2>Getting Started</h2>
-<p><b>FIC Control Studio v5.6.0</b> is the operator GUI for the Fractal
+<p><b>FIC Control Studio v5.7.0</b> is the operator GUI for the Fractal
 Impedance Control (FIC) framework. It connects to robots running the FIC
 C++ controller over ROS 2 / DDS and lets you drive, tune, and monitor
 up to four robot stations simultaneously.</p>
@@ -177,7 +177,7 @@ _HTML_PAGES = """
 <ul>
   <li><b>&#9650; Joint</b> and <b>&#9650; Cart</b> &ndash; the eight control
       modes as two menus of four. Each menu owns its own modifiers
-      (Admittance planner for joint; Postural / Elbow / Hapfic for Cartesian)
+      (Admittance planner for joint; Postural / Elbow / H-PMP for Cartesian)
       and its config selector. Pressing a menu selects its base mode.</li>
   <li><b>Control surface</b> &ndash; joint commanded-vs-actual rows two per
       line, or EE position down the left and orientation down the right.
@@ -199,7 +199,7 @@ _HTML_PAGES = """
 <ul>
   <li>Per-card station, robot type, mode, config and joint targets.</li>
   <li>Robot selector and collapsible <b>Advanced</b> panel (null-space
-      Postural / Elbow / Hapfic / Admittance-Planner overlays, config
+      Postural / Elbow / H-PMP / Admittance-Planner overlays, config
       profile, presets, joysticks).</li>
   <li>Action bar: Home, Reset, Live-publish toggle, Send.</li>
 </ul>
@@ -257,15 +257,15 @@ Joint modes show joint rows; Cartesian modes show EE pose fields.</p>
           Recommended default for joint-space driving.</td></tr>
   <tr><td><b>3 &mdash; Joint Admittance</b></td>
       <td>Yields to external torque (InvM / Kv / flow / pose).</td></tr>
-  <tr><td><b>4 &mdash; Joint Admittance Haptic</b></td>
+  <tr><td><b>4 &mdash; Joint HAP-FIC</b></td>
       <td>Force-feedback teleop leader in joint space.</td></tr>
   <tr><td><b>5 &mdash; Cartesian Impedance</b></td>
       <td>End-effector spring, no damping.</td></tr>
-  <tr><td><b>6 &mdash; Cartesian Planner</b></td>
+  <tr><td><b>6 &mdash; Cartesian Impedance with Planner</b></td>
       <td>Smooth EE trajectory (recommended for Cartesian driving).</td></tr>
   <tr><td><b>7 &mdash; Cartesian Admittance</b></td>
       <td>EE yields to the external wrench and stays where pushed (&plusmn;30&nbsp;cm / &plusmn;30&deg;).</td></tr>
-  <tr><td><b>8 &mdash; Cartesian Admittance Haptic</b></td>
+  <tr><td><b>8 &mdash; Cartesian HAP-FIC</b></td>
       <td>Cartesian teleop follower.</td></tr>
 </table>
 
@@ -275,9 +275,10 @@ Joint modes show joint rows; Cartesian modes show EE pose fields.</p>
       <td>Null-space joint-target overlay.</td></tr>
   <tr><td><b>Elbow</b></td>
       <td>Null-space elbow-hold overlay.</td></tr>
-  <tr><td><b>Hapfic</b></td>
-      <td>Hybrid Cartesian+joint haptic overlay; engages on modes 6&ndash;8 (on 7/8 the
-          mode's task-space admittance also moves its goal).</td></tr>
+  <tr><td><b>H-PMP</b></td>
+      <td>The Cartesian controller nested in the joint HAP-FIC; on by default, engages on modes 5&ndash;8 (on 7/8 the
+          mode's task-space admittance also moves its goal). On mode 8 (Cartesian HAP-FIC) it is the H-PMP of the
+          Whole-Arm experiments; on modes 5&ndash;7 that mode nested the same way.</td></tr>
   <tr><td><b>Admittance Planner</b></td>
       <td>Planner inside admittance modes 3 and 4; on by default.</td></tr>
 </table>
@@ -519,10 +520,12 @@ _HTML_GLOSSARY = """
   <tr><td><b>Impedance</b></td>
       <td>A stiffness mode where the robot resists deviation from the
           commanded position (modes 1, 2, 5, 6).</td></tr>
-  <tr><td><b>Hapfic</b></td>
-      <td>Hybrid Cartesian+joint haptic overlay that engages on modes 6&ndash;8: on 6 the
-          arm returns to the commanded goal after a push, on 7 the goal stays where it was
-          pushed, on 8 it gives way up to 5&nbsp;cm; configured in the control bar's Options row.</td></tr>
+  <tr><td><b>H-PMP</b></td>
+      <td>The Cartesian controller nested in the joint HAP-FIC (mode 4's law on every joint), on
+          by default in modes 5&ndash;8: on 5 and 6 the arm returns to the commanded goal after a
+          push, on 7 the goal stays where it was pushed, on 8 it gives way up to 5&nbsp;cm. On mode 8
+          (Cartesian HAP-FIC) it is the H-PMP of the Whole-Arm experiments. Turned off in the
+          control bar's Options row (the Cartesian torques then go directly to the joints).</td></tr>
   <tr><td><b>Null-space</b></td>
       <td>The set of joint motions that do not move the EE; used by the
           Postural and Elbow overlays.</td></tr>
@@ -546,7 +549,7 @@ _HTML_GLOSSARY = """
 
 _HTML_ABOUT = """
 <h2>About FIC Control Studio</h2>
-<p><b>FIC Control Studio v5.6.0</b></p>
+<p><b>FIC Control Studio v5.7.0</b></p>
 <p>The operator GUI for the Fractal Impedance Control robot framework.</p>
 <ul>
   <li><b>Package:</b> <code>fic_studio</code></li>
@@ -593,7 +596,7 @@ def _scripting_html() -> str:
         '<li><code>robot.motion</code> &mdash; move_joints, move_cartesian, '
         'home, set_gripper.</li>'
         '<li><code>robot.mode</code> &mdash; set(), postural(), elbow(), '
-        'hapfic(), admittance_planner().</li>'
+        'hpmp(), admittance_planner().</li>'
         '<li><code>robot.process</code> &mdash; start/stop sim, FIC, driver, '
         'VR, bags, plotter.</li>'
         '<li><code>robot.target</code> &mdash; current target and set_target().</li>'
@@ -694,7 +697,7 @@ def _scripting_html() -> str:
             def publish_elbow_enable(self, *_a, **_kw):
                 """No-op publish stub."""
 
-            def publish_hapfic_enable(self, *_a, **_kw):
+            def publish_hpmp_enable(self, *_a, **_kw):
                 """No-op publish stub."""
 
             def publish_admittance_planner(self, *_a, **_kw):

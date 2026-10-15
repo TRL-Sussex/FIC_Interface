@@ -45,9 +45,9 @@ modes and fall back to <code>default</code> for others.</p></div>
 <table>
   <tr><th>id</th><th><code>name</code> attribute</th><th>id</th><th><code>name</code> attribute</th></tr>
   <tr><td>1</td><td>Joint Impedance</td><td>5</td><td>Cartesian Impedance</td></tr>
-  <tr><td>2</td><td>Joint Impedance With Planner</td><td>6</td><td>Cartesian Planner</td></tr>
+  <tr><td>2</td><td>Joint Impedance With Planner</td><td>6</td><td>Cartesian Impedance with Planner</td></tr>
   <tr><td>3</td><td>Joint Admittance</td><td>7</td><td>Cartesian Admittance</td></tr>
-  <tr><td>4</td><td>Joint Admittance Haptic</td><td>8</td><td>Cartesian Admittance Haptic</td></tr>
+  <tr><td>4</td><td>Joint HAP-FIC</td><td>8</td><td>Cartesian HAP-FIC</td></tr>
 </table>
 <p>Mode 0 (Idle) has no tuning entry. Joint elements use zero-based ids
 (<code>&lt;joint id="0"&gt;</code> &hellip; <code>id="6"</code> for a 7-DOF arm). Only the
@@ -132,7 +132,7 @@ modes and fall back to <code>default</code> for others.</p></div>
 &lt;/robots&gt;</code></pre>
 <p>The <code>&lt;postural&gt;</code> and <code>&lt;elbow&gt;</code> blocks configure the null-space
 helper toggles available in Cartesian modes (see <a href="#control-modes" onclick="showPage('control-modes')">Control
-Modes</a> and <a href="#hapfic" onclick="showPage('hapfic')">HapFIC</a>). They sit directly under
+Modes</a> and <a href="#hpmp" onclick="showPage('hpmp')">H-PMP</a>). They sit directly under
 <code>&lt;robot&gt;</code> &mdash; they are <strong>not</strong> per-mode and <strong>not</strong>
 per-profile; a single block is shared by every Cartesian mode that invokes the task.</p>
 
@@ -143,10 +143,10 @@ per-profile; a single block is shared by every Cartesian mode that invokes the t
   <li>Otherwise fall back to the <code>&lt;mode&gt;</code> with the same <code>id</code> and <code>profile="default"</code> (implemented by <code>findModeElement()</code> in <code>fic_param_loader.hpp</code>).</li>
   <li>If even the default is missing, use the loader's built-in safe defaults (no segfault).</li>
 </ol>
-<p><strong>HAP-FIC</strong> has a block of its own, <code>&lt;mode id="100" name="HAP-FIC"&gt;</code>: its joint layer
+<p><strong>H-PMP</strong> has a block of its own, <code>&lt;mode id="100" name="H-PMP"&gt;</code>: its joint layer
 in <code>&lt;joint&gt;</code> and its Cartesian layer in <code>&lt;cartesian&gt;</code>. Id 100 is not a control mode; both nodes read it
-whenever HAP-FIC is on in modes 6&ndash;8 (<code>fic::tuningKeyFor</code>), resolving the profile as above. A robot with no
-HAP-FIC block at all runs HAP-FIC on mode 4&rsquo;s joints and mode 6&rsquo;s Cartesian block, as before the block existed.</p>
+whenever H-PMP is on in modes 5&ndash;8 (<code>fic::tuningKeyFor</code>), resolving the profile as above. A robot with no
+H-PMP block at all runs H-PMP on mode 4&rsquo;s joints and mode 6&rsquo;s Cartesian block, as before the block existed.</p>
 <p>This means a profile like <code>Gentle</code> only needs concrete blocks for the modes you want to customise;
 other modes transparently inherit the default tuning. The GUI shows a <code>(fallback → default)</code>
 indicator next to any profile that falls back for the currently selected mode.</p>
@@ -236,11 +236,11 @@ parameters come from, the mode the Cartesian parameters come from, and whether t
 is included.</p>
 <table>
   <tr><th>Event</th><th>What the node does</th></tr>
-  <tr><td>Mode change, robot selection, joint-count change, HAP-FIC on/off where it changes the mode the parameters come from</td><td>The key changes, so a new set is read. Until it is in memory the control loop returns early and sends no new command; then the controllers start on it.</td></tr>
+  <tr><td>Mode change, robot selection, joint-count change, H-PMP on/off where it changes the mode the parameters come from</td><td>The key changes, so a new set is read. Until it is in memory the control loop returns early and sends no new command; then the controllers start on it.</td></tr>
   <tr><td><code>robot&lt;N&gt;_param_update</code> (any payload)</td><td>The set is read again with the same key. The controllers keep running on the old set until the new one is ready, then switch to it on the next tick.</td></tr>
   <tr><td><code>robot&lt;N&gt;_active_profile</code> with a different name</td><td>As <code>param_update</code>, with the new profile.</td></tr>
   <tr><td>A new joint or Cartesian target</td><td>No read. Where a joint target re-seeds the controllers (<code>robot&lt;N&gt;_target_joint_angles</code> in <code>fic_simulation</code> outside mode 1; <code>robot&lt;N&gt;_desired_joint_angles</code> in mode 2, or in the other modes except 1 while the admittance planner is on) they re-seed from the set already in memory, which takes microseconds. A Cartesian target does not re-seed them.</td></tr>
-  <tr><td>A <code>robot&lt;N&gt;_hapfic_enable</code> repeating the current value</td><td>Ignored.</td></tr>
+  <tr><td>A <code>robot&lt;N&gt;_hpmp_enable</code> repeating the current value</td><td>Ignored.</td></tr>
 </table>
 <p>The read runs on a background thread (<code>std::async</code>), so the 1&nbsp;ms loop never
 waits on the file. A finished read that no longer matches what the loop wants (the mode or robot
@@ -255,9 +255,9 @@ was cleared, and outside Joint Impedance (mode 1) a streamed joint target cleare
 (on <code>robot&lt;N&gt;_target_joint_angles</code>, which only <code>fic_simulation</code> takes, in every
 such mode; on <code>robot&lt;N&gt;_desired_joint_angles</code>, in both nodes, in mode 2 and in the other modes
 while the admittance planner is on), as did
-every <code>hapfic_enable</code> message even with an unchanged value. In MuJoCo, with targets
+every <code>hpmp_enable</code> message even with an unchanged value. In MuJoCo, with targets
 streamed at 100&nbsp;Hz, the FIC loop fell from 1000&nbsp;Hz to 74&nbsp;Hz in mode 2 and 65&nbsp;Hz in
-mode 3; <code>hapfic_enable</code> re-sent at 20&nbsp;Hz brought it to 405&nbsp;Hz. With the
+mode 3; <code>hpmp_enable</code> re-sent at 20&nbsp;Hz brought it to 405&nbsp;Hz. With the
 tuning set all of these run at 1000&nbsp;Hz, including a tuning save while targets stream.</p></div>
 
 <h2>Parameter Reference</h2>
@@ -385,12 +385,12 @@ ignored. When the profile actually changes, the node updates its internal
 this topic whenever the user changes the Config dropdown in the Tuning panel or a
 <a href="#control-panel" onclick="showPage('control-panel')">Control Panel</a> robot card (extra cards publish to their
 own <code>robot&lt;N&gt;_active_profile</code>), and after adding or deleting a profile.</p>
-<div class="admonition tip"><div class="adm-title">HapFIC loads its own tuning</div>
-<p>When the <a href="#hapfic" onclick="showPage('hapfic')">HapFIC</a> helper is active (modes 6&ndash;8), both nodes load
-its joint and Cartesian parameters from the <strong>HAP-FIC</strong> block, <code>&lt;mode id="100"&gt;</code>, of the
+<div class="admonition tip"><div class="adm-title">H-PMP loads its own tuning</div>
+<p>When the <a href="#hpmp" onclick="showPage('hpmp')">H-PMP</a> helper is active (modes 5&ndash;8), both nodes load
+its joint and Cartesian parameters from the <strong>H-PMP</strong> block, <code>&lt;mode id="100"&gt;</code>, of the
 active profile, whichever Cartesian mode is selected (<code>fic::tuningKeyFor</code> keys both layers to 100). A robot
-without a HAP-FIC block falls back to the <strong>mode 4</strong> joints and the <strong>mode 6</strong> Cartesian
-block. Tune the HAP-FIC block (HAP-FIC at the end of the Tuning panel's Mode list) to affect HapFIC behaviour.</p></div>
+without a H-PMP block falls back to the <strong>mode 4</strong> joints and the <strong>mode 6</strong> Cartesian
+block. Tune the H-PMP block (H-PMP at the end of the Tuning panel's Mode list) to affect H-PMP behaviour.</p></div>
 
 <h2>Manual Editing</h2>
 <pre><code># Edit the source file (path relative to the repository root)

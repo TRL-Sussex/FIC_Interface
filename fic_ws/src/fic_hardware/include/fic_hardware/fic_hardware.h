@@ -225,7 +225,7 @@ private:
     unsigned gripper_state_tick_ = 0;
     bool postural_enabled_ = false;
     bool elbow_enabled_ = false;
-    bool hapfic_enabled_ = false;
+    bool hpmp_enabled_ = false;
     // Desired wrench of the task-space admittance [Fx Fy Fz Mx My Mz], robotN_desired_wrench; zero at start-up.
     std::vector<double> desired_wrench_ = std::vector<double>(6, 0.0);
     bool admittance_use_planner_ = true;
@@ -307,7 +307,8 @@ private:
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr vel_safety_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr postural_enable_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr elbow_enable_sub_;
-    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr hapfic_enable_sub_;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr hpmp_enable_sub_;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr hpmp_enable_legacy_sub_;   // {rid}_hapfic_enable
     rclcpp::Subscription<geometry_msgs::msg::Wrench>::SharedPtr desired_wrench_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr admittance_planner_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr gravity_comp_sub_;
@@ -318,7 +319,7 @@ private:
     // ── Reflected wrench, for bilateral teleoperation ─────────────────────
     // A teleoperation leader renders what its follower is touching by
     // publishing on {rid}_wrench_external. The value is ADDED to the measured
-    // wrench before it reaches the Cartesian admittance and Hapfic laws, so
+    // wrench before it reaches the Cartesian admittance and Hpmp laws, so
     // the arm responds to remote contact exactly as it responds to its own.
     //
     // It is deliberately NOT added to what {rid}_force_torque publishes. That
@@ -373,7 +374,7 @@ private:
     std::atomic<bool>   target_stream_active_{false};
     double prev_target_s_ = 0.0;      // callback thread only
     int    target_stream_count_ = 0;  // callback thread only
-    void hapficEnableCallback(const std_msgs::msg::Bool::SharedPtr msg);
+    void hpmpEnableCallback(const std_msgs::msg::Bool::SharedPtr msg);
     void desiredWrenchCallback(const geometry_msgs::msg::Wrench::SharedPtr msg);
     void gravityCompCallback(const std_msgs::msg::Bool::SharedPtr msg);
     void wrenchGravityCompCallback(const std_msgs::msg::Bool::SharedPtr msg);

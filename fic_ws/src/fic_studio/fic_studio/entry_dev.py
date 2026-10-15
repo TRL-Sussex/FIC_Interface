@@ -38,7 +38,7 @@ def main():
     app.setApplicationName("FIC Dev Console")
     app.setOrganizationName("RoboticsLab")
 
-    splash = make_splash("FIC Dev Console", version="v5.6.0")
+    splash = make_splash("FIC Dev Console", version="v5.7.0")
 
     splash_status(splash, "Loading settings…")
     settings = _load_settings()

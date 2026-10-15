@@ -147,6 +147,13 @@ private:
     // joint count, and a hardware driver picks its own. So the rate is measured
     // from the stream rather than hard-coded to any number.
     static constexpr double kTorqueCutoffHz = 10.0;
+    // Measured-torque filter cutoff: the robot's hardware_model torque_filter_hz when it has one
+    // (fic_hardware's, 200 Hz on the Kinova), else kTorqueCutoffHz.
+    double torqueCutoffHz() const {
+        const auto& hm = current_robot_config_.hardware_model;
+        return (hm.enabled && hm.torque_filter_hz > 0.0) ? hm.torque_filter_hz : kTorqueCutoffHz;
+    }
+    double torque_cutoff_applied_hz_ = kTorqueCutoffHz;
     static constexpr double kStateCutoffHz  = 10.0;
     // Fallback used until the rate has been measured, and permanently if it
     // cannot be established (implausible or pathologically jittery stream).
@@ -279,7 +286,7 @@ private:
     std::vector<fic::PlannerParams> joint_planners_;
     std::vector<fic::AdmittanceParams> joint_admittance_;
     // Null-space postural task parameters (robot-level <postural> block), loaded at every
-    // Cartesian/HAP-FIC init so postural.apply() runs on initialised channels (as fic_hardware).
+    // Cartesian/H-PMP init so postural.apply() runs on initialised channels (as fic_hardware).
     fic::ScalarParams postural_scalars_;
     fic::ListParams postural_lists_;
     fic::PlannerParams postural_planner_;
@@ -315,7 +322,7 @@ private:
     bool initControllerPLanner = false;
     bool postural_enabled_ = false;
     bool elbow_enabled_ = false;
-    bool hapfic_enabled_ = false;
+    bool hpmp_enabled_ = false;
     // Desired wrench of the task-space admittance [Fx Fy Fz Mx My Mz], robotN_desired_wrench; zero at start-up.
     std::vector<double> desired_wrench_ = std::vector<double>(6, 0.0);
     bool admittance_use_planner_ = true;
@@ -357,7 +364,7 @@ private:
     rclcpp::Subscription<geometry_msgs::msg::Wrench>::SharedPtr force_torque_subscriber_;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr gravity_torque_subscriber_;
     // Joint torques of the environment on the arm (MuJoCo constraint + applied forces), from
-    // which HAP-FIC's task-space admittance estimates the external wrench in simulation.
+    // which H-PMP's task-space admittance estimates the external wrench in simulation.
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr contact_torque_subscriber_;
     std::vector<double> contact_torques_;
     bool contact_torques_received_ = false;
@@ -374,13 +381,14 @@ private:
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr vel_safety_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr postural_enable_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr elbow_enable_sub_;
-    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr hapfic_enable_sub_;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr hpmp_enable_sub_;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr hpmp_enable_legacy_sub_;   // {rid}_hapfic_enable
     rclcpp::Subscription<geometry_msgs::msg::Wrench>::SharedPtr desired_wrench_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr admittance_planner_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr gravity_comp_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr wrench_gravity_comp_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr wrench_from_api_sub_;
-    void hapficEnableCallback(const std_msgs::msg::Bool::SharedPtr msg);
+    void hpmpEnableCallback(const std_msgs::msg::Bool::SharedPtr msg);
     void desiredWrenchCallback(const geometry_msgs::msg::Wrench::SharedPtr msg);
     void admittancePlannerCallback(const std_msgs::msg::Bool::SharedPtr msg);
     void gravityCompCallback(const std_msgs::msg::Bool::SharedPtr msg);

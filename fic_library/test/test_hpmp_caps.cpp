@@ -1,4 +1,4 @@
-// HAP-FIC's set-point limit (fic_control.h): limitSetpoint keeps a joint set-point within a window
+// H-PMP's set-point limit (fic_control.h): limitSetpoint keeps a joint set-point within a window
 // of the reached position, wrapped for a continuous joint, and leaves it alone inside the window;
 // setpointWindow is the admittance bound, never narrower than 0.1 rad.
 //

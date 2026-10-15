@@ -1,20 +1,20 @@
-"""Give each robot's HAP-FIC a tuning block of its own in config.xml: <mode id="100" name="HAP-FIC">.
+"""Give each robot's H-PMP a tuning block of its own in config.xml: <mode id="100" name="H-PMP">.
 
-Before it had one, HAP-FIC ran on mode 4's joints (its joint layer) and mode 6's Cartesian block
-(its Cartesian layer), so tuning HAP-FIC retuned those modes too. For every robot with a mode 4 or
-mode 6 block, "default" and every profile with a mode 4 or 6 block of its own get a HAP-FIC block
-copied from exactly what that profile runs HAP-FIC on now: nothing changes on the robot until
-HAP-FIC is tuned.
+Before it had one, H-PMP ran on mode 4's joints (its joint layer) and mode 6's Cartesian block
+(its Cartesian layer), so tuning H-PMP retuned those modes too. For every robot with a mode 4 or
+mode 6 block, "default" and every profile with a mode 4 or 6 block of its own get a H-PMP block
+copied from exactly what that profile runs H-PMP on now: nothing changes on the robot until
+H-PMP is tuned.
 
---move-mode4 names profiles whose mode 4 block was there only to tune HAP-FIC (the Kinova's
-hw_x2..hw_x6 and sim). Once their damping is in their HAP-FIC block, that mode 4 block is removed,
+--move-mode4 names profiles whose mode 4 block was there only to tune H-PMP (the Kinova's
+hw_x2..hw_x6 and sim). Once their damping is in their H-PMP block, that mode 4 block is removed,
 so plain mode 4 runs the default tuning again under them. It is removed only when it matches
 default's mode 4 apart from the admittance damping; otherwise it is kept and the script says so.
 
 Comments and layout are kept: the new blocks are added after each robot's last mode and nothing
 else is rewritten. Running it again changes nothing.
 
-    PYTHONPATH=fic_ws/src/fic_studio python3 fic_ws/src/fic_studio/tools/migrate_hapfic_tuning.py \\
+    PYTHONPATH=fic_ws/src/fic_studio python3 fic_ws/src/fic_studio/tools/migrate_hpmp_tuning.py \\
         [config.xml] [--move-mode4 hw_x2,hw_x3,hw_x4,hw_x6,sim] [--dry-run]
 """
 import argparse
@@ -22,8 +22,8 @@ import copy
 import sys
 import xml.etree.ElementTree as ET
 
-from fic_studio.xml_manager import (HAPFIC_FALLBACK_CART_MODE, HAPFIC_FALLBACK_JOINT_MODE, HAPFIC_MODE,
-                                    build_hapfic_block, find_config_path)
+from fic_studio.xml_manager import (HPMP_FALLBACK_CART_MODE, HPMP_FALLBACK_JOINT_MODE, HPMP_MODE,
+                                    build_hpmp_block, find_config_path)
 
 INDENT = '    '
 LEVEL = 2                                  # <robots> 0, <robot> 1, <mode> 2
@@ -88,44 +88,44 @@ def _remove(robot, el):
 
 
 def migrate(root, move_mode4=()):
-    """Add the HAP-FIC blocks (and move the named profiles' mode 4 damping into them); return what changed."""
+    """Add the H-PMP blocks (and move the named profiles' mode 4 damping into them); return what changed."""
     done = []
     for robot in root.iter('robot'):
         name = robot.get('name')
         modes = robot.findall('mode')
-        layers = [m for m in modes if _id(m) in (HAPFIC_FALLBACK_JOINT_MODE, HAPFIC_FALLBACK_CART_MODE)]
+        layers = [m for m in modes if _id(m) in (HPMP_FALLBACK_JOINT_MODE, HPMP_FALLBACK_CART_MODE)]
         if not layers:
             continue
         profiles = ['default'] + sorted({_profile(m) for m in layers} - {'default'})
         for prof in profiles:
-            if _own(robot, HAPFIC_MODE, prof) is not None:
+            if _own(robot, HPMP_MODE, prof) is not None:
                 continue
-            block = build_hapfic_block(robot, prof, from_layers=True)
+            block = build_hpmp_block(robot, prof, from_layers=True)
             if block is None:
                 continue
             if prof in move_mode4:
-                block.insert(0, ET.Comment(' HAP-FIC tuning of profile "%s": its joint layer was this profile\'s mode 4 '
-                                           'block, kept only to tune HAP-FIC (moved here by migrate_hapfic_tuning). ' % prof))
+                block.insert(0, ET.Comment(' H-PMP tuning of profile "%s": its joint layer was this profile\'s mode 4 '
+                                           'block, kept only to tune H-PMP (moved here by migrate_hpmp_tuning). ' % prof))
             _insert_after_modes(robot, block)
-            done.append('%s: HAP-FIC block for "%s"' % (name, prof))
-        base = _own(robot, HAPFIC_FALLBACK_JOINT_MODE, 'default')
+            done.append('%s: H-PMP block for "%s"' % (name, prof))
+        base = _own(robot, HPMP_FALLBACK_JOINT_MODE, 'default')
         for prof in move_mode4:
-            own = _own(robot, HAPFIC_FALLBACK_JOINT_MODE, prof)
-            if prof == 'default' or own is None or base is None or _own(robot, HAPFIC_MODE, prof) is None:
+            own = _own(robot, HPMP_FALLBACK_JOINT_MODE, prof)
+            if prof == 'default' or own is None or base is None or _own(robot, HPMP_MODE, prof) is None:
                 continue
             if _without_damping(own) != _without_damping(base):
                 print('%s: kept mode 4 of "%s": it differs from default\'s in more than the damping' % (name, prof),
                       file=sys.stderr)
                 continue
             _remove(robot, own)
-            done.append('%s: mode 4 of "%s" removed (its damping is in its HAP-FIC block)' % (name, prof))
+            done.append('%s: mode 4 of "%s" removed (its damping is in its H-PMP block)' % (name, prof))
     return done
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     ap.add_argument('path', nargs='?', default=find_config_path())
-    ap.add_argument('--move-mode4', default='', help='profiles whose mode 4 block existed only to tune HAP-FIC')
+    ap.add_argument('--move-mode4', default='', help='profiles whose mode 4 block existed only to tune H-PMP')
     ap.add_argument('--dry-run', action='store_true')
     a = ap.parse_args(argv)
     tree = ET.parse(a.path, parser=ET.XMLParser(target=ET.TreeBuilder(insert_comments=True)))

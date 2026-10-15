@@ -337,32 +337,33 @@ struct TuningKey {
     bool operator!=(const TuningKey& o) const { return !(*this == o); }
 };
 
-// HAP-FIC (switched on in the Cartesian modes 6-8) has a tuning block of its own,
-// <mode id="100" name="HAP-FIC">: its joint layer in <joint> (FIC controller, planner and
+// H-PMP (switched on in the Cartesian modes 6-8) has a tuning block of its own,
+// <mode id="100" name="H-PMP">: its joint layer in <joint> (FIC controller, planner and
 // admittance per joint) and its Cartesian layer in <cartesian> (FIC controller and planner
-// per axis). 100 is not a control mode: no node is ever put in it. A robot with no HAP-FIC
-// block runs HAP-FIC on mode 4's joints and mode 6's Cartesian block, as it did before the
+// per axis). 100 is not a control mode: no node is ever put in it. A robot with no H-PMP
+// block runs H-PMP on mode 4's joints and mode 6's Cartesian block, as it did before the
 // block existed (see loadTuningSet).
-constexpr int kHapficTuningMode = 100;
-constexpr int kHapficFallbackJointMode = 4;
-constexpr int kHapficFallbackCartMode = 6;
+constexpr int kHpmpTuningMode = 100;
+constexpr int kHpmpFallbackJointMode = 4;
+constexpr int kHpmpFallbackCartMode = 6;
 
-// HAP-FIC runs when it is switched on in a Cartesian planner or admittance mode.
-inline bool hapficActive(int control_mode, bool hapfic_enabled) {
-    return hapfic_enabled && control_mode >= 6 && control_mode <= 8;
+// H-PMP runs when it is switched on in a Cartesian mode (5-8): on mode 5
+// its task layer tracks the goal without its planner.
+inline bool hpmpActive(int control_mode, bool hpmp_enabled) {
+    return hpmp_enabled && control_mode >= 5 && control_mode <= 8;
 }
 
 // The tuning a node reads for a control mode. fic_simulation and fic_hardware both take it
-// from here, so every mode, HAP-FIC included, reads the same blocks in simulation and on the
+// from here, so every mode, H-PMP included, reads the same blocks in simulation and on the
 // robot. `mcu`: fic_hardware's inner loop on the MCU, which runs every Cartesian mode on the
 // joint admittance-haptic layer, so it needs mode 4's joints.
 inline TuningKey tuningKeyFor(const std::string& robot, size_t n_joints, int control_mode,
-                              bool hapfic_enabled, bool mcu = false) {
+                              bool hpmp_enabled, bool mcu = false) {
     TuningKey k;
     k.robot = robot;
     k.n_joints = n_joints;
-    if (hapficActive(control_mode, hapfic_enabled)) {
-        k.joint_mode = k.cart_mode = kHapficTuningMode;
+    if (hpmpActive(control_mode, hpmp_enabled)) {
+        k.joint_mode = k.cart_mode = kHpmpTuningMode;
     } else {
         // mode 9 (Cartesian IK, simulation only) drives mode 1's joint impedance
         k.joint_mode = (mcu && control_mode > 4) ? 4 : (control_mode == 9 ? 1 : control_mode);
@@ -375,7 +376,7 @@ inline TuningKey tuningKeyFor(const std::string& robot, size_t n_joints, int con
 struct TuningSet {
     TuningKey key;
     std::string profile;
-    bool hapfic_fallback = false;   // a HAP-FIC set read from modes 4 and 6: the robot has no HAP-FIC block
+    bool hpmp_fallback = false;   // a H-PMP set read from modes 4 and 6: the robot has no H-PMP block
     std::vector<ScalarParams> joint_scalars;
     std::vector<ListParams> joint_lists;
     std::vector<PlannerParams> joint_planners;
@@ -396,11 +397,11 @@ inline TuningSet loadTuningSet(const std::string& xml_file, const TuningKey& key
     t.joint_planners.resize(key.n_joints);
     t.joint_admittance.resize(key.n_joints);
     int joint_mode = key.joint_mode, cart_mode = key.cart_mode;
-    if ((joint_mode == kHapficTuningMode || cart_mode == kHapficTuningMode) &&
-        !ParameterLoader::hasModeElement(xml_file, key.robot, kHapficTuningMode, profile)) {
-        if (joint_mode == kHapficTuningMode) joint_mode = kHapficFallbackJointMode;
-        if (cart_mode == kHapficTuningMode) cart_mode = kHapficFallbackCartMode;
-        t.hapfic_fallback = true;
+    if ((joint_mode == kHpmpTuningMode || cart_mode == kHpmpTuningMode) &&
+        !ParameterLoader::hasModeElement(xml_file, key.robot, kHpmpTuningMode, profile)) {
+        if (joint_mode == kHpmpTuningMode) joint_mode = kHpmpFallbackJointMode;
+        if (cart_mode == kHpmpTuningMode) cart_mode = kHpmpFallbackCartMode;
+        t.hpmp_fallback = true;
     }
     for (size_t i = 0; i < key.n_joints; ++i) {
         ParameterLoader::loadJointParams(xml_file, key.robot, i,

@@ -21,7 +21,7 @@ add_executable(test_inner_loop test_inner_loop.cpp)
 target_include_directories(test_inner_loop PRIVATE ${FIC_INCLUDE})
 add_test(NAME inner_loop COMMAND test_inner_loop)
 
-# Equivalence against fic_control.h, and HAP-FIC's tuning, need Eigen + tinyxml2.
+# Equivalence against fic_control.h, and H-PMP's tuning, need Eigen + tinyxml2.
 find_package(Eigen3 QUIET NO_MODULE)
 find_path(TINYXML2_INCLUDE tinyxml2.h)
 find_library(TINYXML2_LIB tinyxml2)
@@ -33,11 +33,11 @@ if(Eigen3_FOUND AND TINYXML2_INCLUDE AND TINYXML2_LIB)
   # FMAs differently in the two code paths.
   target_compile_options(test_joint_core_equivalence PRIVATE -ffp-contract=off)
   add_test(NAME joint_core_equivalence COMMAND test_joint_core_equivalence)
-  # HAP-FIC's tuning: which blocks each mode reads (both nodes), its own block and the fallback.
-  add_executable(test_hapfic_tuning test_hapfic_tuning.cpp)
-  target_include_directories(test_hapfic_tuning PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})
-  target_link_libraries(test_hapfic_tuning PRIVATE ${TINYXML2_LIB})
-  add_test(NAME hapfic_tuning COMMAND test_hapfic_tuning)
+  # H-PMP's tuning: which blocks each mode reads (both nodes), its own block and the fallback.
+  add_executable(test_hpmp_tuning test_hpmp_tuning.cpp)
+  target_include_directories(test_hpmp_tuning PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})
+  target_link_libraries(test_hpmp_tuning PRIVATE ${TINYXML2_LIB})
+  add_test(NAME hpmp_tuning COMMAND test_hpmp_tuning)
   # Haptic joint admittance: driven by the interaction torque only (no creep, push yields, release holds).
   add_executable(test_haptic_admittance test_haptic_admittance.cpp)
   target_include_directories(test_haptic_admittance PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})
@@ -45,20 +45,20 @@ if(Eigen3_FOUND AND TINYXML2_INCLUDE AND TINYXML2_LIB)
   target_compile_options(test_haptic_admittance PRIVATE -ffp-contract=off)
   add_test(NAME haptic_admittance COMMAND test_haptic_admittance)
 
-  add_executable(test_hapfic_caps test_hapfic_caps.cpp)
-  target_include_directories(test_hapfic_caps PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})
-  target_link_libraries(test_hapfic_caps PRIVATE Eigen3::Eigen ${TINYXML2_LIB})
-  add_test(NAME hapfic_caps COMMAND test_hapfic_caps)
-  # HAP-FIC on host modes 7/8: the task-space admittance shifts the task goal (as the host's), IK shift J# dx.
-  add_executable(test_hapfic_task_admittance test_hapfic_task_admittance.cpp)
-  target_include_directories(test_hapfic_task_admittance PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})
-  target_link_libraries(test_hapfic_task_admittance PRIVATE Eigen3::Eigen ${TINYXML2_LIB})
-  add_test(NAME hapfic_task_admittance COMMAND test_hapfic_task_admittance)
-  # HAP-FIC's split admittance drive: a task-space deadband on the end-effector part of the torque gap.
-  add_executable(test_hapfic_split_drive test_hapfic_split_drive.cpp)
-  target_include_directories(test_hapfic_split_drive PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})
-  target_link_libraries(test_hapfic_split_drive PRIVATE Eigen3::Eigen ${TINYXML2_LIB})
-  add_test(NAME hapfic_split_drive COMMAND test_hapfic_split_drive)
+  add_executable(test_hpmp_caps test_hpmp_caps.cpp)
+  target_include_directories(test_hpmp_caps PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})
+  target_link_libraries(test_hpmp_caps PRIVATE Eigen3::Eigen ${TINYXML2_LIB})
+  add_test(NAME hpmp_caps COMMAND test_hpmp_caps)
+  # H-PMP on host modes 7/8: the task-space admittance shifts the task goal (as the host's), IK shift J# dx.
+  add_executable(test_hpmp_task_admittance test_hpmp_task_admittance.cpp)
+  target_include_directories(test_hpmp_task_admittance PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})
+  target_link_libraries(test_hpmp_task_admittance PRIVATE Eigen3::Eigen ${TINYXML2_LIB})
+  add_test(NAME hpmp_task_admittance COMMAND test_hpmp_task_admittance)
+  # H-PMP's split admittance drive: a task-space deadband on the end-effector part of the torque gap.
+  add_executable(test_hpmp_split_drive test_hpmp_split_drive.cpp)
+  target_include_directories(test_hpmp_split_drive PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})
+  target_link_libraries(test_hpmp_split_drive PRIVATE Eigen3::Eigen ${TINYXML2_LIB})
+  add_test(NAME hpmp_split_drive COMMAND test_hpmp_split_drive)
   # Joint planner on a continuous joint crossing +-pi: no lag from the 2*pi seam.
   add_executable(test_planner_wrap test_planner_wrap.cpp)
   target_include_directories(test_planner_wrap PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})

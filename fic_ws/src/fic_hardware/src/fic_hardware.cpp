@@ -36,6 +36,22 @@ static geometry_msgs::msg::Pose isoToPoseMsg(const Eigen::Isometry3d& iso) {
 //  CONSTRUCTOR
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// H-PMP's IK seed (5.7.0): the previous IK solution while H-PMP runs, so the arm's redundant
+// (self-motion) posture is held by the joint layer and a push moves it only through the
+// admittance offsets; the measured posture otherwise, or when the previous solution is more than
+// kHpmpIkSeedMaxRad from it on any joint (after a mode switch or a large push). Seeding from the
+// measured posture under H-PMP let the joint set-point follow a push in the null space and drift
+// on from there.
+static constexpr double kHpmpIkSeedMaxRad = 0.5;
+static inline Eigen::VectorXd hpmpIkSeed(bool hpmp, const Eigen::VectorXd& q_meas,
+                                         const Eigen::VectorXd& q_prev) {
+    if (!hpmp || q_prev.size() != q_meas.size() || q_meas.size() == 0) return q_meas;
+    for (Eigen::Index i = 0; i < q_meas.size(); ++i)
+        if (!std::isfinite(q_prev[i]) || std::abs(q_prev[i] - q_meas[i]) > kHpmpIkSeedMaxRad)
+            return q_meas;
+    return q_prev;
+}
+
 template <typename T>
 FicHardwareNode<T>::FicHardwareNode(int default_num_joints)
     : Node("fic_hardware_node"),
@@ -123,9 +139,14 @@ FicHardwareNode<T>::FicHardwareNode(int default_num_joints)
         rid + "_elbow_enable", 10,
         std::bind(&FicHardwareNode::elbowEnableCallback, this, std::placeholders::_1));
 
-    hapfic_enable_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+    // the old topic name, still accepted
+    hpmp_enable_legacy_sub_ = this->create_subscription<std_msgs::msg::Bool>(
         rid + "_hapfic_enable", 10,
-        std::bind(&FicHardwareNode::hapficEnableCallback, this, std::placeholders::_1));
+        std::bind(&FicHardwareNode::hpmpEnableCallback, this, std::placeholders::_1));
+    // H-PMP's topic (since 5.7.0).
+    hpmp_enable_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+        rid + "_hpmp_enable", 10,
+        std::bind(&FicHardwareNode::hpmpEnableCallback, this, std::placeholders::_1));
 
     desired_wrench_sub_ = this->create_subscription<geometry_msgs::msg::Wrench>(
         rid + "_desired_wrench", 10,
@@ -669,13 +690,13 @@ void FicHardwareNode<T>::loadRobotModel(const std::string& robot_name) {
         current_robot_config_.deadband_joint_tau,
         current_robot_config_.deadband_cart_force,
         current_robot_config_.deadband_cart_torque);
-    // HAP-FIC's split admittance drive: on hardware the task deadband is the robot's Cartesian one, wide
+    // H-PMP's split admittance drive: on hardware the task deadband is the robot's Cartesian one, wide
     // enough for the joint-torque sensors' bias (the simulation keeps the library's narrower default).
-    fic_ctrl_.setHapficSplitDrive(true, current_robot_config_.deadband_cart_force,
+    fic_ctrl_.setHpmpSplitDrive(true, current_robot_config_.deadband_cart_force,
                                   current_robot_config_.deadband_cart_torque);
     RCLCPP_INFO(this->get_logger(),
-        "HAP-FIC admittance drive: split, task deadband %.2f N / %.3f N m, joint deadband %.2f N m",
-        fic_ctrl_.hapfic_task_db_force_, fic_ctrl_.hapfic_task_db_torque_, fic_ctrl_.deadband_joint_tau_);
+        "H-PMP admittance drive: split, task deadband %.2f N / %.3f N m, joint deadband %.2f N m",
+        fic_ctrl_.hpmp_task_db_force_, fic_ctrl_.hpmp_task_db_torque_, fic_ctrl_.deadband_joint_tau_);
 
     // Same clamp as the standard output guard: per-joint limits, or the
     // scalar fallback when the robot config has none.
@@ -1151,12 +1172,12 @@ void FicHardwareNode<T>::elbowEnableCallback(const std_msgs::msg::Bool::SharedPt
 }
 
 template <typename T>
-void FicHardwareNode<T>::hapficEnableCallback(const std_msgs::msg::Bool::SharedPtr msg) {
+void FicHardwareNode<T>::hpmpEnableCallback(const std_msgs::msg::Bool::SharedPtr msg) {
     std::lock_guard<std::mutex> lock(data_mutex_);
-    if (hapfic_enabled_ == msg->data) return;   // a repeat changes nothing
-    hapfic_enabled_ = msg->data;
+    if (hpmp_enabled_ == msg->data) return;   // a repeat changes nothing
+    hpmp_enabled_ = msg->data;
     initControllerPLanner = false;
-    RCLCPP_INFO(this->get_logger(), "Hapfic %s", hapfic_enabled_ ? "ENABLED" : "DISABLED");
+    RCLCPP_INFO(this->get_logger(), "H-PMP %s", hpmp_enabled_ ? "ENABLED" : "DISABLED");
 }
 
 template <typename T>
@@ -1350,7 +1371,8 @@ void FicHardwareNode<T>::ikWorker() {
         bool safety_on = false;
         {
             std::lock_guard<std::mutex> lock(data_mutex_);
-            q_start = q_current_;
+            q_start = hpmpIkSeed(fic::hpmpActive(current_control_mode_, hpmp_enabled_),
+                                 q_current_, q_target_ik_);
             lower = joint_safety_lower_;
             upper = joint_safety_upper_;
             safety_on = joint_safety_enabled_;
@@ -1576,12 +1598,12 @@ bool FicHardwareNode<T>::refreshTuning(const fic::TuningKey& want, const std::st
                 initControllerPLanner = false;   // switch the controllers to the new set
                 RCLCPP_INFO(this->get_logger(), "Controllers Initialized (Mode %d, tuning read from config.xml)",
                             (int)current_control_mode_);
-                if (tuning_.key.joint_mode == fic::kHapficTuningMode) {
-                    if (tuning_.hapfic_fallback)
-                        RCLCPP_WARN(this->get_logger(), "HAP-FIC tuning: config.xml has no HAP-FIC block for %s, "
-                                    "so HAP-FIC runs on mode 4's joints and mode 6's Cartesian block", want.robot.c_str());
+                if (tuning_.key.joint_mode == fic::kHpmpTuningMode) {
+                    if (tuning_.hpmp_fallback)
+                        RCLCPP_WARN(this->get_logger(), "H-PMP tuning: config.xml has no H-PMP block for %s, "
+                                    "so H-PMP runs on mode 4's joints and mode 6's Cartesian block", want.robot.c_str());
                     else
-                        RCLCPP_INFO(this->get_logger(), "HAP-FIC tuning: its own block (mode 100), config \"%s\"",
+                        RCLCPP_INFO(this->get_logger(), "H-PMP tuning: its own block (mode 100), config \"%s\"",
                                     tuning_.profile.c_str());
                 }
                 // The MCU runs its own copy of the joint tuning: send it the new set.
@@ -1757,7 +1779,7 @@ void FicHardwareNode<T>::controlLoop() {
     // through that topic would be a positive feedback loop over the network.
     //
     // Only the Cartesian admittance family consumes a wrench as something to
-    // move for: mode 6 Hapfic, 7 and 8 admittance. Mode 5 is pure impedance
+    // move for: mode 6 Hpmp, 7 and 8 admittance. Mode 5 is pure impedance
     // and is passed the wrench only for bookkeeping, so injecting there would
     // change nothing while looking like it should.
     if (external_wrench_active_ &&
@@ -1795,20 +1817,20 @@ void FicHardwareNode<T>::controlLoop() {
     Eigen::VectorXd ee_velocity = jacobian * q_dot;
 
     int param_mode = current_control_mode_;
-    const bool hapfic_active = fic::hapficActive(param_mode, hapfic_enabled_);
-    // The blocks fic_simulation reads for the same mode (fic::tuningKeyFor): HAP-FIC its own,
+    const bool hpmp_active = fic::hpmpActive(param_mode, hpmp_enabled_);
+    // The blocks fic_simulation reads for the same mode (fic::tuningKeyFor): H-PMP its own,
     // and on the MCU path every Cartesian mode mode 4's joints.
     const fic::TuningKey tuning_want = fic::tuningKeyFor(selected_robot_, num_joints_, param_mode,
-                                                         hapfic_enabled_, use_mcu_);
+                                                         hpmp_enabled_, use_mcu_);
     // Nothing to run until the tuning for this robot and mode is in memory.
     if (!refreshTuning(tuning_want, active_profile_)) return;
 
     if (!initControllerPLanner) {
         try {
-            if (hapfic_active) {
+            if (hpmp_active) {
                 initJointControllers(num_joints_, q_current_, joint_scalars_, joint_lists_, joint_planners_, joint_admittance_);
-                fic_ctrl_.initHapficCartesian(cart_params_, ee_curr_vec);
-                // Postural channels 9..9+n are free under HAP-FIC too (joints 0..n-1,
+                fic_ctrl_.initHpmpCartesian(cart_params_, ee_curr_vec);
+                // Postural channels 9..9+n are free under H-PMP too (joints 0..n-1,
                 // Cartesian 16..19, elbow 20..22): initialise them as in the Cartesian modes
                 // (their tuning is the robot-wide postural block, read with the rest of the set).
                 fic_ctrl_.postural.init(num_joints_, postural_scalars_, postural_lists_);
@@ -1833,8 +1855,8 @@ void FicHardwareNode<T>::controlLoop() {
 
     int CartAdmMode = 0;
     std::fill(wall_torque_.begin(), wall_torque_.end(), 0.0);
-    // On the MCU path hapfic stops at tau_des; the MCU runs its joint layer.
-    fic_ctrl_.hapfic_export_only_ = use_mcu_;
+    // On the MCU path hpmp stops at tau_des; the MCU runs its joint layer.
+    fic_ctrl_.hpmp_export_only_ = use_mcu_;
     if (current_control_mode_ <= 4 && current_control_mode_ > 0) {
         for (size_t i = 0; i < num_joints_; ++i) {
             if (current_control_mode_ == 1) {
@@ -1904,12 +1926,18 @@ void FicHardwareNode<T>::controlLoop() {
     } else if (current_control_mode_ > 4) {
         switch (current_control_mode_) {
             case 5:
-                fic_ctrl_.RC.impedance(traj_data, torque_data, q_current_, gravity_torques_,
-                    ee_curr_vec, ee_targ_vec, jacobian, 0, wrench_data, joint_torques_, q_target_ik_, num_joints_);
+                if (hpmp_enabled_) {
+                    fic_ctrl_.RC.hpmp(traj_data, torque_data, q_current_, gravity_torques_,
+                        ee_curr_vec, ee_targ_vec, jacobian, fic::ficControl<double>::kHpmpHostImpedance,
+                        wrench_data, joint_torques_, q_target_ik_, num_joints_);
+                } else {
+                    fic_ctrl_.RC.impedance(traj_data, torque_data, q_current_, gravity_torques_,
+                        ee_curr_vec, ee_targ_vec, jacobian, 0, wrench_data, joint_torques_, q_target_ik_, num_joints_);
+                }
                 break;
             case 6:
-                if (hapfic_enabled_) {
-                    fic_ctrl_.RC.hapfic(traj_data, torque_data, q_current_, gravity_torques_,
+                if (hpmp_enabled_) {
+                    fic_ctrl_.RC.hpmp(traj_data, torque_data, q_current_, gravity_torques_,
                         ee_curr_vec, ee_targ_vec, jacobian, 0, wrench_data, joint_torques_, q_target_ik_, num_joints_);
                 } else {
                     fic_ctrl_.RC.planner(traj_data, torque_data, q_current_, gravity_torques_,
@@ -1918,8 +1946,8 @@ void FicHardwareNode<T>::controlLoop() {
                 break;
             case 7:
                 CartAdmMode = 1;
-                if (hapfic_enabled_) {
-                    fic_ctrl_.RC.hapfic(traj_data, torque_data, q_current_, gravity_torques_,
+                if (hpmp_enabled_) {
+                    fic_ctrl_.RC.hpmp(traj_data, torque_data, q_current_, gravity_torques_,
                         ee_curr_vec, ee_targ_vec, jacobian, CartAdmMode, wrench_data, joint_torques_, q_target_ik_, num_joints_);
                 } else {
                     fic_ctrl_.RC.admittance(traj_data, torque_data, q_current_, gravity_torques_,
@@ -1929,8 +1957,8 @@ void FicHardwareNode<T>::controlLoop() {
                 break;
             case 8:
                 CartAdmMode = 2;
-                if (hapfic_enabled_) {
-                    fic_ctrl_.RC.hapfic(traj_data, torque_data, q_current_, gravity_torques_,
+                if (hpmp_enabled_) {
+                    fic_ctrl_.RC.hpmp(traj_data, torque_data, q_current_, gravity_torques_,
                         ee_curr_vec, ee_targ_vec, jacobian, CartAdmMode, wrench_data, joint_torques_, q_target_ik_, num_joints_);
                 } else {
                     fic_ctrl_.RC.admittance(traj_data, torque_data, q_current_, gravity_torques_,
@@ -1940,10 +1968,10 @@ void FicHardwareNode<T>::controlLoop() {
                 break;
         }
 
-        // HAP-FIC's joint loop sends no gravity of its own (its admittance is driven by the
+        // H-PMP's joint loop sends no gravity of its own (its admittance is driven by the
         // interaction torque alone): feed it forward, as in modes 1-4. On the MCU path the MCU
         // runs the joint layer and this node only exports tau_des.
-        if (hapfic_enabled_ && current_control_mode_ >= 6 && current_control_mode_ <= 8 && !use_mcu_ &&
+        if (hpmp_enabled_ && current_control_mode_ >= 5 && current_control_mode_ <= 8 && !use_mcu_ &&
             !current_robot_config_.gravity_compensated) {
             for (size_t i = 0; i < num_joints_; ++i) torque_data[i] += gravity_torques_[i];
         }
@@ -2199,24 +2227,24 @@ void FicHardwareNode<T>::sendMcuCommand(const std::vector<double>& torque_data, 
         if (admittance_use_planner_) m.flags |= kCmdUsePlanner;
     } else {
         // Cartesian modes: the outer loop's torque becomes the desired effort of
-        // the MCU's joint admittance-haptic layer (how hapfic always worked), or
+        // the MCU's joint admittance-haptic layer (how hpmp always worked), or
         // passes straight through with cartesian_routing: torque.
-        const bool hapfic = hapfic_enabled_ && mode >= 6 &&
-                            (size_t)fic_ctrl_.hapfic_tau_des_.size() >= n;
-        // HAP-FIC: each joint's set-point within its admittance bound (the joint law's outer
-        // breakpoint, at least 0.1 rad) of where the joint is, as cartesianHapfic does on the host path.
+        const bool hpmp = hpmp_enabled_ && mode >= 5 &&
+                            (size_t)fic_ctrl_.hpmp_tau_des_.size() >= n;
+        // H-PMP: each joint's set-point within its admittance bound (the joint law's outer
+        // breakpoint, at least 0.1 rad) of where the joint is, as cartesianHpmp does on the host path.
         // In modes 7/8 the set-point first follows the task-space admittance's shift of the goal
-        // (hapfic_q_shift_, zero in mode 6).
+        // (hpmp_q_shift_, zero in mode 6).
         fill(m.q_target, [&](size_t i) {
-            if (!hapfic) return q_ik[i];
+            if (!hpmp) return q_ik[i];
             const Eigen::VectorXd xb = fic_ctrl_.controller(i).get_x_b();
-            const double shift = (Eigen::Index)i < fic_ctrl_.hapfic_q_shift_.size() ? fic_ctrl_.hapfic_q_shift_[i] : 0.0;
+            const double shift = (Eigen::Index)i < fic_ctrl_.hpmp_q_shift_.size() ? fic_ctrl_.hpmp_q_shift_[i] : 0.0;
             return fic::ficControl<T>::limitSetpoint(q_ik[i] + shift, q_current_[i],
                 fic::ficControl<T>::setpointWindow(xb(xb.size() - 1)), isContinuousJoint(i));
         });
-        if (hapfic) {
+        if (hpmp) {
             m.mode = InnerMode::Hapfic;
-            fill(m.tau_des, [&](size_t i) { return fic_ctrl_.hapfic_tau_des_[i] - g[i]; });
+            fill(m.tau_des, [&](size_t i) { return fic_ctrl_.hpmp_tau_des_[i] - g[i]; });
             // torque_data holds only the null-space helpers (postural, elbow).
             fill(m.tau_ff, [&](size_t i) { return i < torque_data.size() ? torque_data[i] : 0.0; });
         } else if (current_robot_config_.mcu.cartesian_routing == "torque") {

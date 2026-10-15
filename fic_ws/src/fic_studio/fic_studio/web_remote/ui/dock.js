@@ -7,8 +7,8 @@
 'use strict';
 const { $, h, fmt, setText, setSeg, setSelect, cmd, toast } = window.FIC;   // FIC.inlineConfirm: the out-of-reach question
 const FIC = window.FIC;
-const OPTION_SHORT = { hapfic: 'HAP-FIC', postural: 'Postural', elbow: 'Elbow', admittance_planner: 'Planner' };
-const OPTION_KEY = { hapfic: 'f', postural: 'p', elbow: 'e', admittance_planner: 'p' };
+const OPTION_SHORT = { hpmp: 'H-PMP', postural: 'Postural', elbow: 'Elbow', admittance_planner: 'Planner' };
+const OPTION_KEY = { hpmp: 'f', postural: 'p', elbow: 'e', admittance_planner: 'p' };
 const TARGET_SHORT = { simulation: 'SIM', hardware: 'HW', vr: 'VR' };
 const kbd = k => h('span', { class: 'kbd', text: k });
 const PANELS = [['joint', 'Joint'], ['cart', 'Cart'], ['gripper', 'Gripper'], ['contact', 'Contact'], ['snapshot', 'Snapshot'], ['quick', 'Quick Actions']];
@@ -64,12 +64,12 @@ function buildMode() {
       h('div', { class: 'spacer' }),
       h('button', { class: 'btn btn-solid', type: 'button', id: 'd-send', text: 'Send', title: 'Send the fields above to the robot', onclick: () => sendCurrent() })));
 }
-// The desired wrench of the Cartesian admittance (modes 7 and 8, and HAP-FIC on them).
+// The desired wrench of the Cartesian admittance (modes 7 and 8, and H-PMP on them).
 function buildWrench() {
   const fields = WRENCH.map(([label, unit, step], i) => h('label', { class: 'inline-field' }, h('span', { text: label }),
     h('input', { class: 'input num', type: 'number', step: String(step), 'data-w': String(i), 'aria-label': 'Desired ' + label + ', ' + unit, title: unit, oninput: () => { W.dirty = true; } })));
   return h('div', { class: 'dp-row', id: 'd-wrench', hidden: true,
-      title: 'Desired wrench of the Cartesian admittance (modes 7 and 8, and HAP-FIC on them): the goal moves until the measured wrench equals it. Zero at controller start-up.' },
+      title: 'Desired wrench of the Cartesian admittance (modes 7 and 8, and H-PMP on them): the goal moves until the measured wrench equals it. Zero at controller start-up.' },
     h('span', { class: 'eyebrow', text: 'Desired wrench' }), ...fields,
     h('button', { class: 'btn', type: 'button', text: 'Zero', title: 'Send a zero desired wrench', onclick: () => sendWrench(true) }),
     h('button', { class: 'btn', type: 'button', id: 'd-wrench-apply', text: 'Apply', title: 'Send this desired wrench', onclick: () => sendWrench(false) }));

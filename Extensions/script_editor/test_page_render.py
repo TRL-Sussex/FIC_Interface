@@ -543,9 +543,9 @@ class FakeNode:
         """Record publish_admittance_planner."""
         self.calls.append(('publish_admittance_planner', {'enabled': enabled}))
 
-    def publish_hapfic_enable(self, enabled, robot_id=None):
-        """Record publish_hapfic_enable."""
-        self.calls.append(('publish_hapfic_enable', {'enabled': enabled}))
+    def publish_hpmp_enable(self, enabled, robot_id=None):
+        """Record publish_hpmp_enable."""
+        self.calls.append(('publish_hpmp_enable', {'enabled': enabled}))
 
     def get_topic_names_and_types(self):
         """Return empty topic list."""
@@ -736,7 +736,7 @@ class TestPageRender:
         ext._stop_event = threading.Event()
         ext._robot_api = None
         ext._latched_admittance_planner = False
-        ext._latched_hapfic = False
+        ext._latched_hpmp = False
         ext._telemetry_timer = _QObjectStub()
         ext._telem_joint_labels = []
         ext._telem_ee_label = None

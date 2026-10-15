@@ -1,4 +1,4 @@
-// Haptic joint admittance (mode 4, and HAP-FIC's joint layer): the offset is driven
+// Haptic joint admittance (mode 4, and H-PMP's joint layer): the offset is driven
 // by the interaction torque alone, desired minus measured, outside the deadband.
 //
 //  1. balanced  -- measured equals desired, desired non-zero (e.g. gravity):
@@ -65,7 +65,7 @@ struct Rig {
     double tick(double desired, double measured, double* core_offset, double release = 0.0) {
         std::vector<double> traj(N * 8, 0.0), torq(N, 0.0);
         double qt = 0.0;
-        if (release > 0.0)   // HAP-FIC's call, with hysteresis
+        if (release > 0.0)   // H-PMP's call, with hysteresis
             ref.handleJointAdmitanceControl(0, traj, torq, qt, q[0], desired, measured, 2, N, false, release);
         else
             ref.JC.admittance(0, traj, torq, qt, q[0], desired, measured, 2, N, false);
@@ -95,7 +95,7 @@ int main() {
     for (int k = 0; k < 2000; ++k) off = r.tick(10.0, 10.0, &core_off);
     check(std::fabs(off - pushed) < 0.01, "release: offset holds (no creep)", off - pushed);
     check(core_off == off, "release: core offset identical", core_off - off);
-    // 4. hysteresis (HAP-FIC: deadband 1.5, release 0.375 N m), on a fresh rig
+    // 4. hysteresis (H-PMP: deadband 1.5, release 0.375 N m), on a fresh rig
     std::printf("haptic admittance with deadband hysteresis\n");
     Rig h;
     const double rel = 0.25 * 1.5;

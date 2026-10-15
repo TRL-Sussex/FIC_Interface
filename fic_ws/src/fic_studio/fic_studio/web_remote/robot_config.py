@@ -164,6 +164,40 @@ def clean(patch, current):
                                        for k in ('joint_tau', 'cart_force', 'cart_torque') if k in d}
     if 'safety_zones' in patch:
         out['safety_zones'] = _zones(patch['safety_zones'], n)
+    if 'hardware_model' in patch:
+        out['hardware_model'] = _hardware_model(patch['hardware_model'], n)
+    return out
+
+
+#: robots_config.yaml hardware_model: per-joint lists (label, upper bound) and scalars.
+HW_LISTS = {'joint_friction': ('Joint friction', 100.0), 'joint_damping': ('Joint damping', 1e3),
+            'armature': ('Rotor inertia', 100.0), 'torque_noise': ('Torque noise', 10.0)}
+HW_SCALARS = {'torque_filter_hz': ('Measured-torque filter', 0.0, 1000.0),
+              'command_delay_ms': ('Command delay', 0.0, 100.0)}
+
+
+def _hardware_model(hm, n):
+    """How the simulator reproduces the real arm (mujoco_native/hardware_model.py). Per-joint lists
+    are n non-negative numbers, or empty to keep the MuJoCo model's own values."""
+    if not isinstance(hm, dict):
+        raise Refused('Simulate like the real robot: expected its settings', 'bad_args')
+    out = {}
+    if 'enabled' in hm:
+        if not isinstance(hm['enabled'], bool):
+            raise Refused('Simulate like the real robot must be on or off', 'bad_args')
+        out['enabled'] = hm['enabled']
+    for key, (label, hi) in HW_LISTS.items():
+        if key in hm:
+            v = hm[key]
+            if v in (None, []):
+                out[key] = []
+            else:
+                out[key] = _num_list(v, label, n, 0, hi)
+    for key, (label, lo, hi) in HW_SCALARS.items():
+        if key in hm and hm[key] is not None:
+            out[key] = _num_list([hm[key]], label, 1, lo, hi)[0]
+    if 'source' in hm:
+        out['source'] = _text(hm['source'], 'Where the values come from')
     return out
 
 

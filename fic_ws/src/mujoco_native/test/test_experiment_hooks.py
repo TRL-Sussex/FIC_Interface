@@ -56,3 +56,28 @@ def test_body_positions_shape():
     m, d = _settled()
     p = body_positions(m, d, ["box", "wall"])
     assert p.shape == (2, 3)
+
+_HINGE_XML = """
+<mujoco><worldbody>
+  <body name="arm" pos="0 0 1">
+    <joint name="h" type="hinge" axis="0 0 1"/>
+    <geom type="capsule" fromto="0 0 0 0.5 0 0" size="0.02"/>
+  </body>
+</worldbody></mujoco>
+"""
+
+def test_applied_wrench_torques_maps_push_to_joint_torque():
+    from mujoco_native.experiment_hooks import applied_wrench_torques
+    m = mujoco.MjModel.from_xml_string(_HINGE_XML); d = mujoco.MjData(m)
+    mujoco.mj_forward(m, d)
+    assert np.allclose(applied_wrench_torques(m, d), 0.0)
+    # 5 N along +y at the tip (0.5 m from the hinge axis): 2.5 N m about +z
+    apply_link_force(m, d, "arm", (0.0, 5.0, 0.0), (0.5, 0.0, 1.0), 1.0)
+    assert np.allclose(applied_wrench_torques(m, d), [2.5])
+    assert np.allclose(d.qfrc_applied, 0.0)
+
+def test_apply_link_force_at_centre_of_mass():
+    m, d = _settled()
+    bid = m.body("box").id
+    apply_link_force(m, d, "box", (5.0, 0, 0), None, 1.0)
+    assert np.allclose(d.xfrc_applied[bid], (5.0, 0, 0, 0, 0, 0))

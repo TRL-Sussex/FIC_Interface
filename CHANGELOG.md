@@ -23,6 +23,60 @@ Studio is published here as one commit, with its entry below.
 
 ---
 
+## [5.7.0] — 2026-10-15 — H-PMP, on by default; mode names; Whole-Arm Experiments
+
+### Changed
+- The overlay that nests the Cartesian controller inside the joint HAP-FIC is called **H-PMP**
+  everywhere a user sees it (the Studio's control bar and robot cards, the web interface, the Tuning
+  page, the Help page, the docs and the logs). Scripts call `robot.mode.hpmp(on)`; `robot.mode.hapfic`
+  is kept as an alias. The Studio publishes `robot{N}_hpmp_enable`; the nodes accept it and the old
+  `robot{N}_hapfic_enable`. The tuning block in `config.xml` is named H-PMP (still `<mode id="100">`).
+- H-PMP is **on by default** in the Studio's Cartesian modes (the toggle starts on and its state is
+  latched for any controller that starts later); turning it off sends the Cartesian torques directly
+  to the joints. The nodes' own default and the experiment runners (which set it explicitly) are
+  unchanged.
+- H-PMP also works on **mode 5**: its task layer then acts on the goal without its planner, as
+  Cartesian impedance does.
+- H-PMP's IK starts from its previous solution (both nodes), so the arm's redundant posture is held by
+  the joint layer: a push on the elbow no longer drags the IK set-point with it, and the elbow no
+  longer drifts on after a push. The measured posture is still used when the two are more than
+  0.5 rad apart (after a mode switch).
+- Mode names follow the Whole-Arm paper: mode 4 **Joint HAP-FIC**, mode 6 **Cartesian Impedance with
+  Planner**, mode 8 **Cartesian HAP-FIC** (labels, Tuning page, Help, docs, `config.xml` names). The
+  strings sent on `{rid}_mode_select` are unchanged. The control bar's mode menus name mode 4 and
+  mode 8 HAP-FIC; the mode readout, the web interface's mode menu and the fleet cards show these
+  names, and with the H-PMP toggle on they read *H-PMP* on mode 8 (the Whole-Arm experiments'
+  controller) and *<mode> + H-PMP* on modes 5-7. The toggle's tooltips and the Help page say it nests
+  the Cartesian mode in the joint HAP-FIC.
+- Kinova Gen3: H-PMP's default tuning lets joint 4 yield (admittance InvM 0.1, as the contact
+  profile) and gives its task-space admittance a lighter virtual mass (InvM 0.2, was 1): simulated
+  like the real arm, H-PMP on mode 7 kept a small oscillation after a push with the previous one.
+  H-PMP on mode 6 yields more to a push (19 mm for 15 N, was 8 mm).
+- The simulator measures the H-PMP task deadband and velocity damper of a robot simulated like the
+  real one (below) as the hardware node does.
+
+### Fixed
+- `install.sh` stopped at once on macOS with "PASS[@]: unbound variable" (macOS's bash 3.2
+  takes an empty array as unbound). The README gives the macOS way to start the Studio from a
+  terminal (`conda activate fic_ros`, `setup.zsh`). The Pendulum URDF was in the repository twice,
+  as `Pendulum.urdf` and `pendulum.urdf`, which collide on a case-insensitive disk; `pendulum.urdf`
+  is removed.
+
+### Added
+- **Simulating like the real robot.** A robot's `hardware_model` block in `robots_config.yaml`
+  (joint friction, damping and rotor inertia, torque-sensor noise, the measured-torque filter, a
+  command delay) makes the simulated arm behave like the real one: the simulator gives its joints
+  these values and adds the noise, and `fic_simulation` measures torque as `fic_hardware` does (the
+  robot's filter, H-PMP's push estimated from the joint torques instead of MuJoCo's contact force,
+  the robot's H-PMP task deadband and velocity damper), so tunes made in simulation carry over.
+  Robot Config → Hardware → *Simulate like the real robot* edits it; robots without it are
+  simulated as before, and `FIC_HARDWARE_MODEL=off` turns it off for one run. The Kinova Gen3 has
+  one (torque noise measured on the arm, friction estimated).
+- `python3 -m fic_studio.hardware_model --env hardware --robot <name> --write` measures a robot's
+  joint friction, damping and torque noise on the arm (one joint at a time through a slow sine)
+  and writes its `hardware_model`. The import report of a new robot and its Overview (for robots
+  with a hardware driver) point to it.
+
 ## [5.6.0] — 2026-10-14 — Teach Mode and Sequences in the web interface; desired wrench; Kinova simulation starts at home
 
 ### Added

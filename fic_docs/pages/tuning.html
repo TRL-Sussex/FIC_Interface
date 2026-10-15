@@ -308,26 +308,26 @@ config in <code>config.xml</code>, so a trial left behind by a crash shows up ag
 kept or discarded. Starting a trial and applying to it follow the same rules as commanding the robot (not just after
 an E-stop, not while VR drives it); Keep and Discard always work.</p>
 
-<h2>HAP-FIC&rsquo;s Own Tuning</h2>
-<p>HAP-FIC is switched on in modes 6&ndash;8, and while it is on it does not use the tuning of the mode it runs in.
-It has a tuning block of its own in <code>config.xml</code>, <code>&lt;mode id="100" name="HAP-FIC"&gt;</code>, with two
+<h2>H-PMP&rsquo;s Own Tuning</h2>
+<p>H-PMP is switched on in modes 5&ndash;8, and while it is on it does not use the tuning of the mode it runs in.
+It has a tuning block of its own in <code>config.xml</code>, <code>&lt;mode id="100" name="H-PMP"&gt;</code>, with two
 layers:</p>
 <table>
   <tr><th>Layer</th><th>What it is</th><th>Parameters</th></tr>
   <tr><td><strong>Joint layer</strong></td><td>A joint admittance around the torques the Cartesian layer asks for, one per joint</td><td>Controller, planner and admittance (Kv damping, inverse mass, flow limits) per joint</td></tr>
   <tr><td><strong>Cartesian layer</strong></td><td>A Cartesian planner and FIC controller that turns the pose error into those torques</td><td>Controller and planner per axis (x, y, z, q)</td></tr>
 </table>
-<p>On the Tuning Panel, pick <strong>HAP-FIC</strong> at the end of the Mode list, then the <strong>Layer</strong>. The web
-panel opens on it when HAP-FIC is on. Tuning it changes nothing in modes 4 or 6, and tuning those modes no longer
-changes HAP-FIC. Profiles work as for any mode: a profile without a HAP-FIC block of its own uses the default
+<p>On the Tuning Panel, pick <strong>H-PMP</strong> at the end of the Mode list, then the <strong>Layer</strong>. The web
+panel opens on it when H-PMP is on. Tuning it changes nothing in modes 4 or 6, and tuning those modes no longer
+changes H-PMP. Profiles work as for any mode: a profile without a H-PMP block of its own uses the default
 profile&rsquo;s, and a live trial copies it along with the rest.</p>
-<p>Before HAP-FIC had a block it ran on mode 4&rsquo;s joints and mode 6&rsquo;s Cartesian block, and a robot whose
-<code>config.xml</code> has no HAP-FIC block still does (the node logs <em>HAP-FIC tuning: config.xml has no HAP-FIC
-block</em>). The panel then shows those values and the first change gives HAP-FIC its own block, copied from them.
-<code>fic_ws/src/fic_studio/tools/migrate_hapfic_tuning.py</code> adds the blocks to an older file without changing
+<p>Before H-PMP had a block it ran on mode 4&rsquo;s joints and mode 6&rsquo;s Cartesian block, and a robot whose
+<code>config.xml</code> has no H-PMP block still does (the node logs <em>H-PMP tuning: config.xml has no H-PMP
+block</em>). The panel then shows those values and the first change gives H-PMP its own block, copied from them.
+<code>fic_ws/src/fic_studio/tools/migrate_hpmp_tuning.py</code> adds the blocks to an older file without changing
 what any robot runs. Simulation and hardware choose the blocks in the same function,
 <code>fic::tuningKeyFor</code> in <code>fic_param_loader.hpp</code>.</p>
-<div class="admonition tip"><div class="adm-title">HAP-FIC moves on its own</div>
+<div class="admonition tip"><div class="adm-title">H-PMP moves on its own</div>
 <p>A ~1&nbsp;Hz swing of a few centimetres is the joint layer&rsquo;s damping being too low: with Kv 9.0 / 13.7 the
 loop closes a limit cycle. Raise <strong>Admittance &rarr; Damping</strong> on the joint layer (joint 4 on the Kinova is
 held by its InvM and needs nothing). The <code>hw_x2</code>&ndash;<code>hw_x6</code> profiles hold damping &times;2 to &times;6
@@ -383,7 +383,7 @@ for comparison; <code>sim</code> is &times;4 and
 <strong>not</strong> per-profile. Saving one applies to every Cartesian mode that runs that null-space helper,
 and the Planner/Admittance sections are hidden while they are selected (postural planner fields are persisted
 for round-tripping but not consumed at runtime). See <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>
-for when the helpers engage and <a href="#hapfic" onclick="showPage('hapfic')">HapFIC</a> for the hybrid helper that reuses
+for when the helpers engage and <a href="#hpmp" onclick="showPage('hpmp')">H-PMP</a> for the hybrid helper that reuses
 the joint parameter blocks.</p>
 
 <h2>Tuning Guidelines</h2>
@@ -524,7 +524,7 @@ See <a href="#config-xml" onclick="showPage('config-xml')">config.xml Reference<
 
   <!-- re-init triggers note -->
   <rect x="120" y="200" width="460" height="36" class="container"/>
-  <text x="350" y="218" class="label-sm">read triggers: robotN_param_update (SAVE TO XML) · profile change · mode / robot change · Hapfic toggle</text>
+  <text x="350" y="218" class="label-sm">read triggers: robotN_param_update (SAVE TO XML) · profile change · mode / robot change · H-PMP toggle</text>
 </svg>
 
 <p>The GUI writes the repository file <code>fic_library/config/config.xml</code>, but the controller reads the
@@ -535,7 +535,7 @@ save is immediately visible to the controller.</p>
 <p>Since v4.4.0 each node holds the whole tuning for the current robot and mode in memory (every joint,
 the Cartesian axes and, where needed, the postural block) and reads the file only:</p>
 <ul>
-  <li>when it needs a set it does not have &mdash; a new control mode, robot or joint count, or a Hapfic
+  <li>when it needs a set it does not have &mdash; a new control mode, robot or joint count, or a H-PMP
   toggle that changes the mode the parameters come from; until the set is read the loop sends no new
   command;</li>
   <li>when the tuning on disk changes &mdash; a <code>robot&lt;N&gt;_param_update</code> message (sent by

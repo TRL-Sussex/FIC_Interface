@@ -265,13 +265,15 @@ class MultiRobotMixin:
         ns_row.addWidget(elbow_cb)
         setattr(self, f'{robot_id}_elbow_toggle', elbow_cb)
 
-        hapfic_cb = QCheckBox("Hapfic")
-        hapfic_cb.setToolTip("Haptic FIC overlay for Cartesian modes (6–8).")
-        hapfic_cb.toggled.connect(
-            lambda c, wid=robot_id: self.node.publish_hapfic_enable(
+        hpmp_cb = QCheckBox("H-PMP")
+        hpmp_cb.setToolTip("H-PMP: the Cartesian modes (5-8) nested inside the joint HAP-FIC. "
+                             "On by default; off sends the Cartesian torques directly.")
+        hpmp_cb.setChecked(True)
+        hpmp_cb.toggled.connect(
+            lambda c, wid=robot_id: self.node.publish_hpmp_enable(
                 bool(c), self._card_topic_rid(wid)))
-        ns_row.addWidget(hapfic_cb)
-        setattr(self, f'{robot_id}_hapfic_toggle', hapfic_cb)
+        ns_row.addWidget(hpmp_cb)
+        setattr(self, f'{robot_id}_hpmp_toggle', hpmp_cb)
 
         ns_row.addStretch()
         grp_layout.addLayout(ns_row)
@@ -553,7 +555,7 @@ class MultiRobotMixin:
             (f'{robot_id}_stop_btn',       is_hw),
             (f'{robot_id}_postural_toggle', show_cart),
             (f'{robot_id}_elbow_toggle',    show_cart),
-            (f'{robot_id}_hapfic_toggle',   show_cart),
+            (f'{robot_id}_hpmp_toggle',   show_cart),
             (f'{robot_id}_nullspace_label', show_cart),
         ]:
             widget = getattr(self, attr, None)

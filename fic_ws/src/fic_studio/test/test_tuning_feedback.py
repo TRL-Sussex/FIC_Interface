@@ -107,11 +107,11 @@ def _make_stub_host(station_id=1, mode=1):
 
     host._get_current_mode = _get_current_mode
 
-    # HAP-FIC's layer selector, and the helper that says which set is being edited.
+    # H-PMP's layer selector, and the helper that says which set is being edited.
     ld = QComboBox()
     ld.addItem('Joint layer', 'joint')
     ld.addItem('Cartesian layer', 'cartesian')
-    host.hapfic_layer_dropdown = ld
+    host.hpmp_layer_dropdown = ld
 
     def _tuning_set():
         from fic_studio.mixins.tuning_mixin import TuningMixin

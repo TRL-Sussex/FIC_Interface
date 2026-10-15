@@ -1,11 +1,11 @@
-<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span><a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a><span class="bc-sep">&rsaquo;</span> Hapfic</div>
-<h1>Hapfic — Hybrid Cartesian+Joint Control</h1>
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span><a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a><span class="bc-sep">&rsaquo;</span> H-PMP</div>
+<h1>H-PMP — Hybrid Cartesian+Joint Control</h1>
 <p class="subtitle">A novel two-stage control architecture that combines Cartesian task-space planning with per-joint haptic admittance, enabling compliant teleoperation with Cartesian trajectory shaping.</p>
 
 <div class="admonition note"><div class="adm-title">Novel contribution</div>
-<p>Hapfic is one of the key algorithmic contributions of the FIC framework. It solves the fundamental tension in robot teleoperation: Cartesian planners give intuitive task-space control but are stiff; joint admittance gives compliance but lacks Cartesian trajectory shaping. Hapfic fuses both — the outer loop thinks in Cartesian space while the inner loop remains compliant at each joint.</p></div>
+<p>H-PMP is one of the key algorithmic contributions of the FIC framework. It solves the fundamental tension in robot teleoperation: Cartesian planners give intuitive task-space control but are stiff; joint admittance gives compliance but lacks Cartesian trajectory shaping. H-PMP fuses both — the outer loop thinks in Cartesian space while the inner loop remains compliant at each joint.</p></div>
 
-<h2>What problem does Hapfic solve?</h2>
+<h2>What problem does H-PMP solve?</h2>
 <p>In standard Cartesian control modes (5&ndash;8), the controller either:</p>
 <ul>
   <li><strong>Impedance (Mode 5):</strong> Directly maps Cartesian error to joint torques via the Jacobian transpose. Fast but no trajectory shaping.</li>
@@ -15,7 +15,7 @@
 <p>None of these modes give you <em>both</em> smooth Cartesian trajectory planning <em>and</em> per-joint compliant response to interaction forces. That combination is exactly what you need for safe, intuitive teleoperation — the operator commands in Cartesian space (natural), the trajectory is shaped smoothly (safe), and the robot yields compliantly at each joint when it contacts the environment (reactive).</p>
 
 <h2>Two-stage architecture</h2>
-<p>Hapfic achieves this through a two-stage pipeline (<code>cartesianHapfic()</code> in <code>fic_control.h</code>) executed every control cycle (1&nbsp;kHz):</p>
+<p>H-PMP achieves this through a two-stage pipeline (<code>cartesianHpmp()</code> in <code>fic_control.h</code>) executed every control cycle (1&nbsp;kHz):</p>
 
 <h3>Stage 1 — Cartesian planner + impedance (task space)</h3>
 <ol>
@@ -24,12 +24,12 @@
   <li><strong>Orientation wrench:</strong> Quaternion error between desired and current orientation is computed as <code>q_err = q_des * q_curr.conjugate()</code>. The scalar angle <code>&theta; = 2 * atan(||q_v|| / max(q_s, 1e-12))</code> feeds through a FIC controller (channel 19). The resulting torque is projected along the error axis with a sign correction for quaternion double-cover.</li>
   <li><strong>Joint torques:</strong> The full 6D wrench (3 forces + 3 torques) maps to joint torques via <code>&tau;<sub>des</sub> = J<sup>T</sup> * wrench + g(q)</code>.</li>
 </ol>
-<p>Note that Stage 1 never reads the end-effector force/torque sensor — the <code>wrench</code> argument passed into <code>cartesianHapfic()</code> is unused. All compliance comes from Stage 2's per-joint torque comparison.</p>
+<p>Note that Stage 1 never reads the end-effector force/torque sensor — the <code>wrench</code> argument passed into <code>cartesianHpmp()</code> is unused. All compliance comes from Stage 2's per-joint torque comparison.</p>
 
 <h3>Stage 2 — Per-joint haptic admittance (joint space)</h3>
 <ol>
   <li>Each joint receives <code>&tau;<sub>des</sub>[i]</code> from Stage 1 as its commanded effort.</li>
-  <li>The joint's haptic admittance controller (<code>handleJointAdmitanceControl</code> with mode 2, as in Mode 4 Joint Admittance Haptic) is driven by the interaction torque alone, <code>&tau;<sub>des</sub>[i] - &tau;<sub>measured</sub>[i]</code>, split into the part that pushes on the end-effector (deadband in task space) and the rest (per-joint deadband; see <em>Torque deadband</em> below), and produces an admittance offset <code>adm_delta</code>, bounded to the joint law's outer breakpoint <code>&plusmn;x<sub>b,n</sub></code>.</li>
+  <li>The joint's haptic admittance controller (<code>handleJointAdmitanceControl</code> with mode 2, as in Mode 4 Joint HAP-FIC) is driven by the interaction torque alone, <code>&tau;<sub>des</sub>[i] - &tau;<sub>measured</sub>[i]</code>, split into the part that pushes on the end-effector (deadband in task space) and the rest (per-joint deadband; see <em>Torque deadband</em> below), and produces an admittance offset <code>adm_delta</code>, bounded to the joint law's outer breakpoint <code>&plusmn;x<sub>b,n</sub></code>.</li>
   <li>The offset is added to the joint's base target, the <strong>IK-derived joint solution</strong> <code>q_target_ik[i]</code> (an iterative IK, Pinocchio, solves the Cartesian target into joint space whenever a new EE target arrives), limited to <code>&plusmn;x<sub>b,n</sub></code> (at least 0.1&nbsp;rad) about the joint's measured position, so the offset can cancel it: <code>q_ref[i] = limit(q_target_ik[i]) + adm_delta</code> (clamped to joint limits). A blocked end-effector therefore does not wind up the joint errors.</li>
   <li>The compliant target feeds the joint's FIC planner and then the joint impedance loop (<code>handleJointImpedanceControlWithPlanner</code>), and the node adds <code>g(q)</code>. On the MCU path the host applies the set-point limit.</li>
 </ol>
@@ -53,11 +53,11 @@
     .label-bold { font-family: "Source Sans 3", sans-serif; font-size: 12px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
     .label-title { font-family: "Source Sans 3", sans-serif; font-size: 14px; fill: #1a1a1a; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
     .label-code { font-family: "Source Code Pro", monospace; font-size: 9.5px; fill: #555; text-anchor: middle; dominant-baseline: central; }
-    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#hapfic-arrowhead); }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#hpmp-arrowhead); }
     .container { fill: none; stroke: #ccc; stroke-width: 1.5; rx: 12; ry: 12; stroke-dasharray: 6,3; }
   </style>
   <defs>
-    <marker id="hapfic-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+    <marker id="hpmp-arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
       <polygon points="0 0, 8 3, 0 6" fill="#666"/>
     </marker>
   </defs>
@@ -148,52 +148,52 @@
 </svg>
 
 <h2>FIC channel layout</h2>
-<p>Hapfic uses dedicated FIC controller channels to avoid collisions with the standard joint and null-space controllers:</p>
+<p>H-PMP uses dedicated FIC controller channels to avoid collisions with the standard joint and null-space controllers:</p>
 <table>
   <tr><th>Channels</th><th>Owner</th><th>Purpose</th></tr>
-  <tr><td><code>0 .. n_j-1</code></td><td>Joint controllers</td><td>Hapfic inner loop (Stage 2) — per-joint admittance + planner + impedance</td></tr>
-  <tr><td><code>6 .. 8</code></td><td>Elbow null-space (standard Cartesian modes)</td><td>Not used under Hapfic: Hapfic moves the elbow to its own channels 20..22</td></tr>
-  <tr><td><code>9 .. 9+n_j-1</code></td><td>Postural null-space</td><td>Independent — can run alongside Hapfic</td></tr>
-  <tr><td><code>16 .. 18</code></td><td><strong>Hapfic Cartesian (XYZ)</strong></td><td>Stage 1 — planner + impedance for translation</td></tr>
-  <tr><td><code>19</code></td><td><strong>Hapfic Cartesian (rot)</strong></td><td>Stage 1 — impedance for orientation (scalar angle)</td></tr>
-  <tr><td><code>20 .. 22</code></td><td><strong>Elbow null-space (under Hapfic)</strong></td><td>Elbow helper X/Y/Z, initialised by <code>initHapficCartesian()</code></td></tr>
+  <tr><td><code>0 .. n_j-1</code></td><td>Joint controllers</td><td>H-PMP inner loop (Stage 2) — per-joint admittance + planner + impedance</td></tr>
+  <tr><td><code>6 .. 8</code></td><td>Elbow null-space (standard Cartesian modes)</td><td>Not used under H-PMP: H-PMP moves the elbow to its own channels 20..22</td></tr>
+  <tr><td><code>9 .. 9+n_j-1</code></td><td>Postural null-space</td><td>Independent — can run alongside H-PMP</td></tr>
+  <tr><td><code>16 .. 18</code></td><td><strong>H-PMP Cartesian (XYZ)</strong></td><td>Stage 1 — planner + impedance for translation</td></tr>
+  <tr><td><code>19</code></td><td><strong>H-PMP Cartesian (rot)</strong></td><td>Stage 1 — impedance for orientation (scalar angle)</td></tr>
+  <tr><td><code>20 .. 22</code></td><td><strong>Elbow null-space (under H-PMP)</strong></td><td>Elbow helper X/Y/Z, initialised by <code>initHpmpCartesian()</code></td></tr>
 </table>
-<p>The offset of 16 is set by <code>hapfic_cart_planner_offset_</code> and ensures that Hapfic's Cartesian channels never overlap with joint controllers (0..6 for a 7-DOF robot), elbow (6..8 in the standard Cartesian modes), or postural (9..15). The FIC instance has 23 channels.</p>
+<p>The offset of 16 is set by <code>hpmp_cart_planner_offset_</code> and ensures that H-PMP's Cartesian channels never overlap with joint controllers (0..6 for a 7-DOF robot), elbow (6..8 in the standard Cartesian modes), or postural (9..15). The FIC instance has 23 channels.</p>
 
-<div class="admonition note"><div class="adm-title">The elbow has its own channels under Hapfic</div>
-<p>In the standard Cartesian modes the elbow helper's FIC controllers use channels 6..8. Under Hapfic, Stage 2 runs joint channels <code>0..n_j-1</code>, which on a 7-DOF robot (Franka FR3, Kinova Gen3) include 6, so <code>initHapficCartesian()</code> initialises the elbow at channels 20..22 (<code>hapfic_cart_planner_offset_ + 4</code>) and both nodes pass <code>fic_ctrl_.elbowOffset()</code> to <code>applyElbowControl</code>. Earlier versions shared channel 6 between joint 6 and elbow X and never initialised the elbow under Hapfic.</p></div>
+<div class="admonition note"><div class="adm-title">The elbow has its own channels under H-PMP</div>
+<p>In the standard Cartesian modes the elbow helper's FIC controllers use channels 6..8. Under H-PMP, Stage 2 runs joint channels <code>0..n_j-1</code>, which on a 7-DOF robot (Franka FR3, Kinova Gen3) include 6, so <code>initHpmpCartesian()</code> initialises the elbow at channels 20..22 (<code>hpmp_cart_planner_offset_ + 4</code>) and both nodes pass <code>fic_ctrl_.elbowOffset()</code> to <code>applyElbowControl</code>. Earlier versions shared channel 6 between joint 6 and elbow X and never initialised the elbow under H-PMP.</p></div>
 
 <h2>Initialization</h2>
-<p>When the Hapfic toggle changes, the enable callback sets <code>initControllerPLanner = false</code>, forcing a full controller re-initialization on the next control cycle; a message repeating the current value is ignored. Initialization is gated on <code>hapfic_enabled_ &amp;&amp; (mode == 6 || mode == 7 || mode == 8)</code> and uses:</p>
+<p>When the H-PMP toggle changes, the enable callback sets <code>initControllerPLanner = false</code>, forcing a full controller re-initialization on the next control cycle; a message repeating the current value is ignored. Initialization is gated on <code>fic::hpmpActive(mode, hpmp_enabled_)</code> (Modes 5&ndash;8) and uses:</p>
 <table>
   <tr><th>Component</th><th>Parameter source</th><th>Rationale</th></tr>
-  <tr><td>Joint controllers (0..n_j-1)</td><td><strong>HAP-FIC block</strong>, joint layer (<code>&lt;joint&gt;</code>)</td><td>The inner loop runs joint haptic admittance — these parameters set its controller, planner, and admittance blocks</td></tr>
-  <tr><td>Cartesian planner+impedance (16..19)</td><td><strong>HAP-FIC block</strong>, Cartesian layer (<code>&lt;cartesian&gt;</code>)</td><td>Stage 1 needs the Cartesian planner's acceleration limits and the impedance stiffness curve</td></tr>
+  <tr><td>Joint controllers (0..n_j-1)</td><td><strong>H-PMP block</strong>, joint layer (<code>&lt;joint&gt;</code>)</td><td>The inner loop runs joint haptic admittance — these parameters set its controller, planner, and admittance blocks</td></tr>
+  <tr><td>Cartesian planner+impedance (16..19)</td><td><strong>H-PMP block</strong>, Cartesian layer (<code>&lt;cartesian&gt;</code>)</td><td>Stage 1 needs the Cartesian planner's acceleration limits and the impedance stiffness curve</td></tr>
 </table>
-<p>The HAP-FIC block is <code>&lt;mode id="100" name="HAP-FIC"&gt;</code> in <code>config.xml</code> (100 is not a control mode). A robot without one runs Hapfic on Mode 4's joints and Mode 6's Cartesian block, and the node logs which tuning Hapfic is on.</p>
-<p>Since v4.4.0 the parameters are not read at this point. The control loop asks for the tuning set <code>fic::tuningKeyFor</code> gives for the mode (<code>fic::TuningKey</code>): with Hapfic on in Modes 6&ndash;8 both layers are keyed to the HAP-FIC block, so toggling Hapfic changes the key and the set is read once in the background (<code>fic::loadTuningSet</code>), with the robot's <code>&lt;postural&gt;</code> block in the same read, and the loop sends no new command until it is in memory. Toggling back to a key already read reads it again. See <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a>.</p>
+<p>The H-PMP block is <code>&lt;mode id="100" name="H-PMP"&gt;</code> in <code>config.xml</code> (100 is not a control mode). A robot without one runs H-PMP on Mode 4's joints and Mode 6's Cartesian block, and the node logs which tuning H-PMP is on.</p>
+<p>Since v4.4.0 the parameters are not read at this point. The control loop asks for the tuning set <code>fic::tuningKeyFor</code> gives for the mode (<code>fic::TuningKey</code>): with H-PMP on in Modes 5&ndash;8 both layers are keyed to the H-PMP block, so toggling H-PMP changes the key and the set is read once in the background (<code>fic::loadTuningSet</code>), with the robot's <code>&lt;postural&gt;</code> block in the same read, and the loop sends no new command until it is in memory. Toggling back to a key already read reads it again. See <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a>.</p>
 <p>Initialization code path (identical structure in <code>fic_simulation.cpp</code> and <code>fic_hardware.cpp</code>):</p>
-<pre><code>// Tuning set for this mode (Hapfic on: both layers from the HAP-FIC block, mode 100),
+<pre><code>// Tuning set for this mode (H-PMP on: both layers from the H-PMP block, mode 100),
 // read off the control thread; nothing runs until it is in memory
-const fic::TuningKey tuning_want = fic::tuningKeyFor(robot, n_j, mode, hapfic_enabled);
+const fic::TuningKey tuning_want = fic::tuningKeyFor(robot, n_j, mode, hpmp_enabled);
 if (!refreshTuning(tuning_want, active_profile)) return;
 
 // Init joint controllers, planners, and admittance at channels 0..n_j-1
 initJointControllers(n_j, q_current, joint_scalars_, ...);
 
-// Init Hapfic Cartesian at channels 16..19, and the elbow helper at 20..22
-fic_ctrl_.initHapficCartesian(cart_params_, ee_curr_vec);
+// Init H-PMP Cartesian at channels 16..19, and the elbow helper at 20..22
+fic_ctrl_.initHpmpCartesian(cart_params_, ee_curr_vec);
 
 // Postural helper at channels 9..9+n_j-1, from the robot's &lt;postural&gt; block
 fic_ctrl_.postural.init(n_j, postural_scalars_, postural_lists_);</code></pre>
 
 <h2>Compatible modes</h2>
-<p>Hapfic engages on Cartesian modes 6, 7, and 8. When active, it <em>replaces</em> the standard Cartesian control law with the two-stage pipeline:</p>
+<p>H-PMP engages on the Cartesian modes 5, 6, 7 and 8, and is on by default in the Studio (the toggle turns it off, sending the Cartesian torques directly). When active, it <em>replaces</em> the standard Cartesian control law with the two-stage pipeline:</p>
 <table>
-  <tr><th>Base mode</th><th>Without Hapfic</th><th>With Hapfic</th></tr>
-  <tr><td>6 — Cartesian Planner</td><td><code>RC.planner()</code></td><td><code>RC.hapfic()</code></td></tr>
-  <tr><td>7 — Cartesian Admittance</td><td><code>RC.admittance(m=1)</code></td><td><code>RC.hapfic()</code></td></tr>
-  <tr><td>8 — Cartesian Admittance Haptic</td><td><code>RC.admittance(m=2)</code></td><td><code>RC.hapfic()</code></td></tr>
+  <tr><th>Base mode</th><th>Without H-PMP</th><th>With H-PMP</th></tr>
+  <tr><td>6 — Cartesian Impedance with Planner</td><td><code>RC.planner()</code></td><td><code>RC.hpmp()</code></td></tr>
+  <tr><td>7 — Cartesian Admittance</td><td><code>RC.admittance(m=1)</code></td><td><code>RC.hpmp()</code></td></tr>
+  <tr><td>8 — Cartesian HAP-FIC</td><td><code>RC.admittance(m=2)</code></td><td><code>RC.hpmp()</code></td></tr>
 </table>
 <p>The base mode decides what happens to the Cartesian goal before Stage 1 (since v5.3.0); the joint layer is the same on all three:</p>
 <table>
@@ -202,11 +202,11 @@ fic_ctrl_.postural.init(n_j, postural_scalars_, postural_lists_);</code></pre>
   <tr><td>7 (M1)</td><td>the joints yield and the goal follows the push, up to &plusmn;30&nbsp;cm / &plusmn;30&deg;</td><td>the goal stays where the push left it: the arm holds its new pose (whole-arm hand-guiding)</td></tr>
   <tr><td>8 (M2)</td><td>the joints yield and the goal gives way up to &plusmn;5&nbsp;cm / &plusmn;5&deg;; beyond that the Cartesian law resists</td><td>the goal stays at its shifted position and the arm settles there</td></tr>
 </table>
-<p>On modes 7 and 8 this is the host mode's own task-space admittance (<code>hapficTaskAdmittance</code>, step for step the one of <code>RC.admittance()</code>), driven by the estimated external wrench alone with the 4&nbsp;N / 0.2&nbsp;N&middot;m deadbands, but on Hapfic's own integrators (the admittance blocks of channels 16&ndash;21) and state, with the admittance parameters of the HAP-FIC block's Cartesian layer. The IK set-point follows the shifted goal to first order, <code>q_ik + J<sup>#</sup>&nbsp;&Delta;x</code> (damped pseudo-inverse, &lambda;&nbsp;=&nbsp;0.01), also on the <a href="#mcu-inner-loop" onclick="showPage('mcu-inner-loop')">inner-loop MCU</a> path. On the robot the wrench is the joint-torque estimate <code>pinv(J<sup>T</sup>)(&tau;&#770; &minus; g)</code>; in simulation it comes from the joint torques MuJoCo's contacts apply (<code>contact_torques</code>), because there the measured torque is the controller's own command and the estimate would read the arm's own effort as a push.</p>
+<p>On modes 7 and 8 this is the host mode's own task-space admittance (<code>hpmpTaskAdmittance</code>, step for step the one of <code>RC.admittance()</code>), driven by the estimated external wrench alone with the 4&nbsp;N / 0.2&nbsp;N&middot;m deadbands, but on H-PMP's own integrators (the admittance blocks of channels 16&ndash;21) and state, with the admittance parameters of the H-PMP block's Cartesian layer. The IK set-point follows the shifted goal to first order, <code>q_ik + J<sup>#</sup>&nbsp;&Delta;x</code> (damped pseudo-inverse, &lambda;&nbsp;=&nbsp;0.01), also on the <a href="#mcu-inner-loop" onclick="showPage('mcu-inner-loop')">inner-loop MCU</a> path. On the robot the wrench is the joint-torque estimate <code>pinv(J<sup>T</sup>)(&tau;&#770; &minus; g)</code>; in simulation it comes from the joint torques MuJoCo's contacts apply (<code>contact_torques</code>), because there the measured torque is the controller's own command and the estimate would read the arm's own effort as a push.</p>
 <p>The Stage 2 admittance always runs in haptic mode (<code>m=2</code>, as Mode 4): the offset is driven by the gap <code>&tau;<sub>des</sub> &minus; &tau;<sub>meas</sub></code> alone and bounded to <code>&plusmn;x<sub>b,n</sub></code>; it has no spring of its own.</p>
 
 <div class="admonition warning"><div class="adm-title">Mode 5 (Cartesian Impedance)</div>
-<p>Mode 5 does not activate Hapfic in the execution path, though the toggle is visible on all Cartesian modes (5&ndash;8). The init and execution checks gate on modes 6, 7, and 8. Mode 5 uses direct impedance with no planner — Hapfic's Stage 1 planner would conflict with the pure impedance paradigm.</p></div>
+<p>On Mode 5 the task layer skips its planner: its law acts on the goal itself, as Cartesian impedance does, and the joint layer is the same as on Modes 6&ndash;8.</p></div>
 
 <h2>Orientation math</h2>
 <p>The orientation error computation deserves special attention as it handles the quaternion double-cover problem:</p>
@@ -220,7 +220,7 @@ double vnorm = q_v.norm();
 double theta = 2.0 * std::atan(vnorm / std::max(q_s, 1e-12));
 
 // FIC controller (channel 19) produces torque magnitude from angle error
-double tau_cq = fic.control(hapfic_cart_planner_offset_ + 3, theta);
+double tau_cq = fic.control(hpmp_cart_planner_offset_ + 3, theta);
 
 // Project torque along rotation axis, with sign correction for double-cover
 vnorm = std::max(vnorm, 1e-12);   // guard against zero-error division
@@ -230,13 +230,13 @@ Eigen::Vector3d ori_torque = (q_s >= 0.0 ? 1.0 : -1.0) * tau_cq * (q_v / vnorm);
 <h2>Interaction with null-space helpers</h2>
 <table>
   <tr><th>Helper</th><th>Compatible?</th><th>Notes</th></tr>
-  <tr><td>Postural</td><td>Yes</td><td>Applied after the Hapfic call in the control loop, at channels 9..9+n_j-1 (no overlap with Hapfic's channels). The Hapfic init branch loads the robot's <code>&lt;postural&gt;</code> block and initialises these channels, in both <code>fic_simulation</code> and <code>fic_hardware</code>.</td></tr>
-  <tr><td>Elbow</td><td>Yes</td><td>Runs on its own channels 20..22 under Hapfic, initialised by the Hapfic init branch (see the channel layout above).</td></tr>
-  <tr><td>Admittance Planner</td><td>N/A</td><td>Only applies to joint admittance modes (3 &amp; 4); the toggle is hidden in Cartesian modes. Hapfic has its own internal planner.</td></tr>
+  <tr><td>Postural</td><td>Yes</td><td>Applied after the H-PMP call in the control loop, at channels 9..9+n_j-1 (no overlap with H-PMP's channels). The H-PMP init branch loads the robot's <code>&lt;postural&gt;</code> block and initialises these channels, in both <code>fic_simulation</code> and <code>fic_hardware</code>.</td></tr>
+  <tr><td>Elbow</td><td>Yes</td><td>Runs on its own channels 20..22 under H-PMP, initialised by the H-PMP init branch (see the channel layout above).</td></tr>
+  <tr><td>Admittance Planner</td><td>N/A</td><td>Only applies to joint admittance modes (3 &amp; 4); the toggle is hidden in Cartesian modes. H-PMP has its own internal planner.</td></tr>
 </table>
 
 <h2>Telemetry output</h2>
-<p>Both controller nodes publish the trajectory diagnostics on <code>{robot_id}_trajectory_data</code> (<code>std_msgs/Float64MultiArray</code>). The message begins with a per-joint block of 8 arrays of length <code>n_j</code>; the Cartesian diagnostic block starts at <code>base = n_j * 8</code>. Hapfic writes the fields from <code>base + 3</code> onward (slots <code>base + 0..2</code> belong to the standard admittance path):</p>
+<p>Both controller nodes publish the trajectory diagnostics on <code>{robot_id}_trajectory_data</code> (<code>std_msgs/Float64MultiArray</code>). The message begins with a per-joint block of 8 arrays of length <code>n_j</code>; the Cartesian diagnostic block starts at <code>base = n_j * 8</code>. H-PMP writes the fields from <code>base + 3</code> onward (slots <code>base + 0..2</code> belong to the standard admittance path):</p>
 <table>
   <tr><th>Index (base = n_j &times; 8)</th><th>Data</th><th>Description</th></tr>
   <tr><td>base + 3..5</td><td><code>curr_pos</code></td><td>Current EE position (X, Y, Z)</td></tr>
@@ -247,43 +247,43 @@ Eigen::Vector3d ori_torque = (q_s >= 0.0 ? 1.0 : -1.0) * tau_cq * (q_v / vnorm);
 </table>
 <p>Stage 2 also fills the standard per-joint diagnostic slots: <code>i + 5*n_j</code> = compliant joint target <code>q_ref[i]</code>, <code>i + 6*n_j</code> = desired effort <code>&tau;<sub>des</sub>[i]</code>, <code>i + 7*n_j</code> = measured effort. These fields are available in the plotter for real-time visualization of the Cartesian planning trajectory vs. actual EE position.</p>
 
-<h2>Enabling Hapfic</h2>
+<h2>Enabling H-PMP</h2>
 
 <h3>Via the GUI</h3>
 <ol>
   <li>Select a Cartesian control mode (6, 7, or 8) from the mode dropdown (see the table above for how they differ).</li>
-  <li>In the <strong>Null-space</strong> row below the mode selector, check the <strong>Hapfic</strong> checkbox.</li>
-  <li>The controller will re-initialize on the next control cycle with the Hapfic two-stage pipeline (watch for <code>Hapfic ENABLED</code> in the controller log).</li>
+  <li>In the <strong>Null-space</strong> row below the mode selector, check the <strong>H-PMP</strong> checkbox.</li>
+  <li>The controller will re-initialize on the next control cycle with the H-PMP two-stage pipeline (watch for <code>H-PMP ENABLED</code> in the controller log).</li>
 </ol>
-<p>The Hapfic checkbox is only visible when a Cartesian mode (5&ndash;8) is active. While enabled, the <a href="#dashboard" onclick="showPage('dashboard')">Dashboard</a> shows a <code>HAP</code> badge in the active-modifiers indicator.</p>
+<p>The H-PMP checkbox is only visible when a Cartesian mode (5&ndash;8) is active. While enabled, the <a href="#dashboard" onclick="showPage('dashboard')">Dashboard</a> shows a <code>HAP</code> badge in the active-modifiers indicator.</p>
 
 <h3>Via ROS 2 topics</h3>
 <table>
   <tr><th>Topic</th><th>Type</th><th>Description</th></tr>
-  <tr><td><code>{robot_id}_hapfic_enable</code></td><td><code>std_msgs/Bool</code></td><td>Toggle Hapfic on/off for the specified robot</td></tr>
+  <tr><td><code>{robot_id}_hpmp_enable</code></td><td><code>std_msgs/Bool</code></td><td>Toggle H-PMP on/off for the specified robot</td></tr>
   <tr><td><code>{robot_id}_desired_wrench</code></td><td><code>geometry_msgs/Wrench</code></td><td>Desired wrench of the host's task-space admittance (modes 7/8): the task goal moves until the measured wrench equals it. Zero at start-up; see <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>.</td></tr>
 </table>
-<pre><code># Enable Hapfic for robot1
-ros2 topic pub --once /robot1_hapfic_enable std_msgs/msg/Bool "data: true"
+<pre><code># Enable H-PMP for robot1
+ros2 topic pub --once /robot1_hpmp_enable std_msgs/msg/Bool "data: true"
 
 # Disable
-ros2 topic pub --once /robot1_hapfic_enable std_msgs/msg/Bool "data: false"</code></pre>
+ros2 topic pub --once /robot1_hpmp_enable std_msgs/msg/Bool "data: false"</code></pre>
 
 <h3>Via the Script API</h3>
-<p>The <a href="#script-editor" onclick="showPage('script-editor')">Script Editor</a> exposes Hapfic under the <code>robot.mode</code> sub-API (there is no flat alias):</p>
+<p>The <a href="#script-editor" onclick="showPage('script-editor')">Script Editor</a> exposes H-PMP under the <code>robot.mode</code> sub-API (there is no flat alias):</p>
 <pre><code># In the FIC Studio script editor
-robot.mode.hapfic(True)    # enable
-robot.mode.hapfic(False)   # disable
+robot.mode.hpmp(True)    # enable
+robot.mode.hpmp(False)   # disable
 
 # On host mode 7 or 8: press with 10 N along x where the arm meets a surface
 robot.mode.desired_wrench(force=(10, 0, 0))
 robot.mode.desired_wrench()   # back to zero: plain compliance</code></pre>
 
-<h2>Tuning Hapfic</h2>
-<p>Hapfic tuning involves two independent parameter sets in the HAP-FIC block of <a href="#config-xml" onclick="showPage('config-xml')"><code>config.xml</code></a> (<code>&lt;mode id="100" name="HAP-FIC"&gt;</code>), plus the per-robot deadband in <code>robots_config.yaml</code>:</p>
+<h2>Tuning H-PMP</h2>
+<p>H-PMP tuning involves two independent parameter sets in the H-PMP block of <a href="#config-xml" onclick="showPage('config-xml')"><code>config.xml</code></a> (<code>&lt;mode id="100" name="H-PMP"&gt;</code>), plus the per-robot deadband in <code>robots_config.yaml</code>:</p>
 
 <h3>Cartesian parameters (Stage 1)</h3>
-<p>Loaded from the HAP-FIC block's <strong>Cartesian layer</strong> (<code>&lt;cartesian&gt;</code>; Mode 6 on a robot without a HAP-FIC block) — axes <code>&lt;x&gt;</code>, <code>&lt;y&gt;</code>, <code>&lt;z&gt;</code> for translation and <code>&lt;q&gt;</code> for the orientation channel. Key elements:</p>
+<p>Loaded from the H-PMP block's <strong>Cartesian layer</strong> (<code>&lt;cartesian&gt;</code>; Mode 6 on a robot without a H-PMP block) — axes <code>&lt;x&gt;</code>, <code>&lt;y&gt;</code>, <code>&lt;z&gt;</code> for translation and <code>&lt;q&gt;</code> for the orientation channel. Key elements:</p>
 <table class="param-table">
   <tr><th>Element</th><th>Effect</th></tr>
   <tr><td><code>&lt;controller&gt;&lt;stiffness&gt;</code> (x/y/z)</td><td>Cartesian stiffness — how strongly the EE tracks the planned position. Higher = stiffer tracking.</td></tr>
@@ -294,7 +294,7 @@ robot.mode.desired_wrench()   # back to zero: plain compliance</code></pre>
 </table>
 
 <h3>Joint parameters (Stage 2)</h3>
-<p>Loaded from the HAP-FIC block's <strong>joint layer</strong> (<code>&lt;joint&gt;</code>; Mode 4 on a robot without a HAP-FIC block), per joint. Key elements:</p>
+<p>Loaded from the H-PMP block's <strong>joint layer</strong> (<code>&lt;joint&gt;</code>; Mode 4 on a robot without a H-PMP block), per joint. Key elements:</p>
 <table class="param-table">
   <tr><th>Element</th><th>Effect</th></tr>
   <tr><td><code>&lt;controller&gt;&lt;stiffness&gt;</code></td><td>Joint impedance stiffness — inner loop position tracking per joint.</td></tr>
@@ -302,8 +302,8 @@ robot.mode.desired_wrench()   # back to zero: plain compliance</code></pre>
   <tr><td><code>&lt;admittance&gt;&lt;Flow&gt;</code>, <code>&lt;dFlow&gt;</code>, <code>&lt;Pose&gt;</code></td><td>Velocity, acceleration, and displacement limits on the admittance state.</td></tr>
 </table>
 
-<div class="admonition note"><div class="adm-title">Kinova Gen3: HAP-FIC profiles</div>
-<p>With Mode 4's admittance damping (9.0 / 13.7) the KinovaGen3_7DOF Hapfic loop settles into a ~1&nbsp;Hz oscillation. Its <code>default</code> HAP-FIC joint layer therefore has the admittance <code>Damping</code> at six times Mode 4's (54.0 / 82.2 / 54.0 / 96.9 / 54.0 / 54.0 / 54.0; the fourth joint keeps 96.9). The other profiles hold a HAP-FIC block only, so every other mode falls back to <code>default</code>:</p>
+<div class="admonition note"><div class="adm-title">Kinova Gen3: H-PMP profiles</div>
+<p>With Mode 4's admittance damping (9.0 / 13.7) the KinovaGen3_7DOF H-PMP loop settles into a ~1&nbsp;Hz oscillation. Its <code>default</code> H-PMP joint layer therefore has the admittance <code>Damping</code> at six times Mode 4's (54.0 / 82.2 / 54.0 / 96.9 / 54.0 / 54.0 / 54.0; the fourth joint keeps 96.9). The other profiles hold a H-PMP block only, so every other mode falls back to <code>default</code>:</p>
 <ul>
   <li><code>sim</code>: damping four times Mode 4's (36.0 / 54.8 / 36.0 / 96.9 / 36.0 / 36.0 / 36.0).</li>
   <li><code>hw_x2</code>, <code>hw_x3</code>, <code>hw_x4</code>, <code>hw_x6</code>: two to six times.</li>
@@ -318,7 +318,7 @@ robot.mode.desired_wrench()   # back to zero: plain compliance</code></pre>
   joint_tau: 1.5     # Nm — minimum |τ_des − τ_meas| before a joint yields
   cart_force: 4.0    # N  — Cartesian deadband (standard admittance modes)
   cart_torque: 0.2   # Nm</code></pre>
-<p>Under Hapfic the joint deadband has hysteresis: a joint starts yielding when its gap reaches <code>joint_tau</code> and keeps yielding until the gap is below a quarter of it (0.5&nbsp;N&middot;m with the Kinova's 2.0), so a held contact ends within <code>joint_tau/4</code> of the desired torque, while a bias below <code>joint_tau</code> is still ignored at rest. Too low a <code>joint_tau</code> makes the joints integrate torque-model bias and drift; too high makes the robot feel numb to light contact.</p>
+<p>Under H-PMP the joint deadband has hysteresis: a joint starts yielding when its gap reaches <code>joint_tau</code> and keeps yielding until the gap is below a quarter of it (0.5&nbsp;N&middot;m with the Kinova's 2.0), so a held contact ends within <code>joint_tau/4</code> of the desired torque, while a bias below <code>joint_tau</code> is still ignored at rest. Too low a <code>joint_tau</code> makes the joints integrate torque-model bias and drift; too high makes the robot feel numb to light contact.</p>
 <p><strong>Split drive (v5.4.0).</strong> The gap vector <code>u = &tau;<sub>des</sub> &minus; &tau;<sub>meas</sub></code> is split into
 the part that produces an end-effector wrench, <code>J<sup>T</sup>w</code> with <code>w = pinv(J<sup>T</sup>)&nbsp;u</code>, and the rest.
 The first passes a deadband in task space on <code>w</code> (force and torque magnitudes, same hysteresis: engaged at the
@@ -329,27 +329,27 @@ on the robot, <code>cart_force</code> / <code>cart_torque</code> above (wide eno
 path keeps the per-joint deadband.</p>
 
 <div class="admonition tip"><div class="adm-title">Tuning strategy</div>
-<p>Start with the HAP-FIC block's <code>default</code> joint and Cartesian layers. To make the robot more compliant, raise the admittance <code>InvM</code> or lower <code>Damping</code> in the joint layer. To make Cartesian tracking tighter, raise the controller <code>stiffness</code>/<code>force_max</code> in the Cartesian layer. The Cartesian planner's <code>damping_ratio</code> and <code>acc_max</code> control how smoothly the EE transitions between targets — critical for teleoperation feel. Edit values live from the <a href="#tuning" onclick="showPage('tuning')">Tuning</a> page (select <strong>HAP-FIC</strong> at the end of the Mode list, then the Joint layer or the Cartesian layer).</p></div>
+<p>Start with the H-PMP block's <code>default</code> joint and Cartesian layers. To make the robot more compliant, raise the admittance <code>InvM</code> or lower <code>Damping</code> in the joint layer. To make Cartesian tracking tighter, raise the controller <code>stiffness</code>/<code>force_max</code> in the Cartesian layer. The Cartesian planner's <code>damping_ratio</code> and <code>acc_max</code> control how smoothly the EE transitions between targets — critical for teleoperation feel. Edit values live from the <a href="#tuning" onclick="showPage('tuning')">Tuning</a> page (select <strong>H-PMP</strong> at the end of the Mode list, then the Joint layer or the Cartesian layer).</p></div>
 
 <h2>Implementation files</h2>
 <table>
   <tr><th>File</th><th>Content</th></tr>
-  <tr><td><code>fic_library/include/fic/fic_control.h</code></td><td><code>cartesianHapfic()</code> — the core two-stage algorithm; <code>initHapficCartesian()</code> — channel 16..19 init; <code>RC.hapfic()</code> — public API wrapper; <code>hapfic_cart_planner_offset_</code></td></tr>
-  <tr><td><code>fic_ws/src/fic_simulation/src/fic_simulation.cpp</code></td><td>Hapfic init branch (mode detection, param loading) and execution (replaces standard Cartesian call)</td></tr>
+  <tr><td><code>fic_library/include/fic/fic_control.h</code></td><td><code>cartesianHpmp()</code> — the core two-stage algorithm; <code>initHpmpCartesian()</code> — channel 16..19 init; <code>RC.hpmp()</code> — public API wrapper; <code>hpmp_cart_planner_offset_</code></td></tr>
+  <tr><td><code>fic_ws/src/fic_simulation/src/fic_simulation.cpp</code></td><td>H-PMP init branch (mode detection, param loading) and execution (replaces standard Cartesian call)</td></tr>
   <tr><td><code>fic_ws/src/fic_hardware/src/fic_hardware.cpp</code></td><td>Same init+execution logic for real hardware</td></tr>
-  <tr><td><code>fic_ws/src/fic_simulation/include/fic_simulation/fic_simulation.h</code></td><td><code>hapfic_enabled_</code> flag, ROS subscriber, callback declaration</td></tr>
+  <tr><td><code>fic_ws/src/fic_simulation/include/fic_simulation/fic_simulation.h</code></td><td><code>hpmp_enabled_</code> flag, ROS subscriber, callback declaration</td></tr>
   <tr><td><code>fic_ws/src/fic_studio/fic_studio/mixins/robot_control_mixin.py</code></td><td>GUI checkbox, visibility gating, ROS publish</td></tr>
-  <tr><td><code>fic_ws/src/fic_studio/fic_studio/ros_node.py</code></td><td><code>publish_hapfic_enable()</code> — ROS publisher</td></tr>
-  <tr><td><code>Extensions/script_editor/robot_api.py</code></td><td><code>ModeAPI.hapfic()</code> — script API wrapper</td></tr>
+  <tr><td><code>fic_ws/src/fic_studio/fic_studio/ros_node.py</code></td><td><code>publish_hpmp_enable()</code> — ROS publisher</td></tr>
+  <tr><td><code>Extensions/script_editor/robot_api.py</code></td><td><code>ModeAPI.hpmp()</code> — script API wrapper</td></tr>
 </table>
 
 <h2>Use cases</h2>
 <table>
-  <tr><th>Scenario</th><th>Why Hapfic?</th></tr>
+  <tr><th>Scenario</th><th>Why H-PMP?</th></tr>
   <tr><td>Teleoperation with contact</td><td>Operator commands Cartesian targets (intuitive); robot yields at joints on contact (safe). Best of both worlds.</td></tr>
-  <tr><td>Collaborative manipulation</td><td>Human and robot share the task space. Hapfic lets the robot follow a Cartesian plan while remaining responsive to the human's forces at every joint.</td></tr>
+  <tr><td>Collaborative manipulation</td><td>Human and robot share the task space. H-PMP lets the robot follow a Cartesian plan while remaining responsive to the human's forces at every joint.</td></tr>
   <tr><td>Haptic device teleoperation</td><td>Haptic device sends Cartesian targets. The Cartesian planner smooths jerky human input. Per-joint admittance provides natural compliance when the remote robot contacts objects.</td></tr>
-  <tr><td>VR teleoperation</td><td>VR controller poses map to Cartesian targets. Hapfic provides the compliance layer that makes VR teleop safe around obstacles and people.</td></tr>
+  <tr><td>VR teleoperation</td><td>VR controller poses map to Cartesian targets. H-PMP provides the compliance layer that makes VR teleop safe around obstacles and people.</td></tr>
 </table>
 
 <div class="doc-footer">

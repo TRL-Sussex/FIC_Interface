@@ -70,7 +70,7 @@ class _GatingHost(RobotControlMixin):
         self._rc_pose_row = QWidget()
         self._rc_postural_toggle = QWidget()
         self._rc_elbow_toggle = QWidget()
-        self._rc_hapfic_toggle = QWidget()
+        self._rc_hpmp_toggle = QWidget()
         self._rc_nullspace_label = QWidget()
         self._rc_admittance_planner_toggle = QWidget()
         self.control_target = 'simulation'

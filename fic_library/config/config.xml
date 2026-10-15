@@ -87,7 +87,7 @@
                 </controller>
             </joint>
         </mode>
-        <mode id="2" name="Joint Impedance With Planner" profile="default">
+        <mode id="2" name="Joint Impedance with Planner" profile="default">
             <joint id="0">
                 <controller>
                     <stiffness>200.000</stiffness>
@@ -410,7 +410,7 @@
                 </admittance>
             </joint>
         </mode>
-        <mode id="4" name="Joint Admittance Haptic" profile="default">
+        <mode id="4" name="Joint HAP-FIC" profile="default">
             <joint id="0">
                 <controller>
                     <stiffness>200.000</stiffness>
@@ -646,7 +646,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="6" name="Cartesian Planner" profile="default">
+        <mode id="6" name="Cartesian Impedance with Planner" profile="default">
             <cartesian>
                 <x>
                     <controller>
@@ -834,7 +834,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="8" name="Cartesian Admittance Haptic" profile="default">
+        <mode id="8" name="Cartesian HAP-FIC" profile="default">
             <cartesian>
                 <x>
                     <controller>
@@ -942,7 +942,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="100" name="HAP-FIC" profile="default">
+        <mode id="100" name="H-PMP" profile="default">
             <joint id="0">
                 <controller>
                     <stiffness>200.000</stiffness>
@@ -1046,7 +1046,7 @@
                     <frequency>150.0</frequency>
                 </planner>
                 <admittance>
-                    <InvM>0.000003</InvM>
+                    <InvM>0.100000</InvM>
                     <Damping>96.9</Damping>
                     <dFlow>-5.2,5.2</dFlow>
                     <Flow>-1.2,1.2</Flow>
@@ -1157,7 +1157,7 @@
                         <frequency>150.0</frequency>
                     </planner>
                     <admittance>
-                        <InvM>1.000000</InvM>
+                        <InvM>0.200000</InvM>
                         <Damping>20.0</Damping>
                         <dFlow>-5.2,5.2</dFlow>
                         <Flow>-0.5,0.5</Flow>
@@ -1183,7 +1183,7 @@
                         <frequency>150.0</frequency>
                     </planner>
                     <admittance>
-                        <InvM>1.000000</InvM>
+                        <InvM>0.200000</InvM>
                         <Damping>20.0</Damping>
                         <dFlow>-5.2,5.2</dFlow>
                         <Flow>-0.5,0.5</Flow>
@@ -1209,7 +1209,7 @@
                         <frequency>150.0</frequency>
                     </planner>
                     <admittance>
-                        <InvM>1.0</InvM>
+                        <InvM>0.200000</InvM>
                         <Damping>20.0</Damping>
                         <dFlow>-5.2,5.2</dFlow>
                         <Flow>-0.5,0.5</Flow>
@@ -1244,7 +1244,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="100" name="HAP-FIC" profile="hw_x2">
+        <mode id="100" name="H-PMP" profile="hw_x2">
             <joint id="0">
                 <controller>
                     <stiffness>200.000</stiffness>
@@ -1534,7 +1534,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="100" name="HAP-FIC" profile="hw_x3">
+        <mode id="100" name="H-PMP" profile="hw_x3">
             <joint id="0">
                 <controller>
                     <stiffness>200.000</stiffness>
@@ -1824,7 +1824,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="100" name="HAP-FIC" profile="hw_x4">
+        <mode id="100" name="H-PMP" profile="hw_x4">
             <joint id="0">
                 <controller>
                     <stiffness>200.000</stiffness>
@@ -2114,7 +2114,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="100" name="HAP-FIC" profile="hw_x6">
+        <mode id="100" name="H-PMP" profile="hw_x6">
             <joint id="0">
                 <controller>
                     <stiffness>200.000</stiffness>
@@ -2404,7 +2404,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="100" name="HAP-FIC" profile="sim">
+        <mode id="100" name="H-PMP" profile="sim">
             <joint id="0">
                 <controller>
                     <stiffness>200.000</stiffness>
@@ -2878,7 +2878,7 @@
                 </admittance>
             </joint>
         </mode>
-        <mode id="6" name="Cartesian Planner" profile="sim">
+        <mode id="6" name="Cartesian Impedance with Planner" profile="sim">
             <cartesian>
                 <x>
                     <controller>
@@ -3066,7 +3066,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="8" name="Cartesian Admittance Haptic" profile="sim">
+        <mode id="8" name="Cartesian HAP-FIC" profile="sim">
             <cartesian>
                 <x>
                     <controller>
@@ -3174,7 +3174,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="100" name="HAP-FIC" profile="free_space">
+        <mode id="100" name="H-PMP" profile="free_space">
             <joint id="0">
                 <controller>
                     <stiffness>2000.000</stiffness>
@@ -3476,7 +3476,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="100" name="HAP-FIC" profile="contact">
+        <mode id="100" name="H-PMP" profile="contact">
             <joint id="0">
                 <controller>
                     <stiffness>200.000</stiffness>
@@ -3898,7 +3898,7 @@
                 </controller>
             </joint>
         </mode>
-        <mode id="2" name="Joint Impedance With Planner" profile="default">
+        <mode id="2" name="Joint Impedance with Planner" profile="default">
             <joint id="0">
                 <controller>
                     <stiffness>200.000</stiffness>
@@ -4231,7 +4231,7 @@
                 </admittance>
             </joint>
         </mode>
-        <mode id="4" name="Joint Admittance Haptic" profile="default">
+        <mode id="4" name="Joint HAP-FIC" profile="default">
             <joint id="0">
                 <controller>
                     <stiffness>200.000</stiffness>
@@ -4474,7 +4474,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="6" name="Cartesian Planner" profile="default">
+        <mode id="6" name="Cartesian Impedance with Planner" profile="default">
             <cartesian>
                 <x>
                     <controller>
@@ -4662,7 +4662,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="8" name="Cartesian Admittance Haptic" profile="default">
+        <mode id="8" name="Cartesian HAP-FIC" profile="default">
             <cartesian>
                 <x>
                     <controller>
@@ -4770,7 +4770,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="100" name="HAP-FIC" profile="default">
+        <mode id="100" name="H-PMP" profile="default">
             <joint id="0">
                 <controller>
                     <stiffness>200.000</stiffness>
@@ -5175,7 +5175,7 @@
                 </controller>
             </joint>
         </mode>
-        <mode id="2" name="Joint Impedance With Planner" profile="default">
+        <mode id="2" name="Joint Impedance with Planner" profile="default">
             <joint id="0">
                 <controller>
                     <stiffness>600.000</stiffness>
@@ -5452,7 +5452,7 @@
                 </admittance>
             </joint>
         </mode>
-        <mode id="4" name="Joint Admittance Haptic" profile="default">
+        <mode id="4" name="Joint HAP-FIC" profile="default">
             <joint id="0">
                 <controller>
                     <stiffness>600.000</stiffness>
@@ -5639,7 +5639,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="6" name="Cartesian Planner" profile="default">
+        <mode id="6" name="Cartesian Impedance with Planner" profile="default">
             <cartesian>
                 <x>
                     <controller>
@@ -5827,7 +5827,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="8" name="Cartesian Admittance Haptic" profile="default">
+        <mode id="8" name="Cartesian HAP-FIC" profile="default">
             <cartesian>
                 <x>
                     <controller>
@@ -5935,7 +5935,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="100" name="HAP-FIC" profile="default">
+        <mode id="100" name="H-PMP" profile="default">
             <joint id="0">
                 <controller>
                     <stiffness>600.000</stiffness>
@@ -6212,7 +6212,7 @@
                 </controller>
             </joint>
         </mode>
-        <mode id="2" name="Joint Impedance With Planner" profile="default">
+        <mode id="2" name="Joint Impedance with Planner" profile="default">
             <joint id="0">
                 <controller>
                     <stiffness>600.000</stiffness>
@@ -6255,7 +6255,7 @@
                 </admittance>
             </joint>
         </mode>
-        <mode id="4" name="Joint Admittance Haptic" profile="default">
+        <mode id="4" name="Joint HAP-FIC" profile="default">
             <joint id="0">
                 <controller>
                     <stiffness>600.000</stiffness>
@@ -6328,7 +6328,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="6" name="Cartesian Planner" profile="default">
+        <mode id="6" name="Cartesian Impedance with Planner" profile="default">
             <cartesian>
                 <x>
                     <controller>
@@ -6516,7 +6516,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="8" name="Cartesian Admittance Haptic" profile="default">
+        <mode id="8" name="Cartesian HAP-FIC" profile="default">
             <cartesian>
                 <x>
                     <controller>
@@ -6624,7 +6624,7 @@
                 </q>
             </cartesian>
         </mode>
-        <mode id="100" name="HAP-FIC" profile="default">
+        <mode id="100" name="H-PMP" profile="default">
             <joint id="0">
                 <controller>
                     <stiffness>600.000</stiffness>

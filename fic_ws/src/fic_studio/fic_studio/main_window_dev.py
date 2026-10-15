@@ -57,7 +57,7 @@ class FICDevConsole(
     SettingsMixin, RobotConfigMixin, SafetyMixin,
 ):
     APP_NAME = "FIC Dev Console"
-    APP_VERSION = "5.6.0"
+    APP_VERSION = "5.7.0"
 
     def __init__(self, node: FicStudioNode):
         super().__init__()

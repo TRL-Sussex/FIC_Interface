@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>fic_studio</name>
-  <version>5.6.0</version>
+  <version>5.7.0</version>
   <description>FIC Control Studio - PyQt5 GUI for robot control</description>
   <maintainer email="at717@sussex.ac.uk">Adnan</maintainer>
   <license>MIT</license>

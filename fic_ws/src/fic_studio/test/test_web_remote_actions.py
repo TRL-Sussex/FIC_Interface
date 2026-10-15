@@ -90,7 +90,7 @@ class _Studio:
         self._rc_admittance_planner_toggle = box('Admittance planner', 'planner')
         self._rc_postural_toggle = box('Postural', 'postural')
         self._rc_elbow_toggle = box('Elbow', 'elbow')
-        self._rc_hapfic_toggle = box('Hapfic', 'hapfic')
+        self._rc_hpmp_toggle = box('Hpmp', 'hpmp')
 
         self._rc_profile_dropdown = QComboBox()
         self._rc_profile_dropdown.addItem('default', 'default')
@@ -375,7 +375,7 @@ def test_snapshot_describes_what_the_desktop_shows(studio):
     assert snap['studio']['robot'] == ROBOT
     assert snap['mode']['name'] == 'Joint Impedance' and snap['mode']['kind'] == 'joint'
     assert [m['label'] for m in snap['mode']['menus']['cart']['modes']] == \
-        ['Impedance', 'Planner', 'Admittance', 'Adm. Haptic']
+        ['Impedance', 'Imp. + Planner', 'Admittance', 'HAP-FIC']
     assert snap['options']['admittance_planner']['label'] == 'Admittance planner'
     assert snap['profiles']['items'][1] == {
         'name': 'Stiff', 'label': 'Stiff  (fallback → default)'}

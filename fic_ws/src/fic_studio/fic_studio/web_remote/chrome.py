@@ -257,7 +257,7 @@ def dashboard_state(w, ctx):
         src.append('gravity-compensated')
     return {
         'modifiers': [name for attr, name in (('_rc_postural_toggle', 'POST'), ('_rc_elbow_toggle', 'ELB'),
-                                              ('_rc_hapfic_toggle', 'HAP'), ('_rc_admittance_planner_toggle', 'ADM'))
+                                              ('_rc_hpmp_toggle', 'PMP'), ('_rc_admittance_planner_toggle', 'ADM'))
                       if _checked(w, attr)],
         'joints': joints,
         'ee': _dash_ee(w, ctx),

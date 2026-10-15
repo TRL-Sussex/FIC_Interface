@@ -386,9 +386,9 @@ class FakeNode:
         self._rec('publish_admittance_planner', enabled=enabled,
                   robot_id=robot_id)
 
-    def publish_hapfic_enable(self, enabled, robot_id=None):
-        """Record publish_hapfic_enable."""
-        self._rec('publish_hapfic_enable', enabled=enabled, robot_id=robot_id)
+    def publish_hpmp_enable(self, enabled, robot_id=None):
+        """Record publish_hpmp_enable."""
+        self._rec('publish_hpmp_enable', enabled=enabled, robot_id=robot_id)
 
     def publish_gripper_width(self, robot_id, width_meters):
         """Record publish_gripper_width."""
@@ -772,7 +772,7 @@ class TestEmergencyStop:
 
 
 class TestLatchedFlags:
-    """Tests that latched admittance_planner / hapfic flags are tracked."""
+    """Tests that latched admittance_planner / hpmp flags are tracked."""
 
     def test_admittance_planner_flag_tracked(self):
         """admittance_planner(True/False) records the correct boolean both ways."""
@@ -784,12 +784,12 @@ class TestLatchedFlags:
         assert calls[0]['enabled'] is True
         assert calls[1]['enabled'] is False
 
-    def test_hapfic_flag_tracked(self):
-        """robot.mode.hapfic(True) records enabled=True via publish_hapfic_enable."""
+    def test_hpmp_flag_tracked(self):
+        """robot.mode.hapfic(True) records enabled=True via publish_hpmp_enable."""
         _, ns, node, _, stop_event = _make_api()
         api = ns['robot']
-        api.mode.hapfic(True)
-        calls = [k for n, k in node.calls if n == 'publish_hapfic_enable']
+        api.mode.hpmp(True)
+        calls = [k for n, k in node.calls if n == 'publish_hpmp_enable']
         assert calls[0]['enabled'] is True
 
 

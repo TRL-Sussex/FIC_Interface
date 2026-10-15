@@ -138,8 +138,8 @@
 <h3>Elbow null-space</h3>
 <p>Same idea as postural but anchors only the <em>elbow link's</em> Cartesian position (3 linear FIC channels, indices 6–8), leaving the rest of the null-space free. The elbow torque is projected through <code>N = I − J⁺J</code> so the EE task is untouched. Enabled via the <em>Elbow</em> checkbox; the current elbow position is snapshotted as the hold target at the moment you tick the box.</p>
 
-<h3>Hapfic</h3>
-<p>Hybrid helper layered on the Cartesian modes: a Cartesian planner + impedance loop computes the desired wrench, projects it to joint torques via <code>Jᵀ</code>, and feeds those as the <em>desired effort</em> into per-joint haptic admittance — Cartesian precision with joint-space compliance. Toggled by the <em>Hapfic</em> checkbox in the Null-space row; the controller engages it on Modes 6/7/8. It uses dedicated FIC channels (offset 16+) and loads its joint and Cartesian layers from its own XML block, <code>&lt;mode id="100" name="HAP-FIC"&gt;</code> (Mode 4's joints and Mode 6's Cartesian block on a robot without one). Full detail on the <a href="#hapfic" onclick="showPage('hapfic')">Hapfic</a> page.</p>
+<h3>H-PMP</h3>
+<p>Hybrid helper layered on the Cartesian modes: a Cartesian planner + impedance loop computes the desired wrench, projects it to joint torques via <code>Jᵀ</code>, and feeds those as the <em>desired effort</em> into per-joint haptic admittance — Cartesian precision with joint-space compliance. Toggled by the <em>H-PMP</em> checkbox in the Null-space row; the controller engages it on Modes 6/7/8. It uses dedicated FIC channels (offset 16+) and loads its joint and Cartesian layers from its own XML block, <code>&lt;mode id="100" name="H-PMP"&gt;</code> (Mode 4's joints and Mode 6's Cartesian block on a robot without one). Full detail on the <a href="#hpmp" onclick="showPage('hpmp')">H-PMP</a> page.</p>
 
 <h2>Workspace / infrastructure terms</h2>
 
