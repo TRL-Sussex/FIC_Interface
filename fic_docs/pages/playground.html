@@ -1,0 +1,74 @@
+<div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> MuJoCo Playground</div>
+<h1>MuJoCo Playground</h1>
+<p class="subtitle">A sandbox for learning to program the robot: an arm, a table and a few objects in the simulator,
+started in one click, then move it, record waypoints, play sequences, trace trajectories and pick objects.</p>
+
+<h2>Start</h2>
+<ol>
+  <li>Turn on <strong>MuJoCo Playground</strong> and <strong>Sequences</strong> in
+    <a href="#settings" onclick="showPage('settings')">Settings</a> &rarr; Extensions (both are on in the Docker image).</li>
+  <li>Open <em>Programming &rsaquo; MuJoCo Playground</em>. Pick a <strong>Robot</strong> and a <strong>Scene</strong>:
+    <em>Pick and place</em> (two cubes), <em>Stacking</em> (three cubes), <em>Shapes</em> (a cube, a ball and a can)
+    or <em>Empty table</em>.</li>
+  <li>Press <strong>Start</strong>. The Studio's own simulator and FIC controller start with the scene, exactly as
+    its <strong>SIM</strong> and <strong>FIC</strong> buttons would, so everything else in the Studio works on it.
+    <strong>Stop</strong> stops both and goes back to the robot's own scene.</li>
+</ol>
+<p>The robot list comes from <code>robots_config.yaml</code>: any fixed-base arm whose simulator scene has the torque
+motors the FIC controller drives (<code>torq_j1</code>&hellip;). A robot that cannot be used says why (IIWA&nbsp;14's
+scene has position servos; Spot is not an arm). Picking needs a gripper in simulation: the Kinova Gen3 has its
+Robotiq 2F-85, the Franka FR3's scene has none.</p>
+<p>Start never touches a robot running its real arm: it refuses while that robot's controller runs on Hardware.</p>
+
+<h3>Simulate like the real robot</h3>
+<p>Off (the default), the Playground runs the ideal simulator, so the arm reaches its targets briskly. On, it runs
+the robot's <code>hardware_model</code> (<a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Simulation
+vs Hardware</a>): joint friction, damping and sensor noise. The arm then reaches targets more slowly and stops a
+little short of them, as the real one does.</p>
+
+<h2>The scene</h2>
+<p>A table stands in front of the robot (its top 0.2&nbsp;m up; switch it off to put objects on the floor). Each
+object has a name, a shape (box, sphere, cylinder), a size, a position (x, y in the base frame) and a colour; it is
+placed resting on the table or the floor. Edit, add or remove objects while the Playground is stopped; the scene is
+remembered.</p>
+<p>The scene file is written to <code>~/.fic_studio/playground/&lt;robot&gt;_playground.xml</code>: the robot's own
+scene with the table and objects added (built with MuJoCo's model editor, <code>mujoco.MjSpec</code>), keeping every
+joint and actuator name, so the robot's tuning, gripper and hardware model apply as usual.</p>
+<p><strong>Where things are</strong> lists each object's live position: the simulator publishes the poses of the
+bodies named <code>obj_*</code> on <code>robot&lt;N&gt;_simulation/object_poses</code> (JSON, 10&nbsp;Hz).</p>
+
+<h2>Exercises</h2>
+<ol>
+  <li><strong>Move the arm.</strong> Open <strong>Joint</strong> or <strong>Cart</strong> in the
+    <a href="#control-panel" onclick="showPage('control-panel')">control bar</a> and drag a slider;
+    <strong>Gripper</strong> opens and closes the hand.</li>
+  <li><strong>Record waypoints.</strong> In <strong>Quick Actions</strong> type a name and press <strong>New</strong>,
+    then move the arm and press <strong>Snapshot &rarr; Capture</strong> for each point.</li>
+  <li><strong>Play it.</strong> Quick Actions plays, steps through (<strong>Step</strong>) or loops the sequence;
+    <strong>Speed</strong> scales its hold times. The <a href="#sequences" onclick="showPage('sequences')">Sequences</a>
+    page edits it. In simulation a sequence switches the robot to a mode that follows each waypoint (Joint
+    Impedance with Planner for joint waypoints, Cartesian Impedance with Planner for Cartesian ones).</li>
+  <li><strong>Trajectories.</strong> Quick Actions &rarr; <strong>Trajectory</strong> traces a line, a circle or a
+    figure-eight from where the end effector is, in the plane you choose, holding its orientation: a stream of
+    targets at 60&nbsp;Hz that the controller follows as it goes. <strong>Save as sequence</strong> stores one
+    cycle as waypoints instead: play both and compare a trajectory (followed continuously) with a sequence (each
+    point reached, then the next). A larger or faster path lags further behind its target.</li>
+  <li><strong>Pick an object.</strong> <strong>Pick</strong> (on the page beside each object, or in Quick Actions)
+    builds the pick as the sequence <code>pick_&lt;object&gt;</code> and plays it: home, open, above the object with
+    the gripper pointing down, down to it, close, lift. Open it on the Sequences page to see and change every
+    step.</li>
+  <li><strong>Script it.</strong> The <a href="#script-editor" onclick="showPage('script-editor')">Script Editor</a>
+    drives the same arm from Python; its examples move the joints and trace a circle.</li>
+</ol>
+
+<h2>Notes</h2>
+<ul>
+  <li>The pick aims the grasp 20&nbsp;mm into the object, as one does with a compliant controller: an
+    impedance-controlled arm stops a little short of a target, and if it does get there the fingers stop on the table.
+    Its grasp waypoint counts as reached within 45&nbsp;mm (a waypoint may carry its own <code>tolerance_mm</code> and
+    <code>timeout_s</code>).</li>
+  <li>Trajectories are limited to 300&nbsp;mm/s at their fastest point in simulation, and to 50&nbsp;mm/s, after a
+    confirmation, when Sequences sends to a real robot (a real robot is never switched to another mode for it).</li>
+  <li>Extensions can add their own rows to Quick Actions (<code>ExtensionHost.add_quick_action</code>, see
+    <a href="#extensions" onclick="showPage('extensions')">Extensions</a>); the Playground's Pick is one.</li>
+</ul>

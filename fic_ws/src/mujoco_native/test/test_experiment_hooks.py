@@ -81,3 +81,16 @@ def test_apply_link_force_at_centre_of_mass():
     bid = m.body("box").id
     apply_link_force(m, d, "box", (5.0, 0, 0), None, 1.0)
     assert np.allclose(d.xfrc_applied[bid], (5.0, 0, 0, 0, 0, 0))
+
+
+def test_object_poses_name_the_obj_bodies():
+    import mujoco
+    from mujoco_native.experiment_hooks import object_bodies, object_poses
+    m = mujoco.MjModel.from_xml_string("""<mujoco><worldbody>
+      <body name="obj_cube" pos="0.5 0 0.1"><freejoint/><geom type="box" size="0.02 0.02 0.02"/></body>
+      <body name="arm" pos="0 0 0"><geom type="sphere" size="0.05"/></body></worldbody></mujoco>""")
+    d = mujoco.MjData(m)
+    mujoco.mj_forward(m, d)
+    objs = object_bodies(m)
+    assert [n for n, _ in objs] == ['obj_cube']
+    assert object_poses(d, objs) == {'cube': [0.5, 0.0, 0.1, 1.0, 0.0, 0.0, 0.0]}

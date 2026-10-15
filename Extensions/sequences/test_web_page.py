@@ -146,3 +146,107 @@ def test_every_call_in_the_page_is_an_action(ext):
 def test_manifest_points_the_web_interface_at_the_page():
     web = json.loads((HERE / 'manifest.json').read_text())['web']
     assert (HERE / 'web' / web['page']).is_file() and (HERE / 'web' / web['css']).is_file()
+
+
+def _run_out(ext, monkeypatch):
+    """Play the trajectory to its end with a fake clock."""
+    clock = [1000.0]
+    monkeypatch.setattr(seq_mod.time, 'monotonic', lambda: clock[0])
+    while ext._traj is not None:
+        clock[0] += 1.0 / 60.0
+        ext._traj_tick()
+
+
+def test_a_trajectory_streams_from_the_arm_and_ends_where_it_started(ext, monkeypatch):
+    from Extensions._shared.fake_host import pose
+    ext.host.current_ee_pose = pose(0.45, 0.0, 0.43)
+    modes = []
+    ext.host.control_mode = lambda: 'Joint Impedance'
+    ext.host.set_mode = modes.append
+    clock = [1000.0]
+    monkeypatch.setattr(seq_mod.time, 'monotonic', lambda: clock[0])
+    r = ext.web_action('trajectory', {'kind': 'circle', 'size': 0.05, 'period': 4, 'cycles': 1, 'plane': 'xy'})
+    assert r['duration'] == pytest.approx(5.0) and modes == ['Cartesian Planner']
+    assert ext.web_state()['trajectory']['running']
+    _run_out(ext, monkeypatch)
+    sent = [c[2] for c in ext.host.node.calls if c[0] == 'sim_pose']
+    assert len(sent) > 250
+    first, last = sent[0].position, sent[-1].position
+    assert (first.x, first.y, first.z) == pytest.approx((0.45, 0.0, 0.43))
+    assert (last.x, last.y, last.z) == pytest.approx((0.45, 0.0, 0.43), abs=1e-9)
+    assert min(p.position.x for p in sent) == pytest.approx(0.35, abs=1e-3)     # the circle's far side
+    assert not ext.web_state()['trajectory']['running']
+
+
+def test_a_trajectory_on_the_real_robot_needs_confirming_is_slower_and_never_switches_mode(ext):
+    from Extensions._shared.fake_host import pose
+    ext.host.current_ee_pose = pose()
+    ext.seq_target.addItem('Robot 1')
+    ext.seq_target.setCurrentText('Robot 1')
+    ext.host.control_mode = lambda: 'Joint Impedance'
+    with pytest.raises(ValueError, match='Confirm'):
+        ext.web_action('trajectory', {'kind': 'line', 'size': 0.05, 'period': 8, 'cycles': 1, 'plane': 'xy'})
+    with pytest.raises(ValueError, match='Too fast'):
+        ext.web_action('trajectory', {'kind': 'circle', 'size': 0.1, 'period': 4, 'cycles': 1, 'plane': 'xy', 'hardware_ok': True})
+    with pytest.raises(ValueError, match='Cartesian mode'):
+        ext.web_action('trajectory', {'kind': 'line', 'size': 0.05, 'period': 8, 'cycles': 1, 'plane': 'xy', 'hardware_ok': True})
+    assert ext._traj is None
+
+
+def test_a_trajectory_saved_as_a_sequence(ext):
+    from Extensions._shared.fake_host import pose
+    ext.host.current_ee_pose = pose(0.45, 0.0, 0.43)
+    r = ext.web_action('save_trajectory', {'name': 'eight', 'kind': 'eight', 'size': 0.08, 'plane': 'xy', 'per_cycle': 12})
+    s = ext.web_state()
+    assert r['name'] == 'eight' and s['current'] == 'eight' and len(s['waypoints']) == 12
+    assert all(w['type'] == 'cartesian' for w in s['waypoints'])
+
+
+def test_gripper_waypoints_drive_the_simulated_gripper(ext):
+    ext._execute_waypoint({'type': 'gripper', 'width': 0.04, 'hold_time': 0.5})
+    assert ('gripper', 'robot1', 0.04) in ext.host.node.calls
+
+
+def test_new_step_and_speed_for_the_quick_actions(ext):
+    ext.new_sequence('qa')
+    with pytest.raises(ValueError):
+        ext.new_sequence('qa')
+    ext.web_action('add', {'waypoint': JOINT})
+    ext.web_action('add', {'waypoint': JOINT})
+    assert ext.step('qa') == 0 and ext.step('qa') == 1 and ext.step('qa') == 0
+    ext.set_speed(2.0)
+    assert ext.speed() == 2.0
+    with pytest.raises(ValueError):
+        ext.set_speed(5)
+
+
+def test_in_simulation_a_waypoint_switches_to_a_mode_that_follows_it(ext, monkeypatch):
+    modes, fired = [], []
+    ext.host.control_mode = lambda: 'Cartesian Planner'
+    ext.host.set_mode = modes.append
+    monkeypatch.setattr(seq_mod.QTimer, 'singleShot', staticmethod(lambda ms, fn: fired.append((ms, fn))))
+    ext._execute_waypoint({'type': 'joint', 'values': [0, 15, 0, -90, 0, 30, 0], 'hold_time': 0.5})
+    assert modes == ['Joint Impedance With Planner'] and fired[0][0] == ext.MODE_SWITCH_MS
+    assert not any(c[0] == 'sim_joints' for c in ext.host.node.calls)      # sent after the switch
+    fired[0][1]()
+    assert any(c[0] == 'sim_joints' for c in ext.host.node.calls)
+    ext.host.control_mode = lambda: 'Joint Impedance With Planner'
+    ext._execute_waypoint({'type': 'joint', 'values': [0, 15, 0, -90, 0, 30, 0], 'hold_time': 0.5})
+    assert modes == ['Joint Impedance With Planner']                        # already following: no switch
+
+
+def test_a_real_robot_is_never_switched_by_a_waypoint(ext):
+    modes = []
+    ext.host.control_mode = lambda: 'Cartesian Planner'
+    ext.host.set_mode = modes.append
+    ext.seq_target.addItem('Robot 1')
+    ext.seq_target.setCurrentText('Robot 1')
+    assert ext._mode_for('joint') is False and modes == []
+
+
+def test_a_waypoint_can_carry_its_own_tolerance(ext):
+    from Extensions._shared.fake_host import pose
+    ext.host.current_ee_pose = pose(0.5, 0.0, 0.43)
+    wp = {'type': 'cartesian', 'position': [0.5, 0.0, 0.40], 'axis_angle': [1, 0, 0, 180]}
+    assert not ext._check_cartesian_position_reached(dict(wp))                 # 30 mm > 15 mm
+    assert ext._check_cartesian_position_reached(dict(wp, tolerance_mm=40))

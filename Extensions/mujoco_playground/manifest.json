@@ -1,0 +1,12 @@
+{
+  "id": "mujoco_playground",
+  "name": "MuJoCo Playground",
+  "description": "A sandbox for learning to program the robot: pick an arm and a scene with objects, start it in one click, then move, record, sequence and pick.",
+  "sidebar_icon": "◫",
+  "sidebar_section": "Programming",
+  "web": {
+    "page": "page.js",
+    "poll_ms": 400,
+    "css": "page.css"
+  }
+}

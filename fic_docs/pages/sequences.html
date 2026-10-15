@@ -26,6 +26,23 @@ under <em>Panel Layout</em>.</p>
 <p>The page asks before Play, Step and Go send a sequence to a real robot. Typed values are checked: joints within
 &plusmn;360&deg;, positions within &plusmn;3&nbsp;m, gripper 0&ndash;80&nbsp;mm.</p>
 
+<h2>Modes, tolerances and trajectories</h2>
+<ul>
+  <li><strong>The mode follows the waypoint (simulation).</strong> A joint waypoint does nothing in a Cartesian mode
+    and the other way round, so on the Simulation target the player switches to Joint Impedance with Planner for a
+    joint waypoint and to Cartesian Impedance with Planner for a Cartesian one, when the robot is in the other kind of
+    mode, and sends the target a moment later (a mode switch holds the robot where it is). A real robot is never
+    switched: choose its mode before playing.</li>
+  <li><strong>Per-waypoint tolerance.</strong> A waypoint in <code>~/robot_sequences.yaml</code> may carry
+    <code>tolerance_mm</code> and <code>timeout_s</code>, which replace the playback settings for that waypoint
+    (for example a grasp that stops on the object).</li>
+  <li><strong>Gripper waypoints in simulation</strong> drive the simulated gripper through the gripper bridge.</li>
+  <li><strong>Trajectory templates.</strong> From Quick Actions (<a href="#control-panel" onclick="showPage('control-panel')">Control
+    Bar</a>), or from the API (<code>run_trajectory</code>, <code>save_trajectory</code>), a line, a circle or a
+    figure-eight traced from the current pose; see the <a href="#playground" onclick="showPage('playground')">MuJoCo
+    Playground</a> exercises.</li>
+</ul>
+
 <h2>Panel Layout</h2>
 <ul>
   <li><strong>Sequence row</strong> (top) &mdash; sequence dropdown plus <strong>+ NEW</strong>, <strong>RENAME</strong>, <strong>DELETE</strong>, <strong>SAVE TO YAML</strong>, <strong>LOAD FROM YAML</strong>.</li>

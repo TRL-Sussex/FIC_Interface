@@ -148,7 +148,7 @@ launches <code>ros2 launch mujoco_newton simulation_launch.py ...</code> instead
 <code>mujoco_newton</code> package has not been built (<code>fic_ws/install/mujoco_newton</code> missing),
 it logs a warning and falls back to the CPU simulator. Alongside the simulator the GUI also spawns
 <code>Extensions/mujoco_playground/gripper_bridge.py</code>, which translates the
-<code>robot&lt;sid&gt;_gripper_width</code> topic into <code>simulation/actuators_cmds</code> for the
+<code>robot&lt;sid&gt;_gripper_width</code> topic into <code>robot&lt;sid&gt;_simulation/actuators_cmds</code> for the
 <code>gripper</code> actuator (harmless on robots without one).</p>
 
 <h3>FIC Simulation Controller</h3>

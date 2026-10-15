@@ -481,15 +481,30 @@ class ProcessMixin:
     def _sim_model_file_arg(self, robot_name):
         """`` model_file:=<scene>`` for the launch, or '' to use its built-in map.
 
+        An extension may set its own scene for a robot
+        (``ExtensionHost.set_simulation_scene``, e.g. the MuJoCo Playground's
+        objects); it is used until the extension clears it.
+
         The scene comes from the robot's config, straight from the source
         tree: a robot imported from a URDF is in neither the launch files'
         maps nor the install space, and this way needs no rebuild.
         """
+        override = (getattr(self, '_sim_scene_override', None) or {}).get(robot_name)
+        if override and os.path.isfile(override):
+            # an extension's scene for this robot (ExtensionHost.set_simulation_scene)
+            return ' model_file:=%s' % shlex.quote(override)
         rel = getattr(self, 'robot_configs', {}).get(robot_name, {}).get('mujoco_xml_path', '')
         if not rel:
             return ''
         path = rel if os.path.isabs(rel) else os.path.join(_FIC_WS, 'src', rel)
         return ' model_file:=%s' % shlex.quote(path) if os.path.isfile(path) else ''
+
+    def _sim_env(self):
+        """The environment of the simulator and its FIC controller: the Studio's, with what an
+        extension set (ExtensionHost.set_simulation_env, e.g. FIC_HARDWARE_MODEL=off for the ideal
+        simulator); None (inherit) when nothing is set."""
+        extra = getattr(self, '_sim_env_override', None) or {}
+        return dict(os.environ, **extra) if extra else None
 
     def _sim_start_pose_arg(self, robot_name):
         """Return the launch argument that spawns the arm at its home pose.
@@ -559,7 +574,7 @@ class ProcessMixin:
             self.simulation_process = subprocess.Popen(
                 ["bash", "-c", cmd],
                 stdout=self._sim_log_fh, stderr=subprocess.STDOUT,
-                preexec_fn=_child_preexec, cwd=ws_path
+                preexec_fn=_child_preexec, cwd=ws_path, env=self._sim_env()
             )
             self.simulation_running = True
             _apply_btn_style(self.simulation_toggle_btn, True, 'sim', '■ SIM')
@@ -803,7 +818,7 @@ class ProcessMixin:
             self.fic_process = subprocess.Popen(
                 ["bash", "-c", cmd],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                preexec_fn=_child_preexec, cwd=ws_path
+                preexec_fn=_child_preexec, cwd=ws_path, env=self._sim_env()
             )
             self.fic_running = True
             _apply_btn_style(self.fic_toggle_btn, True, 'sim', '■ FIC')

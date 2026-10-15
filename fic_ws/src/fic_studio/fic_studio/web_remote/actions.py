@@ -350,21 +350,56 @@ def _teleop(w, args, client):
 
 
 def _sequence(w, args, client):
+    """Quick Actions on the Sequences extension: play / loop / step / stop a sequence, make a new
+    one, set the playback speed, run a trajectory template or save one as a sequence."""
     ext = _sequences_ext(w)
     if ext is None:
         raise Refused(NO_SEQUENCES, 'unavailable')
     op = args.get('op')
-    if op == 'stop':
-        ext.stop()
-        return None
-    if op not in ('play', 'loop'):
-        raise Refused('No such sequence command', 'bad_args')
-    _require_command(w, args)
-    name = args.get('name')
-    if name not in ext.list_sequences():
-        raise Refused('No such sequence', 'bad_args')
-    ext.play(name, loop=(op == 'loop'))
+    try:
+        if op == 'stop':
+            ext.stop()
+            return None
+        if op == 'new':
+            return {'ok': True, 'result': {'name': ext.new_sequence(args.get('name'))}}
+        if op == 'speed':
+            ext.set_speed(args.get('value'))
+            return None
+        if op == 'save_trajectory':
+            return {'ok': True, 'result': {'name': ext.save_trajectory(
+                args.get('name'), args.get('kind'), args.get('size'), args.get('plane'))}}
+        if op == 'trajectory':
+            _require_command(w, args)
+            if ext.target_is_hardware() and args.get('hardware_ok') is not True:
+                raise Refused('The trajectory goes to the REAL robot: confirm to run it', 'confirm_hw')
+            return {'ok': True, 'result': {'duration': ext.run_trajectory(
+                args.get('kind'), args.get('size'), args.get('period'), args.get('cycles'),
+                args.get('plane'), hardware_ok=args.get('hardware_ok') is True)}}
+        if op not in ('play', 'loop', 'step'):
+            raise Refused('No such sequence command', 'bad_args')
+        _require_command(w, args)
+        name = args.get('name')
+        if name not in ext.list_sequences():
+            raise Refused('No such sequence', 'bad_args')
+        if op == 'step':
+            return {'ok': True, 'result': {'index': ext.step(name)}}
+        ext.play(name, loop=(op == 'loop'))
+    except ValueError as exc:
+        raise Refused(str(exc), 'refused')
     return None
+
+
+def _quick_action(w, args, client):
+    """Run an action an extension added to Quick Actions (ExtensionHost.add_quick_action)."""
+    act = (getattr(w, '_quick_actions', None) or {}).get(args.get('key'))
+    if act is None:
+        raise Refused('No such quick action', 'bad_args')
+    _require_command(w, args)
+    try:
+        msg = act['run'](args.get('choice'))
+    except ValueError as exc:
+        raise Refused(str(exc), 'refused')
+    return {'ok': True, 'result': {'message': str(msg) if msg else '%s: done' % act['label']}}
 
 
 def _capture(w, args, client):
@@ -689,6 +724,7 @@ HANDLERS = {
     'session': _session,
     'teleop': _teleop,
     'sequence': _sequence,
+    'quick_action': _quick_action,
     'capture': _capture,
     'contact_calibrate': _calibrate,
     'process': _process,
@@ -1023,8 +1059,27 @@ def _sequences_state(w, ctx):
     ext = _sequences_ext(w)
     if ext is None:
         return {'available': False, 'items': [], 'playing': False}
-    return {'available': True, 'items': list(ext.list_sequences()),
-            'playing': bool(getattr(ext, 'is_playing', False))}
+    out = {'available': True, 'items': list(ext.list_sequences()),
+           'playing': bool(getattr(ext, 'is_playing', False))}
+    if hasattr(ext, 'trajectory_state'):
+        out.update(speed=ext.speed(), trajectory=ext.trajectory_state(),
+                   hardware=bool(ext.target_is_hardware()))
+    return out
+
+
+def _quick_state(w, ctx):
+    """The actions extensions added to Quick Actions, with their current choices."""
+    out = []
+    for key, act in sorted((getattr(w, '_quick_actions', None) or {}).items()):
+        choices = None
+        if act.get('choices') is not None:
+            try:
+                choices = [str(c) for c in (act['choices']() or [])]
+            except Exception:
+                choices = []
+        out.append({'key': key, 'label': act['label'], 'hint': act.get('hint', ''),
+                    'button': act.get('button') or 'Run', 'choices': choices})
+    return out
 
 
 def _log_state(w, ctx):
@@ -1110,6 +1165,7 @@ SECTIONS = (
     ('gripper', _gripper_state),
     ('status', _status_state),
     ('sequences', _sequences_state),
+    ('quick_actions', _quick_state),
     ('log', _log_state),
     ('safety', _safety_state),
     ('fleet', _fleet_state),

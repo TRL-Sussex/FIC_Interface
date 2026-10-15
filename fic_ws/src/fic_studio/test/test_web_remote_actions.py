@@ -606,3 +606,78 @@ def test_scope_is_lifted_even_when_the_handler_raises():
     assert s.node._resolve_rid(None) == 'robot1'
     assert s.node.active_profile_publisher_ == 'pub1'
     assert '_publish_admittance_planner' in s.__dict__
+
+
+class _Sequences2:
+    """The Sequences API the Quick Actions drawer uses."""
+
+    def __init__(self, hardware=False):
+        self.calls, self.hw, self.is_playing = [], hardware, False
+
+    def list_sequences(self):
+        return ['pick']
+
+    def play(self, name, loop=False):
+        self.calls.append(('play', name, loop))
+
+    def stop(self):
+        self.calls.append('stop')
+
+    def new_sequence(self, name):
+        if not name:
+            raise ValueError('Give a new, unused name')
+        return name
+
+    def step(self, name):
+        return 3
+
+    def speed(self):
+        return 1.5
+
+    def set_speed(self, v):
+        self.calls.append(('speed', v))
+
+    def target_is_hardware(self):
+        return self.hw
+
+    def trajectory_state(self):
+        return {'running': False}
+
+    def run_trajectory(self, kind, size, period, cycles, plane, hardware_ok=False):
+        self.calls.append(('traj', kind, hardware_ok))
+        return 9.0
+
+    def save_trajectory(self, name, kind, size, plane):
+        return name
+
+
+def test_quick_actions_new_step_speed_and_trajectories(studio):
+    studio._seq = _Sequences2()
+    assert run(studio, 'sequence', op='new', name='demo')['result'] == {'name': 'demo'}
+    assert run(studio, 'sequence', op='new', name='')['error'] == 'refused'
+    assert run(studio, 'sequence', op='step', name='pick')['result'] == {'index': 3}
+    assert run(studio, 'sequence', op='speed', value=2)['ok']
+    r = run(studio, 'sequence', op='trajectory', kind='circle', size=0.05, period=8, cycles=1, plane='xy')
+    assert r['result'] == {'duration': 9.0} and ('traj', 'circle', False) in studio._seq.calls
+    assert run(studio, 'sequence', op='save_trajectory', name='c', kind='circle', size=0.05, plane='xy')['result'] == {'name': 'c'}
+
+
+def test_a_trajectory_on_a_real_robot_must_be_confirmed(studio):
+    studio._seq = _Sequences2(hardware=True)
+    assert run(studio, 'sequence', op='trajectory', kind='line', size=0.05, period=8, cycles=1, plane='xy')['error'] == 'confirm_hw'
+    assert not any(c[0] == 'traj' for c in studio._seq.calls if isinstance(c, tuple))
+    r = run(studio, 'sequence', op='trajectory', kind='line', size=0.05, period=8, cycles=1, plane='xy', hardware_ok=True)
+    assert r['ok'] and ('traj', 'line', True) in studio._seq.calls
+
+
+def test_extension_quick_actions_run_and_show_their_choices(studio):
+    from fic_studio.web_remote.actions import _quick_state
+    ran = []
+    studio._quick_actions = {'mujoco_playground.pick': {
+        'label': 'Pick', 'run': lambda c: ran.append(c) or 'Picking %s' % c,
+        'choices': lambda: ['red_cube'], 'hint': 'h', 'button': 'Pick'}}
+    assert _quick_state(studio, None) == [{'key': 'mujoco_playground.pick', 'label': 'Pick', 'hint': 'h',
+                                            'button': 'Pick', 'choices': ['red_cube']}]
+    assert run(studio, 'quick_action', key='mujoco_playground.pick', choice='red_cube')['result'] == {'message': 'Picking red_cube'}
+    assert ran == ['red_cube']
+    assert run(studio, 'quick_action', key='nope')['error'] == 'bad_args'

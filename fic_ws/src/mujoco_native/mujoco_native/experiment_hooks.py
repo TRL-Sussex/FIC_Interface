@@ -86,6 +86,22 @@ def body_positions(model, data, bodies):
     return np.array([data.xpos[model.body(b).id] for b in bodies])
 
 
+OBJECT_PREFIX = 'obj_'
+
+
+def object_bodies(model, prefix=OBJECT_PREFIX):
+    """[(name, body id)] of the scene's movable objects: bodies named ``prefix``* (the MuJoCo
+    Playground names its objects obj_<name>), static ones included (they report their pose)."""
+    return [(model.body(i).name, i) for i in range(model.nbody)
+            if model.body(i).name.startswith(prefix)]
+
+
+def object_poses(data, objects, prefix=OBJECT_PREFIX):
+    """{name without the prefix: [x, y, z, qw, qx, qy, qz]} (m, unit quaternion), 4 decimals."""
+    return {name[len(prefix):]: [round(float(v), 4) for v in list(data.xpos[i]) + list(data.xquat[i])]
+            for name, i in objects}
+
+
 def site_wrench(model, data, force_sensor, torque_sensor):
     fa = model.sensor(force_sensor).adr[0]
     ta = model.sensor(torque_sensor).adr[0]

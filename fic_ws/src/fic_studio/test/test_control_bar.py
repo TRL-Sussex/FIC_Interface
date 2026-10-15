@@ -286,3 +286,84 @@ class TestStatusReadout:
         text = h._cb_status_lbl.text()
         assert 'Joint Impedance' in text
         assert 'SIM' in text          # simulation / hardware / vr -> SIM / HW / VR
+
+
+class _LateSequences(_FakeSequences):
+    """The real extension loads its file after the bar is built; it also has the new API."""
+
+    def __init__(self):
+        super().__init__()
+        self.names = []
+        self.runs, self.saved, self.steps, self.speeds = [], [], [], []
+        self._speed = 1.0
+
+    def list_sequences(self):
+        return list(self.names)
+
+    def new_sequence(self, name):
+        self.names.append(name)
+        return name
+
+    def step(self, name):
+        self.steps.append(name)
+        return 0
+
+    def speed(self):
+        return self._speed
+
+    def set_speed(self, v):
+        self.speeds.append(v)
+        self._speed = v
+
+    def target_is_hardware(self):
+        return False
+
+    def run_trajectory(self, *args, hardware_ok=False):
+        self.runs.append(args)
+        return 17.0
+
+    def save_trajectory(self, name, kind, size, plane):
+        self.saved.append((name, kind, size, plane))
+        self.names.append(name)
+        return name
+
+
+class TestQuickActionsRework:
+    def test_the_list_fills_when_the_drawer_opens(self):
+        """The bar is built before the sequences are loaded: opening Quick Actions refreshes it."""
+        seq = _LateSequences()
+        h = _Host(sequences=seq)
+        assert h._cb_sequence_combo.count() == 0
+        seq.names[:] = ['a', 'b']
+        h._cb_on_panel_changed('quick')
+        assert [h._cb_sequence_combo.itemText(i) for i in range(2)] == ['a', 'b']
+
+    def test_new_step_speed_and_trajectory_go_to_the_extension(self, monkeypatch):
+        from fic_studio.mixins import control_bar_mixin as cbm
+        seq = _LateSequences()
+        h = _Host(sequences=seq)
+        monkeypatch.setattr(cbm.QInputDialog, 'getText', staticmethod(lambda *a, **k: ('demo', True)))
+        h._cb_new_sequence()
+        assert h._cb_selected_sequence() == 'demo'
+        h._cb_step_sequence()
+        assert seq.steps == ['demo']
+        h._cb_speed.setValue(2.0)
+        assert seq.speeds == [2.0]
+        h._cb_traj_kind.setCurrentIndex(1)              # circle
+        h._cb_run_trajectory()
+        assert seq.runs == [('circle', 0.05, 8.0, 2, 'xy')]
+        monkeypatch.setattr(cbm.QInputDialog, 'getText', staticmethod(lambda *a, **k: ('circle_50mm', True)))
+        h._cb_save_trajectory()
+        assert seq.saved == [('circle_50mm', 'circle', 0.05, 'xy')] and h._cb_selected_sequence() == 'circle_50mm'
+
+    def test_extensions_add_quick_actions(self):
+        h = _Host(sequences=_LateSequences())
+        ran = []
+        h._quick_actions = {'mujoco_playground.pick': {'label': 'Pick', 'run': lambda c: ran.append(c) or 'Picking ' + c,
+                                                       'choices': lambda: ['red_cube', 'blue_cube'], 'hint': '', 'button': 'Pick'}}
+        h._cb_rebuild_quick_actions()
+        combo = h._cb_ext_choice['mujoco_playground.pick']
+        assert [combo.itemText(i) for i in range(combo.count())] == ['red_cube', 'blue_cube']
+        combo.setCurrentText('blue_cube')
+        h._cb_run_quick_action('mujoco_playground.pick')
+        assert ran == ['blue_cube'] and h._cb_sequence_status.text() == 'Picking blue_cube'

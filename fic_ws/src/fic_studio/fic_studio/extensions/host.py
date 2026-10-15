@@ -38,10 +38,17 @@ class ExtensionHost(QObject):
         return self._mw.node
 
     def set_control_mode(self, mode: str) -> None:
-        """Set the control mode on this extension's target robot."""
+        """Set the control mode (a CONTROL_MODE_NAMES name) on this extension's target robot, as
+        the Studio's mode buttons do: the name on {rid}_mode_select (the hardware node) and the
+        number on {rid}_control_mode (the simulation node, which reads only the number)."""
         from std_msgs.msg import String as StringMsg
+        from ..mixins.robot_control_mixin import CONTROL_MODE_NAMES
         rid = self.target_robot_id
-        pubs = self._mw.node.pubs.get(rid)
+        node = self._mw.node
+        if mode in CONTROL_MODE_NAMES and hasattr(node, 'publish_mode'):
+            node.publish_mode(CONTROL_MODE_NAMES.index(mode) + 1, robot_id=rid)
+            return
+        pubs = node.pubs.get(rid)
         if pubs and 'mode_select' in pubs:
             pubs['mode_select'].publish(StringMsg(data=mode))
 
@@ -54,6 +61,25 @@ class ExtensionHost(QObject):
         """
         self.set_control_mode(mode)
         self._mw.update_mode_ui_only(mode, self.target_robot_id)
+
+    def control_mode(self) -> str:
+        """The selected robot's control mode as the Studio names it internally (one of
+        robot_control_mixin.CONTROL_MODE_NAMES, e.g. "Cartesian Planner"), or '' if unknown."""
+        from ..mixins.robot_control_mixin import CONTROL_MODE_NAMES
+        idx = getattr(self._mw, "_rc_selected_mode_idx", None)
+        return CONTROL_MODE_NAMES[idx] if isinstance(idx, int) and 0 <= idx < len(CONTROL_MODE_NAMES) else ''
+
+    def hpmp_enabled(self) -> bool:
+        """The H-PMP toggle as the control bar shows it (on by default)."""
+        t = getattr(self._mw, "_rc_hpmp_toggle", None)
+        return bool(t.isChecked()) if t is not None else True
+
+    def send_hpmp(self, enabled: Optional[bool] = None) -> None:
+        """Send the H-PMP toggle (default: as the control bar shows it) to this extension's target
+        robot, e.g. to a controller started after the Studio: the nodes start with H-PMP off and
+        do not receive the Studio's earlier, latched message."""
+        on = self.hpmp_enabled() if enabled is None else bool(enabled)
+        self._mw.node.publish_hpmp_enable(on, robot_id=self.target_robot_id)
 
     def set_admittance_planner(self, enabled: bool) -> None:
         """Enable or disable the motion planner inside admittance modes."""
@@ -370,12 +396,84 @@ class ExtensionHost(QObject):
     def fic_running(self) -> bool:
         return getattr(self._mw, "fic_running", False)
 
-    # ── Process control (used by experiments replay) ─────────────────────
+    # ── Process control (used by experiments replay and the Playground) ──
     def start_simulation(self) -> None:
+        """Start the Studio's simulator for the selected robot, as its SIM button does."""
         self._mw._start_simulation()
 
     def start_fic_simulation(self) -> None:
+        """Start the FIC controller against the simulator, as the FIC button does."""
         self._mw._start_fic_simulation()
+
+    def stop_simulation(self) -> None:
+        """Stop the Studio's simulator (and its gripper bridge)."""
+        if getattr(self._mw, "simulation_running", False):
+            self._mw._stop_simulation()
+
+    def stop_fic_simulation(self) -> None:
+        """Stop the FIC controller of the simulator."""
+        if getattr(self._mw, "fic_running", False):
+            self._mw._stop_fic_simulation()
+
+    def set_simulation_scene(self, path: Optional[str], robot_name: Optional[str] = None) -> None:
+        """Make the simulator load ``path`` (an MJCF scene) for ``robot_name`` (default: the
+        selected robot) instead of the robot's own scene, from its next start; None goes back
+        to the robot's scene. The scene must keep the robot's joint and actuator names."""
+        name = robot_name or self.current_robot_name()
+        scenes = getattr(self._mw, "_sim_scene_override", None)
+        if scenes is None:
+            scenes = self._mw._sim_scene_override = {}
+        if path:
+            scenes[name] = str(path)
+        else:
+            scenes.pop(name, None)
+
+    def set_simulation_env(self, env: Optional[dict]) -> None:
+        """Environment variables for the simulator and its FIC controller from their next start
+        (e.g. {"FIC_HARDWARE_MODEL": "off"} for the ideal simulator); None or {} clears them."""
+        self._mw._sim_env_override = {str(k): str(v) for k, v in (env or {}).items()}
+
+    def refresh_profile(self) -> None:
+        """Re-pick the tuning config the Studio uses until the user picks one ('sim' or 'default',
+        which follows whether the simulator runs like the real robot) and send it to the robot."""
+        if hasattr(self._mw, "_refresh_rc_profile_dropdown"):
+            self._mw._refresh_rc_profile_dropdown()
+        if hasattr(self._mw, "_publish_rc_profile"):
+            self._mw._publish_rc_profile()
+
+    def simulation_scene(self, robot_name: Optional[str] = None) -> Optional[str]:
+        """The scene set with set_simulation_scene for ``robot_name``, or None."""
+        name = robot_name or self.current_robot_name()
+        return (getattr(self._mw, "_sim_scene_override", None) or {}).get(name)
+
+    def select_robot(self, robot_name: str) -> None:
+        """Select ``robot_name`` in the Studio (its robot menu), as the user would."""
+        dd = self._mw.robot_dropdown
+        if dd.findText(robot_name) < 0:
+            raise ValueError("No such robot: %s" % robot_name)
+        dd.setCurrentText(robot_name)
+
+    # ── Quick Actions (the control bar's drawer, desktop and web) ──────────
+    def add_quick_action(self, key: str, label: str, run: Callable[[Optional[str]], Any],
+                         choices: Optional[Callable[[], list]] = None, hint: str = '',
+                         button: str = '') -> None:
+        """Add a row to Quick Actions: ``label``, a drop-down of ``choices()`` (when given, read
+        each time the drawer opens) and a button that calls ``run(choice)`` on the Qt thread.
+        ``run`` returns a short message for the drawer's status line, or raises ValueError("why").
+        Replaces an action of the same key; remove it with remove_quick_action."""
+        actions = getattr(self._mw, "_quick_actions", None)
+        if actions is None:
+            actions = self._mw._quick_actions = {}
+        actions["%s.%s" % (self._id, key)] = {"label": str(label), "run": run, "choices": choices,
+                                              "hint": str(hint or ''), "button": str(button or ''),
+                                              "extension": self._id}
+        if hasattr(self._mw, "_cb_rebuild_quick_actions"):
+            self._mw._cb_rebuild_quick_actions()
+
+    def remove_quick_action(self, key: str) -> None:
+        actions = getattr(self._mw, "_quick_actions", None) or {}
+        if actions.pop("%s.%s" % (self._id, key), None) is not None and hasattr(self._mw, "_cb_rebuild_quick_actions"):
+            self._mw._cb_rebuild_quick_actions()
 
     # ── Logging ──────────────────────────────────────────────────────────
     def log(self, level: str, msg: str, category: Optional[str] = None) -> None:

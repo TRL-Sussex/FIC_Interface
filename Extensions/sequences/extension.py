@@ -22,6 +22,8 @@ from PyQt5.QtWidgets import (
 from fic_studio.extensions import Extension as ExtensionBase
 from Extensions._shared.theme_helpers import status_color
 
+from . import trajectories as traj
+
 
 SEQUENCES_YAML_PATH = os.path.expanduser("~/robot_sequences.yaml")
 
@@ -56,6 +58,11 @@ class Extension(ExtensionBase):
         self.play_timer = QTimer()
         self.play_timer.timeout.connect(self._check_position_reached)
 
+        # Trajectory templates (trajectories.py): a stream of Cartesian targets at 60 Hz.
+        self._traj = None
+        self._traj_timer = QTimer()
+        self._traj_timer.timeout.connect(self._traj_tick)
+
         # Per-station sequence-specific publisher (lazy-created in _execute_waypoint)
         self._page = None
 
@@ -84,8 +91,150 @@ class Extension(ExtensionBase):
         self._play_sequence()
 
     def stop(self) -> None:
-        """Stop playback."""
+        """Stop playback (a sequence or a trajectory)."""
         self._stop_sequence()
+        self.stop_trajectory()
+
+    def new_sequence(self, name: str) -> str:
+        """Make an empty sequence ``name`` and select it. Returns the name."""
+        name = str(name or '').strip()
+        if not name or name in self.sequences:
+            raise ValueError('Give a new, unused name')
+        self.sequences[name] = []
+        if hasattr(self, 'sequence_dropdown'):
+            self._refresh_sequence_dropdown()
+            self.sequence_dropdown.setCurrentText(name)
+        else:
+            self.current_sequence_name = name
+        self._write_yaml()
+        return name
+
+    def step(self, name: str) -> int:
+        """Select ``name`` and move to its next waypoint (the first after the last). Returns its index."""
+        if name not in self.sequences:
+            raise ValueError('No such sequence')
+        if self.is_playing or self._traj is not None:
+            raise ValueError('Stop first')
+        self.sequence_dropdown.setCurrentText(name)
+        wps = self.sequences[name]
+        if not wps:
+            raise ValueError('This sequence has no waypoints')
+        i = self.seq_waypoint_list.currentRow() + 1
+        if not 0 <= i < len(wps):
+            i = 0
+        self.seq_waypoint_list.setCurrentRow(i)
+        self._execute_waypoint(wps[i])
+        self.seq_status_label.setText(f"Moving to waypoint {i + 1}")
+        return i
+
+    def speed(self) -> float:
+        return float(self.seq_speed_scale.value()) if hasattr(self, 'seq_speed_scale') else 1.0
+
+    def set_speed(self, value: float) -> None:
+        """Playback speed scale (0.1 to 3): hold times are divided by it."""
+        value = float(value)
+        if not 0.1 <= value <= 3.0:
+            raise ValueError('Speed 0.1 to 3')
+        self.seq_speed_scale.setValue(value)
+
+    def target_is_hardware(self) -> bool:
+        return hasattr(self, 'seq_target') and self.seq_target.currentText() != 'Simulation'
+
+    # ── Trajectory templates ──────────────────────────────────────────
+    def run_trajectory(self, kind, size, period, cycles, plane, hardware_ok=False) -> float:
+        """Trace a trajectory template (trajectories.py) from the end effector's current pose,
+        holding its orientation, on the sequences' target. Returns its duration (s)."""
+        if self.is_playing or self._traj is not None:
+            raise ValueError('Stop first')
+        hw = self.target_is_hardware()
+        if hw and hardware_ok is not True:
+            raise ValueError('Confirm moving the real robot')
+        kind, size, period, cycles, plane = traj.check(kind, size, period, cycles, plane,
+                                                       'hardware' if hw else 'simulation')
+        ee = self.host.current_ee_pose
+        if ee is None:
+            raise ValueError('No end-effector pose yet: start the controller first')
+        mode = self.host.control_mode() if hasattr(self.host, 'control_mode') else ''
+        if mode and not mode.startswith('Cartesian'):
+            if hw:
+                raise ValueError('Switch the real robot to a Cartesian mode first (Cart panel)')
+            self.host.set_mode('Cartesian Planner')
+            self.host.log('INFO', 'Trajectory: switched to Cartesian Impedance with Planner', 'Sequence')
+        start = [ee.position.x, ee.position.y, ee.position.z]
+        q = ee.orientation
+        self._traj = {'kind': kind, 'samples': traj.samples(start, kind, size, period, cycles, plane),
+                      'quat': (q.x, q.y, q.z, q.w), 't0': time.monotonic(), 'last': -1}
+        self._traj_timer.start(int(1000 / traj.RATE_HZ))
+        self.host.log('INFO', '▶ Trajectory: %s, %.0f mm, %.1f s period, %d cycle(s), plane %s%s'
+                      % (traj.KINDS[kind], size * 1e3, period, cycles, plane, ' — REAL ROBOT' if hw else ''),
+                      'Sequence')
+        return traj.duration(period, cycles)
+
+    def stop_trajectory(self) -> None:
+        if self._traj is not None:
+            self._traj_timer.stop()
+            self._traj = None
+            self.host.log('WARN', '■ Trajectory stopped', 'Sequence')
+
+    def trajectory_state(self) -> dict:
+        t = self._traj
+        if t is None:
+            return {'running': False}
+        n = len(t['samples'])
+        return {'running': True, 'kind': t['kind'], 'progress': round(max(0, t['last']) / max(1, n - 1), 3)}
+
+    def save_trajectory(self, name, kind, size, plane, per_cycle=16) -> str:
+        """One cycle of a template as a sequence of Cartesian waypoints from the current pose, to
+        compare a sequence (reach each point, then the next) with the streamed trajectory."""
+        kind, size, _, _, plane = traj.check(kind, size, traj.PERIOD[1], 1, plane)
+        ee = self.host.current_ee_pose
+        if ee is None:
+            raise ValueError('No end-effector pose yet: start the controller first')
+        aa = self._quat_to_axis_angle_deg(ee.orientation)
+        return self.add_sequence(name, traj.waypoints([ee.position.x, ee.position.y, ee.position.z], aa,
+                                                      kind, size, plane, per_cycle=int(per_cycle)))
+
+    @staticmethod
+    def _quat_to_axis_angle_deg(q):
+        qw = max(-1.0, min(1.0, q.w))
+        angle = 2.0 * math.acos(qw)
+        sn = math.sqrt(max(0.0, 1.0 - qw * qw))
+        axis = (1.0, 0.0, 0.0) if sn < 0.001 else (q.x / sn, q.y / sn, q.z / sn)
+        return [axis[0], axis[1], axis[2], math.degrees(angle)]
+
+    def _traj_tick(self):
+        t = self._traj
+        if t is None:
+            self._traj_timer.stop()
+            return
+        i = int((time.monotonic() - t['t0']) * traj.RATE_HZ)          # late ticks skip ahead
+        if i >= len(t['samples']):
+            i = len(t['samples']) - 1
+        if i != t['last']:
+            from geometry_msgs.msg import Pose, Point, Quaternion
+            p = t['samples'][i][1]
+            qx, qy, qz, qw = t['quat']
+            self._publish_pose(Pose(position=Point(x=p[0], y=p[1], z=p[2]),
+                                    orientation=Quaternion(x=qx, y=qy, z=qz, w=qw)))
+            t['last'] = i
+        if i >= len(t['samples']) - 1:
+            self._traj_timer.stop()
+            self._traj = None
+            self.host.log('INFO', '✓ Trajectory finished', 'Sequence')
+
+    def _publish_pose(self, pose):
+        """A Cartesian target to the sequences' target (the simulator or a real robot)."""
+        node = self.host.node
+        if not self.target_is_hardware():
+            node.publish_position(pose)
+            return True
+        rid = self._target_topic_rid() or node.station_robot_id
+        pub = node.pubs.get(rid, {}).get('position')
+        if pub is None:
+            self.host.log("ERROR", f"No Cart pose publisher for {rid}", rid)
+            return False
+        pub.publish(pose)
+        return True
 
     def add_sequence(self, name: str, waypoints: list) -> str:
         """Store ``waypoints`` as the sequence ``name`` (replacing one of that
@@ -120,11 +269,15 @@ class Extension(ExtensionBase):
 
     def teardown(self) -> None:
         self._stop_sequence()
+        self.stop_trajectory()
 
     def on_emergency_stop(self) -> None:
         if self.is_playing:
             self.host.log("WARN", "Emergency stop — halting sequence", "Sequence")
             self._stop_sequence()
+        if self._traj is not None:
+            self.host.log("WARN", "Emergency stop — halting trajectory", "Sequence")
+            self.stop_trajectory()
 
     @property
     def state_running(self) -> bool:
@@ -158,6 +311,10 @@ class Extension(ExtensionBase):
             'pos_tol_mm': round(self.position_tolerance_m * 1000.0, 1),
             'timeout_s': self.timeout_seconds,
             'file': SEQUENCES_YAML_PATH,
+            'trajectory': self.trajectory_state(),
+            'trajectory_kinds': [{'value': k, 'label': v} for k, v in traj.KINDS.items()],
+            'trajectory_limits': {'size': traj.SIZE, 'period': traj.PERIOD, 'cycles': traj.CYCLES,
+                                  'peak_speed': traj.PEAK_SPEED},
         }
 
     @staticmethod
@@ -281,7 +438,15 @@ class Extension(ExtensionBase):
             self.seq_status_label.setText(f"Moving to waypoint {i + 1}")
             return {'index': i}
         elif name == 'stop':
-            self._stop_sequence()
+            self.stop()
+        elif name == 'trajectory':
+            return {'duration': self.run_trajectory(args.get('kind'), args.get('size'), args.get('period'),
+                                                    args.get('cycles'), args.get('plane'),
+                                                    hardware_ok=args.get('hardware_ok') is True)}
+        elif name == 'save_trajectory':
+            busy()
+            return {'name': self.save_trajectory(args.get('name'), args.get('kind'), args.get('size'),
+                                                 args.get('plane'), int(args.get('per_cycle', 16)))}
         elif name == 'loop':
             self.seq_loop_checkbox.setChecked(bool(args.get('value')))
         elif name == 'target':
@@ -935,7 +1100,33 @@ class Extension(ExtensionBase):
         self._execute_waypoint(wps[selected])
         self.seq_status_label.setText(f"Moving to waypoint {selected + 1}")
 
+    #: The mode a waypoint is sent in when the robot is in the other kind of mode (simulation).
+    WAYPOINT_MODE = {'joint': 'Joint Impedance With Planner', 'cartesian': 'Cartesian Planner'}
+    MODE_SWITCH_MS = 400
+
+    def _mode_for(self, wp_type):
+        """In simulation, switch to a mode that follows ``wp_type`` waypoints when the robot is in
+        the other kind (a joint waypoint in a Cartesian mode does nothing). Returns True if it
+        switched. A real robot is never switched: the waypoint is sent as it is."""
+        want = self.WAYPOINT_MODE.get(wp_type)
+        if want is None or self.target_is_hardware() or not hasattr(self.host, 'control_mode'):
+            return False
+        mode = self.host.control_mode()
+        if not mode or mode.startswith('Cartesian') == (wp_type == 'cartesian'):
+            return False
+        self.host.set_mode(want)
+        self.host.log('INFO', 'Switched to %s for a %s waypoint' % (want, wp_type), 'Sequence')
+        return True
+
     def _execute_waypoint(self, wp):
+        """Send one waypoint, first switching to a mode that follows it (simulation); the target is
+        sent MODE_SWITCH_MS later then, since a mode switch snaps the target to the current pose."""
+        if self._mode_for(wp.get('type', 'joint')):
+            QTimer.singleShot(self.MODE_SWITCH_MS, lambda w=dict(wp): self._send_waypoint(w))
+            return
+        self._send_waypoint(wp)
+
+    def _send_waypoint(self, wp):
         wp_type = wp.get('type', 'joint')
         target = self.seq_target.currentText()
         robot_id = self._get_target_robot_id()
@@ -969,22 +1160,15 @@ class Extension(ExtensionBase):
             qx, qy, qz, qw = _axis_angle_to_quat(aa[0], aa[1], aa[2], aa[3], "deg")
             pose = Pose(position=Point(x=pos[0], y=pos[1], z=pos[2]),
                         orientation=Quaternion(x=qx, y=qy, z=qz, w=qw))
-            if target == "Simulation":
-                node.publish_position(pose)
-                self.host.log("INFO", f"Cart WP: ({pos[0]:.3f}, {pos[1]:.3f}, {pos[2]:.3f})", "Sequence")
-            else:
-                rid = self._target_topic_rid() or node.station_robot_id
-                pubs = node.pubs.get(rid, {})
-                pub = pubs.get('position')
-                if pub is None:
-                    self.host.log("ERROR", f"No Cart pose publisher for {rid}", robot_id)
-                    return
-                pub.publish(pose)
-                self.host.log("INFO", f"Cart WP: ({pos[0]:.3f}, {pos[1]:.3f}, {pos[2]:.3f})", robot_id)
+            if self._publish_pose(pose):
+                self.host.log("INFO", f"Cart WP: ({pos[0]:.3f}, {pos[1]:.3f}, {pos[2]:.3f})",
+                              "Sequence" if target == "Simulation" else robot_id)
         elif wp_type == 'gripper':
             width = wp.get('width', 0.08)
             pct = (width / 0.08) * 100
             if target == "Simulation":
+                # the simulator's gripper follows {rid}_gripper_width through the gripper bridge
+                node.publish_gripper_width(node.station_robot_id, float(width))
                 self.host.log("INFO", f"Gripper WP: {width:.4f}m ({pct:.0f}%) [sim]", "Sequence")
             else:
                 from std_msgs.msg import Float32
@@ -1047,7 +1231,8 @@ class Extension(ExtensionBase):
         wp_type = wp.get('type', 'joint')
         wps = self.sequences.get(self.current_sequence_name, [])
         elapsed = time.time() - self.move_start_time
-        if elapsed > self.timeout_seconds:
+        # a waypoint may carry its own timeout_s and tolerance_mm (e.g. a grasp that stops on the object)
+        if elapsed > float(wp.get('timeout_s', self.timeout_seconds)):
             self.host.log("WARN", f"Timeout at WP {self.play_index + 1} ({elapsed:.1f}s)", "Sequence")
             self.seq_status_label.setText(f"Timeout at waypoint {self.play_index + 1} - continuing...")
             self._proceed_to_next_waypoint()
@@ -1092,11 +1277,12 @@ class Extension(ExtensionBase):
         target_pos = wp.get('position', [0, 0, 0])
         current_pos = [ee.position.x, ee.position.y, ee.position.z]
         pos_error = math.sqrt(sum((t - c) ** 2 for t, c in zip(target_pos, current_pos)))
-        if pos_error <= self.position_tolerance_m:
+        tol = float(wp['tolerance_mm']) / 1000.0 if wp.get('tolerance_mm') else self.position_tolerance_m
+        if pos_error <= tol:
             self._cart_settle_last_pos = None
             self._cart_settle_since = None
             return True
-        near_band = self.position_tolerance_m * 3.0
+        near_band = tol * 3.0
         stall_step_m = 0.001
         stall_window_s = 1.0
         now = time.time()
@@ -1112,7 +1298,7 @@ class Extension(ExtensionBase):
                 elif self._cart_settle_since and (now - self._cart_settle_since) >= stall_window_s:
                     self.host.log("INFO",
                         f"Cartesian waypoint settled at {pos_error*1000:.1f}mm "
-                        f"(beyond {self.position_tolerance_m*1000:.0f}mm tolerance) — advancing",
+                        f"(beyond {tol*1000:.0f}mm tolerance) — advancing",
                         "Sequence")
                     self._cart_settle_last_pos = None
                     self._cart_settle_since = None

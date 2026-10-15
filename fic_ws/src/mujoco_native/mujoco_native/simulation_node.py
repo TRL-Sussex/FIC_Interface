@@ -79,8 +79,8 @@ import mujoco
 from mujoco_native import hardware_model
 
 from mujoco_native.experiment_hooks import (
-    applied_wrench_torques, body_positions, set_wall, site_wrench, step_push,
-    wall_contact_force)
+    applied_wrench_torques, body_positions, object_bodies, object_poses, set_wall, site_wrench,
+    step_push, wall_contact_force)
 
 # Links whose world positions are published on `body_poses` (flattened xpos).
 _POSE_BODIES = ['Shoulder_Link', 'HalfArm1_Link', 'HalfArm2_Link', 'ForeArm_Link',
@@ -201,6 +201,9 @@ class NativeMujocoSimulation(Node):
         self.declare_parameter('ft_rate_hz', 200.0)
         self.declare_parameter('odom_rate_hz', 50.0)
         self.declare_parameter('body_poses_rate_hz', 200.0)
+        # Poses of the scene's free objects (bodies named obj_*, e.g. the MuJoCo Playground's) on
+        # object_poses, as JSON {name: [x, y, z, qw, qx, qy, qz]}; 0 = off.
+        self.declare_parameter('object_poses_rate_hz', 10.0)
         self.declare_parameter('topic_prefix', 'simulation')
         # Start pose of a fixed-base arm: comma-separated angles (rad) for its
         # first hinge joints, in model order; empty = MuJoCo's qpos0.
@@ -224,6 +227,7 @@ class NativeMujocoSimulation(Node):
             'ft': _period('ft_rate_hz'),
             'odom': _period('odom_rate_hz'),
             'poses': _period('body_poses_rate_hz'),
+            'objects': _period('object_poses_rate_hz'),
         }
 
         self.get_logger().info(f"Loading model: {model_file}")
@@ -335,6 +339,7 @@ class NativeMujocoSimulation(Node):
         self._has_ft = self._ft_sensors is not None
         self._imu_adr = find_imu_sensors(self._model)
         self._pose_bodies = [b for b in _POSE_BODIES if b in body_names]
+        self._objects = object_bodies(self._model)
         self._ft_cache = None
         self._imu_cache = None
 
@@ -459,6 +464,7 @@ class NativeMujocoSimulation(Node):
             Float64MultiArray, prefix + 'applied_wrench_truth', qos)
         self._pub_body_poses = self.create_publisher(
             Float64MultiArray, prefix + 'body_poses', qos)
+        self._pub_object_poses = self.create_publisher(String, prefix + 'object_poses', qos)
         self._sub_wall = self.create_subscription(
             Float64MultiArray, prefix + 'wall_cmd', self._on_wall_cmd, qos)
         self._sub_push = self.create_subscription(
@@ -878,6 +884,9 @@ class NativeMujocoSimulation(Node):
             self._pub_body_poses.publish(Float64MultiArray(
                 data=body_positions(self._model,
                                     d, self._pose_bodies).ravel().tolist()))
+
+        if 'objects' in streams and self._objects:
+            self._pub_object_poses.publish(String(data=json.dumps(object_poses(d, self._objects))))
 
     def _publish_joint_states(self, stamp) -> None:
         """One entry per hinge joint, then roll/pitch/yaw per ball joint."""

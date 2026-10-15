@@ -23,8 +23,8 @@ from functools import partial
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (
-    QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QPushButton,
-    QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QDoubleSpinBox, QFrame, QHBoxLayout, QInputDialog, QLabel,
+    QMessageBox, QPushButton, QSpinBox, QVBoxLayout, QWidget,
 )
 from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import SetParameters
@@ -317,35 +317,239 @@ class ControlBarMixin:
                 self._rc_hpmp_toggle, self._rc_desired_wrench_btn]
 
     def _cb_build_quick_panel(self):
-        """Build the Quick Actions body: pick a sequence, play/stop/loop."""
+        """Build the Quick Actions body: a sequence (new, play, step, stop, loop, speed), a
+        trajectory template (line, circle, figure-eight: run it, or save it as a sequence) and the
+        actions extensions add (ExtensionHost.add_quick_action, e.g. the Playground's Pick)."""
         body = QWidget()
         lay = QVBoxLayout(body)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(8)
 
+        def button(label, slot, tip=''):
+            b = QPushButton(label)
+            b.setCursor(Qt.PointingHandCursor)
+            b.clicked.connect(slot)
+            if tip:
+                b.setToolTip(tip)
+            return b
+
         row = QHBoxLayout()
         row.setSpacing(10)
         row.addWidget(_caption('Sequence'))
         self._cb_sequence_combo = QComboBox()
-        self._cb_sequence_combo.setMinimumWidth(220)
+        self._cb_sequence_combo.setMinimumWidth(200)
         row.addWidget(self._cb_sequence_combo)
+        row.addWidget(button('New…', self._cb_new_sequence, 'Make an empty sequence; Snapshot then adds waypoints to it'))
         self._cb_sequence_info = _hint('')
         row.addWidget(self._cb_sequence_info)
         row.addStretch()
-        for label, slot in (('▶  Play', self._cb_play_sequence),
-                            ('■  Stop', self._cb_stop_sequence),
-                            ('↻  Loop', self._cb_loop_sequence)):
-            btn = QPushButton(label)
-            btn.setCursor(Qt.PointingHandCursor)
-            btn.clicked.connect(slot)
-            row.addWidget(btn)
+        for label, slot, tip in (('▶  Play', self._cb_play_sequence, ''),
+                                 ('⏭  Step', self._cb_step_sequence, 'Move to the next waypoint'),
+                                 ('■  Stop', self._cb_stop_sequence, 'Stop the sequence or the trajectory'),
+                                 ('↻  Loop', self._cb_loop_sequence, '')):
+            row.addWidget(button(label, slot, tip))
+        row.addWidget(_hint('Speed'))
+        self._cb_speed = QDoubleSpinBox()
+        self._cb_speed.setRange(0.1, 3.0)
+        self._cb_speed.setSingleStep(0.1)
+        self._cb_speed.setDecimals(1)
+        self._cb_speed.setSuffix('×')
+        self._cb_speed.setValue(1.0)
+        self._cb_speed.setToolTip('Playback speed: hold times are divided by it')
+        self._cb_speed.valueChanged.connect(self._cb_set_speed)
+        row.addWidget(self._cb_speed)
         lay.addLayout(row)
+
+        row = QHBoxLayout()
+        row.setSpacing(10)
+        row.addWidget(_caption('Trajectory'))
+        self._cb_traj_kind = QComboBox()
+        for key, label in (('line', 'Line'), ('circle', 'Circle'), ('eight', 'Figure-eight')):
+            self._cb_traj_kind.addItem(label, key)
+        row.addWidget(self._cb_traj_kind)
+        self._cb_traj_size = QSpinBox()
+        self._cb_traj_size.setRange(10, 150)
+        self._cb_traj_size.setValue(50)
+        self._cb_traj_size.setSuffix(' mm')
+        self._cb_traj_size.setToolTip("The line's half-length, the circle's radius, the figure-eight's half-width")
+        row.addWidget(self._cb_traj_size)
+        self._cb_traj_period = QDoubleSpinBox()
+        self._cb_traj_period.setRange(2.0, 60.0)
+        self._cb_traj_period.setValue(8.0)
+        self._cb_traj_period.setSuffix(' s')
+        self._cb_traj_period.setToolTip('Time for one cycle')
+        row.addWidget(self._cb_traj_period)
+        self._cb_traj_cycles = QSpinBox()
+        self._cb_traj_cycles.setRange(1, 10)
+        self._cb_traj_cycles.setValue(2)
+        self._cb_traj_cycles.setSuffix(' ×')
+        row.addWidget(self._cb_traj_cycles)
+        self._cb_traj_plane = QComboBox()
+        self._cb_traj_plane.addItems(['xy', 'xz', 'yz'])
+        self._cb_traj_plane.setToolTip('The plane of the base frame it is traced in')
+        row.addWidget(self._cb_traj_plane)
+        row.addStretch()
+        row.addWidget(button('▶  Run', self._cb_run_trajectory,
+                             'Trace it from where the end effector is, holding its orientation'))
+        row.addWidget(button('Save as sequence…', self._cb_save_trajectory,
+                             'One cycle as Cartesian waypoints, to compare a sequence with the trajectory'))
+        lay.addLayout(row)
+
+        self._cb_ext_actions_box = QVBoxLayout()
+        self._cb_ext_actions_box.setSpacing(6)
+        lay.addLayout(self._cb_ext_actions_box)
+        self._cb_rebuild_quick_actions()
 
         self._cb_sequence_status = _hint('')
         lay.addWidget(self._cb_sequence_status)
         lay.addStretch()
         self._cb_refresh_sequences()
         return body
+
+    # ── Quick Actions: sequence and trajectory controls ───────────────────
+
+    def _cb_say(self, text, level='INFO'):
+        status = getattr(self, '_cb_sequence_status', None)
+        if status is not None:
+            status.setText(text)
+        if level != 'INFO':
+            self._cb_log(level, text)
+
+    def _cb_new_sequence(self):
+        ext = self._cb_sequences()
+        if ext is None:
+            return self._cb_say('The Sequences extension is off: turn it on in Settings, Extensions.', 'WARN')
+        name, ok = QInputDialog.getText(self, 'New sequence', 'Name:')
+        if not ok:
+            return
+        try:
+            name = ext.new_sequence(name)
+        except Exception as exc:
+            return self._cb_say(str(exc), 'WARN')
+        self._cb_refresh_sequences(select=name)
+        self._cb_say('New sequence "%s": move the arm and press Snapshot for each waypoint.' % name)
+
+    def _cb_step_sequence(self):
+        ext = self._cb_sequences()
+        name = self._cb_selected_sequence()
+        if ext is None or name is None:
+            return
+        try:
+            i = ext.step(name)
+            self._cb_say('Moving to waypoint %d of "%s"' % (i + 1, name))
+        except Exception as exc:
+            self._cb_say(str(exc), 'WARN')
+
+    def _cb_set_speed(self, value):
+        ext = self._cb_sequences()
+        if ext is not None and hasattr(ext, 'set_speed'):
+            try:
+                ext.set_speed(value)
+            except Exception as exc:
+                self._cb_say(str(exc), 'WARN')
+
+    def _cb_traj_args(self):
+        return (self._cb_traj_kind.currentData(), self._cb_traj_size.value() / 1000.0,
+                self._cb_traj_period.value(), self._cb_traj_cycles.value(),
+                self._cb_traj_plane.currentText())
+
+    def _cb_run_trajectory(self):
+        ext = self._cb_sequences()
+        if ext is None or not hasattr(ext, 'run_trajectory'):
+            return self._cb_say('The Sequences extension is off: turn it on in Settings, Extensions.', 'WARN')
+        hw = ext.target_is_hardware()
+        if hw and QMessageBox.question(
+                self, 'Move the real robot?',
+                'The trajectory goes to the REAL robot (the Sequences target). Run it?') != QMessageBox.Yes:
+            return
+        try:
+            secs = ext.run_trajectory(*self._cb_traj_args(), hardware_ok=hw)
+            self._cb_say('Tracing the %s: %.0f s. Stop ends it.' % (self._cb_traj_kind.currentText().lower(), secs))
+        except Exception as exc:
+            self._cb_say(str(exc), 'WARN')
+
+    def _cb_save_trajectory(self):
+        ext = self._cb_sequences()
+        if ext is None or not hasattr(ext, 'save_trajectory'):
+            return
+        kind, size, _, _, plane = self._cb_traj_args()
+        name, ok = QInputDialog.getText(self, 'Save as sequence', 'Name:',
+                                        text='%s_%dmm' % (kind, round(size * 1000)))
+        if not ok:
+            return
+        try:
+            name = ext.save_trajectory(name, kind, size, plane)
+        except Exception as exc:
+            return self._cb_say(str(exc), 'WARN')
+        self._cb_refresh_sequences(select=name)
+        self._cb_say('Saved "%s": play it to see the arm go waypoint by waypoint instead.' % name)
+
+    # ── Quick Actions added by extensions ─────────────────────────────────
+
+    def _cb_rebuild_quick_actions(self):
+        """(Re)draw the rows of the actions extensions added (ExtensionHost.add_quick_action)."""
+        box = getattr(self, '_cb_ext_actions_box', None)
+        if box is None:
+            return
+        while box.count():
+            item = box.takeAt(0)
+            lay = item.layout()
+            if lay is not None:
+                while lay.count():
+                    w = lay.takeAt(0).widget()
+                    if w is not None:
+                        w.deleteLater()
+        self._cb_ext_choice = {}
+        for key, act in sorted(getattr(self, '_quick_actions', {}).items()):
+            row = QHBoxLayout()
+            row.setSpacing(10)
+            row.addWidget(_caption(act['label']))
+            combo = None
+            if act.get('choices') is not None:
+                combo = QComboBox()
+                combo.setMinimumWidth(160)
+                row.addWidget(combo)
+                self._cb_ext_choice[key] = combo
+            if act.get('hint'):
+                row.addWidget(_hint(act['hint']))
+            row.addStretch()
+            btn = QPushButton(act.get('button') or '▶  Run')
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.clicked.connect(partial(self._cb_run_quick_action, key))
+            row.addWidget(btn)
+            box.addLayout(row)
+        self._cb_refresh_quick_choices()
+
+    def _cb_refresh_quick_choices(self):
+        for key, combo in getattr(self, '_cb_ext_choice', {}).items():
+            act = getattr(self, '_quick_actions', {}).get(key)
+            if act is None:
+                continue
+            try:
+                choices = [str(c) for c in (act['choices']() or [])]
+            except Exception:
+                choices = []
+            keep = combo.currentText()
+            if [combo.itemText(i) for i in range(combo.count())] != choices:
+                combo.clear()
+                combo.addItems(choices)
+                if keep in choices:
+                    combo.setCurrentText(keep)
+
+    def _cb_run_quick_action(self, key):
+        act = getattr(self, '_quick_actions', {}).get(key)
+        if act is None:
+            return
+        combo = getattr(self, '_cb_ext_choice', {}).get(key)
+        choice = combo.currentText() if combo is not None else None
+        if combo is not None and not choice:
+            return self._cb_say('%s: nothing to choose yet' % act['label'], 'WARN')
+        try:
+            msg = act['run'](choice)
+            self._cb_say(str(msg) if msg else '%s: done' % act['label'])
+            self._cb_refresh_sequences()
+        except Exception as exc:
+            self._cb_say(str(exc), 'WARN')
 
     def _cb_build_snapshot_panel(self):
         """Build the Snapshot body: capture the live pose as a waypoint."""
@@ -414,6 +618,10 @@ class ControlBarMixin:
         while Joint Admittance is running must not silently drop you back
         to Impedance.
         """
+        if key in ('quick', 'snapshot'):
+            self._cb_refresh_sequences()
+            self._cb_refresh_quick_choices()
+            return
         if key not in MODE_MENUS:
             return
         indices = MODE_MENUS[key][1]
@@ -506,19 +714,33 @@ class ControlBarMixin:
         getter = getattr(self, 'get_extension', None)
         return getter('sequences') if getter is not None else None
 
-    def _cb_refresh_sequences(self):
-        """Repopulate the sequence dropdown from the extension."""
+    def _cb_refresh_sequences(self, select=None):
+        """Repopulate the sequence dropdown from the extension, keeping the chosen one (or
+        choosing ``select``). The bar is built before the extensions load their sequences, so it
+        also runs whenever Quick Actions or Snapshot opens."""
         combo = getattr(self, '_cb_sequence_combo', None)
         if combo is None:
             return
         ext = self._cb_sequences()
-        combo.clear()
+        keep = select or combo.currentText()
         if ext is None:
+            combo.clear()
             return
         try:
-            combo.addItems(list(ext.list_sequences()))
+            names = list(ext.list_sequences())
         except Exception as exc:                                # pragma: no cover
             self._cb_log('WARN', 'Could not list sequences: %s' % exc)
+            return
+        if [combo.itemText(i) for i in range(combo.count())] != names:
+            combo.clear()
+            combo.addItems(names)
+        if keep in names:
+            combo.setCurrentText(keep)
+        speed = getattr(self, '_cb_speed', None)
+        if speed is not None and hasattr(ext, 'speed'):
+            speed.blockSignals(True)
+            speed.setValue(ext.speed())
+            speed.blockSignals(False)
 
     def _cb_selected_sequence(self):
         """Return the chosen sequence name, or None."""

@@ -302,13 +302,65 @@ function buildSnapshot() {
 function buildQuick() {
   const sel = h('select', { class: 'select', id: 'd-seq', 'aria-label': 'Sequence' });
   sel.addEventListener('change', () => { selSeq = sel.value; });
+  const newName = h('input', { class: 'input', id: 'd-seq-new', type: 'text', placeholder: 'new sequence', maxlength: 60, 'aria-label': 'New sequence name' });
+  const speed = h('input', { class: 'input num', id: 'd-seq-speed', type: 'number', min: 0.1, max: 3, step: 0.1, 'aria-label': 'Playback speed' });
+  speed.addEventListener('change', () => cmd('sequence', { op: 'speed', value: parseFloat(speed.value) }));
+  const num = (id, label, min, max, step, value) => h('input', { class: 'input num', id, type: 'number', min, max, step, value, 'aria-label': label });
+  const kind = h('select', { class: 'select', id: 'd-tr-kind', 'aria-label': 'Trajectory' }, ...[['line', 'Line'], ['circle', 'Circle'], ['eight', 'Figure-eight']].map(([v, t]) => h('option', { value: v, text: t })));
+  const plane = h('select', { class: 'select', id: 'd-tr-plane', 'aria-label': 'Plane' }, ...['xy', 'xz', 'yz'].map(v => h('option', { value: v, text: v })));
+  const size = num('d-tr-size', 'Size (mm)', 10, 150, 5, 50), period = num('d-tr-period', 'Period (s)', 2, 60, 1, 8), cycles = num('d-tr-cycles', 'Cycles', 1, 10, 1, 2);
+  const ask = h('div', { id: 'd-tr-ask' });
+  const trArgs = () => ({ op: 'trajectory', kind: kind.value, size: parseFloat(size.value) / 1000, period: parseFloat(period.value), cycles: parseInt(cycles.value, 10), plane: plane.value });
+  const run = () => cmd('sequence', trArgs(), true).then(r => {
+    if (r.ok === false && r.error === 'confirm_hw') {
+      FIC.inlineConfirm(ask, { title: 'Run the trajectory on the REAL robot?', lines: ['It goes to the Sequences target, a real robot.'], label: 'Run it', danger: true,
+        onConfirm: () => cmd('sequence', Object.assign(trArgs(), { hardware_ok: true })).then(q => { if (q.ok !== false) toast('Tracing: ' + fmt(q.result.duration, 0) + ' s'); }) });
+    } else if (r.ok === false) toast(r.message || 'Refused', true);
+    else toast('Tracing: ' + fmt(r.result.duration, 0) + ' s — Stop ends it');
+  });
+  const saveTr = () => {
+    const name = kind.value + '_' + size.value + 'mm';
+    cmd('sequence', { op: 'save_trajectory', name, kind: kind.value, size: parseFloat(size.value) / 1000, plane: plane.value })
+      .then(r => { if (r.ok !== false) { selSeq = r.result.name; toast('Saved “' + selSeq + '”: play it to compare'); } });
+  };
   return h('div', { class: 'dpanel', id: 'dp-quick' },
     h('div', { class: 'dp-row' }, h('div', { class: 'field' }, h('label', { for: 'd-seq', text: 'Sequence' }), sel),
+      newName, h('button', { class: 'btn', type: 'button', text: 'New', title: 'Make an empty sequence; Snapshot adds waypoints to it',
+        onclick: () => cmd('sequence', { op: 'new', name: newName.value }).then(r => { if (r.ok !== false) { selSeq = r.result.name; newName.value = ''; toast('New sequence ' + selSeq + ': press Snapshot for each waypoint'); } }) }),
       h('div', { class: 'spacer' }),
       h('button', { class: 'btn', type: 'button', icon: 'play', text: 'Play', onclick: () => cmd('sequence', { op: 'play', name: selSeq }) }),
+      h('button', { class: 'btn', type: 'button', text: 'Step', title: 'Move to the next waypoint', onclick: () => cmd('sequence', { op: 'step', name: selSeq }) }),
       h('button', { class: 'btn', type: 'button', icon: 'stop', text: 'Stop', onclick: () => cmd('sequence', { op: 'stop' }) }),
-      h('button', { class: 'btn', type: 'button', icon: 'refresh', text: 'Loop', onclick: () => cmd('sequence', { op: 'loop', name: selSeq }) })),
+      h('button', { class: 'btn', type: 'button', icon: 'refresh', text: 'Loop', onclick: () => cmd('sequence', { op: 'loop', name: selSeq }) }),
+      h('label', { class: 'faint', for: 'd-seq-speed', text: 'Speed ×' }), speed),
+    h('div', { class: 'dp-row' }, h('div', { class: 'field' }, h('label', { for: 'd-tr-kind', text: 'Trajectory' }), kind),
+      size, h('span', { class: 'faint', text: 'mm' }), period, h('span', { class: 'faint', text: 's' }), cycles, h('span', { class: 'faint', text: '×' }), plane,
+      h('div', { class: 'spacer' }),
+      h('button', { class: 'btn', type: 'button', icon: 'play', text: 'Run', title: 'Trace it from where the end effector is, holding its orientation', onclick: run }),
+      h('button', { class: 'btn', type: 'button', text: 'Save as sequence', title: 'One cycle as waypoints, to compare a sequence with the trajectory', onclick: saveTr })),
+    ask,
+    h('div', { id: 'd-qa-ext' }),
     h('div', { class: 'dp-row faint', id: 'd-seq-note' }));
+}
+let qaSig = '';
+const qaChoice = {};
+function drawQuickExt(list) {
+  const sig = JSON.stringify(list.map(a => [a.key, a.label, a.hint, a.button, !!a.choices]));
+  if (sig !== qaSig) {
+    qaSig = sig;
+    $('#d-qa-ext').replaceChildren(...list.map(a => {
+      const pick = a.choices ? h('select', { class: 'select', 'data-qa': a.key, 'aria-label': a.label }) : null;
+      if (pick) pick.addEventListener('change', () => { qaChoice[a.key] = pick.value; });
+      return h('div', { class: 'dp-row' }, h('div', { class: 'field' }, h('label', { text: a.label }), pick || h('span')),
+        a.hint ? h('span', { class: 'faint', text: a.hint }) : null, h('div', { class: 'spacer' }),
+        h('button', { class: 'btn', type: 'button', icon: 'play', text: a.button,
+          onclick: () => cmd('quick_action', { key: a.key, choice: pick ? pick.value : null }).then(r => { if (r.ok !== false) toast(r.result.message); }) }));
+    }));
+  }
+  for (const a of list) {
+    const pick = document.querySelector('[data-qa="' + CSS.escape(a.key) + '"]');
+    if (pick && a.choices) setSelect(pick, a.choices.map(v => ({ value: v, label: v })), qaChoice[a.key] || a.choices[0] || '', v => { qaChoice[a.key] = v; });
+  }
 }
 
 // ── Opening and closing ───────────────────────────────────────────────────
@@ -415,8 +467,12 @@ function update(s) {
     setSelect($('#d-seq'), items.map(v => ({ value: v, label: v })), selSeq, v => { selSeq = v; });
     if (!selSeq || !items.includes(selSeq)) selSeq = items[0] || '';
     $('#d-seq').value = selSeq;
-    setText($('#d-seq-note'), s.sequences && s.sequences.available ? (s.sequences.playing ? 'Playing' : items.length + ' sequences') : 'The Sequences extension is off: turn it on in Settings, Extensions.');
+    const sq = s.sequences || {}, tr = sq.trajectory || {};
+    setText($('#d-seq-note'), sq.available ? (tr.running ? 'Tracing the ' + tr.kind + ': ' + fmt(100 * tr.progress, 0) + ' %' : sq.playing ? 'Playing' : items.length + ' sequences' + (sq.hardware ? ' · sends to the REAL robot' : '')) : 'The Sequences extension is off: turn it on in Settings, Extensions.');
     $('#d-capture').disabled = !selSeq;
+    const sp = $('#d-seq-speed');
+    if (sp && sq.speed != null && document.activeElement !== sp) sp.value = sq.speed;
+    if ($('#d-qa-ext')) drawQuickExt(s.quick_actions || []);
   }
 }
 

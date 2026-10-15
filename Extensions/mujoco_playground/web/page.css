@@ -1,0 +1,10 @@
+.pg-page { display: grid; gap: 14px; }
+.pg-list { display: grid; gap: 6px; margin: 8px 0 12px; }
+.pg-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border: 1px solid var(--line, #8883); border-radius: 8px; flex-wrap: wrap; }
+.pg-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.pg-name { font-weight: 600; }
+.pg-grow { flex: 1; }
+.pg-form { display: grid; gap: 6px; border-top: 1px solid var(--line, #8883); padding-top: 10px; }
+.pg-size, .pg-xy { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pg-h { margin: 14px 0 6px; font-size: 14px; }
+.pg-learn { margin: 0; padding-left: 20px; display: grid; gap: 6px; line-height: 1.45; }
