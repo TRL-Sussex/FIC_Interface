@@ -91,6 +91,16 @@ ros2 run fic_studio fic_dev          # Dev Console: a smaller GUI for a second P
 
 The installer also adds both to the desktop's application menu.
 
+On macOS (zsh) the installer puts `FIC Control Studio.app` and `FIC Dev Console.app`
+in `~/Applications`. From a terminal:
+
+```zsh
+conda activate fic_ros
+source ~/FIC_Interface/fic_ws/install/setup.zsh
+
+ros2 run fic_studio fic_studio_pro --web-ui
+```
+
 ### Simulation
 
 1. Choose the robot in the toolbar.

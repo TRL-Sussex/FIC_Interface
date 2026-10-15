@@ -13,7 +13,7 @@ _URDF = os.path.join(
     'KinovaGen3_7DOF', 'URDF', 'KinovaGen3_7DOF.urdf')
 _PENDULUM_URDF = os.path.join(
     os.path.dirname(__file__), '..', '..', 'menagerie', 'model',
-    'Pendulum', 'URDF', 'pendulum.urdf')
+    'Pendulum', 'URDF', 'Pendulum.urdf')
 _FR3_URDF = os.path.join(
     os.path.dirname(__file__), '..', '..', 'menagerie', 'model',
     'Franka_FR3', 'URDF', 'Franka_FR3.urdf')

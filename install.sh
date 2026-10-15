@@ -66,12 +66,13 @@ if [ "$UPDATE" -eq 1 ] && [ -d "$HERE/.git" ]; then
 fi
 
 # ── Hand off to the platform installer ──
+# ${PASS[@]+"${PASS[@]}"}: macOS's bash 3.2 calls an empty "${PASS[@]}" unbound under set -u.
 case "$(uname -s)" in
     Darwin)
-        exec zsh "$HERE/fic_install/macos/install-fic-studio-macos.sh" "${PASS[@]}"
+        exec zsh "$HERE/fic_install/macos/install-fic-studio-macos.sh" ${PASS[@]+"${PASS[@]}"}
         ;;
     Linux)
-        exec bash "$HERE/Install_FIC_Studio.desktop" "${PASS[@]}"
+        exec bash "$HERE/Install_FIC_Studio.desktop" ${PASS[@]+"${PASS[@]}"}
         ;;
     *)
         echo "Unsupported OS: $(uname -s)." >&2
