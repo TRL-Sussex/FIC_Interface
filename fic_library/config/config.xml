@@ -730,9 +730,9 @@
             <cartesian>
                 <x>
                     <controller>
-                        <stiffness>200.000</stiffness>
+                        <stiffness>520.000</stiffness>
                         <diff_effort_max>100.0</diff_effort_max>
-                        <error_max>0.1,0.2,0.4</error_max>
+                        <error_max>0.025,0.1,0.2</error_max>
                         <force_max>13,20,39</force_max>
                         <saturation_ratios>0.9</saturation_ratios>
                         <n_saturations>6</n_saturations>
@@ -756,9 +756,9 @@
                 </x>
                 <y>
                     <controller>
-                        <stiffness>200.000</stiffness>
+                        <stiffness>520.000</stiffness>
                         <diff_effort_max>100.0</diff_effort_max>
-                        <error_max>0.1,0.2,0.4</error_max>
+                        <error_max>0.025,0.1,0.2</error_max>
                         <force_max>13,20,39</force_max>
                         <saturation_ratios>0.9</saturation_ratios>
                         <n_saturations>6</n_saturations>
@@ -782,9 +782,9 @@
                 </y>
                 <z>
                     <controller>
-                        <stiffness>200.000</stiffness>
+                        <stiffness>520.000</stiffness>
                         <diff_effort_max>100.0</diff_effort_max>
-                        <error_max>0.1,0.2,0.4</error_max>
+                        <error_max>0.025,0.1,0.2</error_max>
                         <force_max>13,20,39</force_max>
                         <saturation_ratios>0.9</saturation_ratios>
                         <n_saturations>6</n_saturations>
@@ -808,7 +808,7 @@
                 </z>
                 <q>
                     <controller>
-                        <stiffness>50.000</stiffness>
+                        <stiffness>40.000</stiffness>
                         <diff_effort_max>50.0</diff_effort_max>
                         <error_max>0.05,0.1,0.2</error_max>
                         <force_max>2,5,10</force_max>
@@ -838,9 +838,9 @@
             <cartesian>
                 <x>
                     <controller>
-                        <stiffness>130.000</stiffness>
+                        <stiffness>520.000</stiffness>
                         <diff_effort_max>100.0</diff_effort_max>
-                        <error_max>0.05,0.1,0.19561</error_max>
+                        <error_max>0.025,0.1,0.19561</error_max>
                         <force_max>13,20,32.549</force_max>
                         <saturation_ratios>0.9</saturation_ratios>
                         <n_saturations>6</n_saturations>
@@ -864,9 +864,9 @@
                 </x>
                 <y>
                     <controller>
-                        <stiffness>200.000</stiffness>
+                        <stiffness>438.000</stiffness>
                         <diff_effort_max>100.0</diff_effort_max>
-                        <error_max>0.04821,0.10738,0.19589</error_max>
+                        <error_max>0.025,0.10738,0.19589</error_max>
                         <force_max>10.961,20.23,35.131</force_max>
                         <saturation_ratios>0.9</saturation_ratios>
                         <n_saturations>6</n_saturations>
@@ -890,9 +890,9 @@
                 </y>
                 <z>
                     <controller>
-                        <stiffness>200.000</stiffness>
+                        <stiffness>520.000</stiffness>
                         <diff_effort_max>100.0</diff_effort_max>
-                        <error_max>0.05,0.1,0.2</error_max>
+                        <error_max>0.025,0.1,0.2</error_max>
                         <force_max>13,20,39</force_max>
                         <saturation_ratios>0.9</saturation_ratios>
                         <n_saturations>6</n_saturations>
@@ -916,7 +916,7 @@
                 </z>
                 <q>
                     <controller>
-                        <stiffness>50.000</stiffness>
+                        <stiffness>40.000</stiffness>
                         <diff_effort_max>50.0</diff_effort_max>
                         <error_max>0.05,0.1,0.2</error_max>
                         <force_max>2,5,10</force_max>
@@ -3476,6 +3476,114 @@
                 </q>
             </cartesian>
         </mode>
+        <mode id="8" name="Cartesian HAP-FIC" profile="free_space">
+            <cartesian>
+                <x>
+                    <controller>
+                        <stiffness>130.000</stiffness>
+                        <diff_effort_max>100.0</diff_effort_max>
+                        <error_max>0.05,0.1,0.19561</error_max>
+                        <force_max>13,20,32.549</force_max>
+                        <saturation_ratios>0.9</saturation_ratios>
+                        <n_saturations>6</n_saturations>
+                        <asymmetric>false</asymmetric>
+                        <n_neg_sat>3</n_neg_sat>
+                    </controller>
+                    <planner>
+                        <stiffness_P>15753.0</stiffness_P>
+                        <vel_desired>1.0000</vel_desired>
+                        <acc_max>5000.0</acc_max>
+                        <damping_ratio>0.015000</damping_ratio>
+                        <frequency>150.0</frequency>
+                    </planner>
+                    <admittance>
+                        <InvM>1.000000</InvM>
+                        <Damping>20.0</Damping>
+                        <dFlow>-5.2,5.2</dFlow>
+                        <Flow>-0.5,0.5</Flow>
+                        <Pose>-0.3,0.3</Pose>
+                    </admittance>
+                </x>
+                <y>
+                    <controller>
+                        <stiffness>200.000</stiffness>
+                        <diff_effort_max>100.0</diff_effort_max>
+                        <error_max>0.04821,0.10738,0.19589</error_max>
+                        <force_max>10.961,20.23,35.131</force_max>
+                        <saturation_ratios>0.9</saturation_ratios>
+                        <n_saturations>6</n_saturations>
+                        <asymmetric>false</asymmetric>
+                        <n_neg_sat>3</n_neg_sat>
+                    </controller>
+                    <planner>
+                        <stiffness_P>15753.0</stiffness_P>
+                        <vel_desired>1.0000</vel_desired>
+                        <acc_max>5000.0</acc_max>
+                        <damping_ratio>0.015000</damping_ratio>
+                        <frequency>150.0</frequency>
+                    </planner>
+                    <admittance>
+                        <InvM>1.000000</InvM>
+                        <Damping>20.0</Damping>
+                        <dFlow>-5.2,5.2</dFlow>
+                        <Flow>-0.5,0.5</Flow>
+                        <Pose>-0.3,0.3</Pose>
+                    </admittance>
+                </y>
+                <z>
+                    <controller>
+                        <stiffness>200.000</stiffness>
+                        <diff_effort_max>100.0</diff_effort_max>
+                        <error_max>0.05,0.1,0.2</error_max>
+                        <force_max>13,20,39</force_max>
+                        <saturation_ratios>0.9</saturation_ratios>
+                        <n_saturations>6</n_saturations>
+                        <asymmetric>false</asymmetric>
+                        <n_neg_sat>3</n_neg_sat>
+                    </controller>
+                    <planner>
+                        <stiffness_P>15753.0</stiffness_P>
+                        <vel_desired>1.0</vel_desired>
+                        <acc_max>5000.0</acc_max>
+                        <damping_ratio>0.015000</damping_ratio>
+                        <frequency>150.0</frequency>
+                    </planner>
+                    <admittance>
+                        <InvM>1.0</InvM>
+                        <Damping>20.0</Damping>
+                        <dFlow>-5.2,5.2</dFlow>
+                        <Flow>-0.5,0.5</Flow>
+                        <Pose>-0.3,0.3</Pose>
+                    </admittance>
+                </z>
+                <q>
+                    <controller>
+                        <stiffness>50.000</stiffness>
+                        <diff_effort_max>50.0</diff_effort_max>
+                        <error_max>0.05,0.1,0.2</error_max>
+                        <force_max>2,5,10</force_max>
+                        <saturation_ratios>0.9</saturation_ratios>
+                        <n_saturations>6</n_saturations>
+                        <asymmetric>false</asymmetric>
+                        <n_neg_sat>3</n_neg_sat>
+                    </controller>
+                    <planner>
+                        <stiffness_P>15753.0</stiffness_P>
+                        <vel_desired>0.3000</vel_desired>
+                        <acc_max>5000.0</acc_max>
+                        <damping_ratio>0.015000</damping_ratio>
+                        <frequency>150.0</frequency>
+                    </planner>
+                    <admittance>
+                        <InvM>1.000000</InvM>
+                        <Damping>15.0</Damping>
+                        <dFlow>-5.2,5.2</dFlow>
+                        <Flow>-1,1</Flow>
+                        <Pose>-0.5,0.5</Pose>
+                    </admittance>
+                </q>
+            </cartesian>
+        </mode>
         <mode id="100" name="H-PMP" profile="contact">
             <joint id="0">
                 <controller>
@@ -3773,6 +3881,222 @@
                         <Damping>15.0</Damping>
                         <dFlow>-5.2,5.2</dFlow>
                         <Flow>-1,1</Flow>
+                        <Pose>-0.5,0.5</Pose>
+                    </admittance>
+                </q>
+            </cartesian>
+        </mode>
+        <mode id="8" name="Cartesian HAP-FIC" profile="contact">
+            <cartesian>
+                <x>
+                    <controller>
+                        <stiffness>130.000</stiffness>
+                        <diff_effort_max>100.0</diff_effort_max>
+                        <error_max>0.05,0.1,0.19561</error_max>
+                        <force_max>13,20,32.549</force_max>
+                        <saturation_ratios>0.9</saturation_ratios>
+                        <n_saturations>6</n_saturations>
+                        <asymmetric>false</asymmetric>
+                        <n_neg_sat>3</n_neg_sat>
+                    </controller>
+                    <planner>
+                        <stiffness_P>15753.0</stiffness_P>
+                        <vel_desired>1.0000</vel_desired>
+                        <acc_max>5000.0</acc_max>
+                        <damping_ratio>0.015000</damping_ratio>
+                        <frequency>150.0</frequency>
+                    </planner>
+                    <admittance>
+                        <InvM>1.000000</InvM>
+                        <Damping>20.0</Damping>
+                        <dFlow>-5.2,5.2</dFlow>
+                        <Flow>-0.5,0.5</Flow>
+                        <Pose>-0.3,0.3</Pose>
+                    </admittance>
+                </x>
+                <y>
+                    <controller>
+                        <stiffness>200.000</stiffness>
+                        <diff_effort_max>100.0</diff_effort_max>
+                        <error_max>0.04821,0.10738,0.19589</error_max>
+                        <force_max>10.961,20.23,35.131</force_max>
+                        <saturation_ratios>0.9</saturation_ratios>
+                        <n_saturations>6</n_saturations>
+                        <asymmetric>false</asymmetric>
+                        <n_neg_sat>3</n_neg_sat>
+                    </controller>
+                    <planner>
+                        <stiffness_P>15753.0</stiffness_P>
+                        <vel_desired>1.0000</vel_desired>
+                        <acc_max>5000.0</acc_max>
+                        <damping_ratio>0.015000</damping_ratio>
+                        <frequency>150.0</frequency>
+                    </planner>
+                    <admittance>
+                        <InvM>1.000000</InvM>
+                        <Damping>20.0</Damping>
+                        <dFlow>-5.2,5.2</dFlow>
+                        <Flow>-0.5,0.5</Flow>
+                        <Pose>-0.3,0.3</Pose>
+                    </admittance>
+                </y>
+                <z>
+                    <controller>
+                        <stiffness>200.000</stiffness>
+                        <diff_effort_max>100.0</diff_effort_max>
+                        <error_max>0.05,0.1,0.2</error_max>
+                        <force_max>13,20,39</force_max>
+                        <saturation_ratios>0.9</saturation_ratios>
+                        <n_saturations>6</n_saturations>
+                        <asymmetric>false</asymmetric>
+                        <n_neg_sat>3</n_neg_sat>
+                    </controller>
+                    <planner>
+                        <stiffness_P>15753.0</stiffness_P>
+                        <vel_desired>1.0</vel_desired>
+                        <acc_max>5000.0</acc_max>
+                        <damping_ratio>0.015000</damping_ratio>
+                        <frequency>150.0</frequency>
+                    </planner>
+                    <admittance>
+                        <InvM>1.0</InvM>
+                        <Damping>20.0</Damping>
+                        <dFlow>-5.2,5.2</dFlow>
+                        <Flow>-0.5,0.5</Flow>
+                        <Pose>-0.3,0.3</Pose>
+                    </admittance>
+                </z>
+                <q>
+                    <controller>
+                        <stiffness>50.000</stiffness>
+                        <diff_effort_max>50.0</diff_effort_max>
+                        <error_max>0.05,0.1,0.2</error_max>
+                        <force_max>2,5,10</force_max>
+                        <saturation_ratios>0.9</saturation_ratios>
+                        <n_saturations>6</n_saturations>
+                        <asymmetric>false</asymmetric>
+                        <n_neg_sat>3</n_neg_sat>
+                    </controller>
+                    <planner>
+                        <stiffness_P>15753.0</stiffness_P>
+                        <vel_desired>0.3000</vel_desired>
+                        <acc_max>5000.0</acc_max>
+                        <damping_ratio>0.015000</damping_ratio>
+                        <frequency>150.0</frequency>
+                    </planner>
+                    <admittance>
+                        <InvM>1.000000</InvM>
+                        <Damping>15.0</Damping>
+                        <dFlow>-5.2,5.2</dFlow>
+                        <Flow>-1,1</Flow>
+                        <Pose>-0.5,0.5</Pose>
+                    </admittance>
+                </q>
+            </cartesian>
+        </mode>
+        <mode id="7" name="Cartesian Admittance" profile="contact">
+            <cartesian>
+                <x>
+                    <controller>
+                        <stiffness>200.000</stiffness>
+                        <diff_effort_max>100.0</diff_effort_max>
+                        <error_max>0.1,0.2,0.4</error_max>
+                        <force_max>13,20,39</force_max>
+                        <saturation_ratios>0.9</saturation_ratios>
+                        <n_saturations>6</n_saturations>
+                        <asymmetric>false</asymmetric>
+                        <n_neg_sat>3</n_neg_sat>
+                    </controller>
+                    <planner>
+                        <stiffness_P>15753.0</stiffness_P>
+                        <vel_desired>1.0</vel_desired>
+                        <acc_max>5000.0</acc_max>
+                        <damping_ratio>0.015000</damping_ratio>
+                        <frequency>150.0</frequency>
+                    </planner>
+                    <admittance>
+                        <InvM>1.0</InvM>
+                        <Damping>20.0</Damping>
+                        <dFlow>-5.2,5.2</dFlow>
+                        <Flow>-0.5,0.5</Flow>
+                        <Pose>-0.3,0.3</Pose>
+                    </admittance>
+                </x>
+                <y>
+                    <controller>
+                        <stiffness>200.000</stiffness>
+                        <diff_effort_max>100.0</diff_effort_max>
+                        <error_max>0.1,0.2,0.4</error_max>
+                        <force_max>13,20,39</force_max>
+                        <saturation_ratios>0.9</saturation_ratios>
+                        <n_saturations>6</n_saturations>
+                        <asymmetric>false</asymmetric>
+                        <n_neg_sat>3</n_neg_sat>
+                    </controller>
+                    <planner>
+                        <stiffness_P>15753.0</stiffness_P>
+                        <vel_desired>1.0</vel_desired>
+                        <acc_max>5000.0</acc_max>
+                        <damping_ratio>0.015000</damping_ratio>
+                        <frequency>150.0</frequency>
+                    </planner>
+                    <admittance>
+                        <InvM>1.0</InvM>
+                        <Damping>20.0</Damping>
+                        <dFlow>-5.2,5.2</dFlow>
+                        <Flow>-0.5,0.5</Flow>
+                        <Pose>-0.3,0.3</Pose>
+                    </admittance>
+                </y>
+                <z>
+                    <controller>
+                        <stiffness>200.000</stiffness>
+                        <diff_effort_max>100.0</diff_effort_max>
+                        <error_max>0.1,0.2,0.4</error_max>
+                        <force_max>13,20,39</force_max>
+                        <saturation_ratios>0.9</saturation_ratios>
+                        <n_saturations>6</n_saturations>
+                        <asymmetric>false</asymmetric>
+                        <n_neg_sat>3</n_neg_sat>
+                    </controller>
+                    <planner>
+                        <stiffness_P>15753.0</stiffness_P>
+                        <vel_desired>1.0</vel_desired>
+                        <acc_max>5000.0</acc_max>
+                        <damping_ratio>0.015000</damping_ratio>
+                        <frequency>150.0</frequency>
+                    </planner>
+                    <admittance>
+                        <InvM>1.0</InvM>
+                        <Damping>20.0</Damping>
+                        <dFlow>-5.2,5.2</dFlow>
+                        <Flow>-0.5,0.5</Flow>
+                        <Pose>-0.3,0.3</Pose>
+                    </admittance>
+                </z>
+                <q>
+                    <controller>
+                        <stiffness>50.000</stiffness>
+                        <diff_effort_max>50.0</diff_effort_max>
+                        <error_max>0.05,0.1,0.2</error_max>
+                        <force_max>2,5,10</force_max>
+                        <saturation_ratios>0.9</saturation_ratios>
+                        <n_saturations>6</n_saturations>
+                        <asymmetric>false</asymmetric>
+                        <n_neg_sat>3</n_neg_sat>
+                    </controller>
+                    <planner>
+                        <stiffness_P>15753.0</stiffness_P>
+                        <vel_desired>0.3</vel_desired>
+                        <acc_max>5000.0</acc_max>
+                        <damping_ratio>0.015000</damping_ratio>
+                        <frequency>150.0</frequency>
+                    </planner>
+                    <admittance>
+                        <InvM>1.0</InvM>
+                        <Damping>15.0</Damping>
+                        <dFlow>-5.2,5.2</dFlow>
+                        <Flow>-1.0,1.0</Flow>
                         <Pose>-0.5,0.5</Pose>
                     </admittance>
                 </q>

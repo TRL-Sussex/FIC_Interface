@@ -17,23 +17,31 @@
 </div>
 
 <div class="admonition tip" style="margin-top:24px">
-  <div class="adm-title">What's new in v5.7.0</div>
+  <div class="adm-title">What's new in v5.9.0</div>
   <ul style="margin:6px 0 4px 0">
-    <li><strong>H-PMP, on by default</strong> &mdash; the overlay that nests the Cartesian controller inside the joint
-      HAP-FIC (formerly the HAP-FIC toggle) is now called H-PMP, is on by default in the Cartesian modes and also works in
-      mode 5. On mode 8 (Cartesian HAP-FIC) it is the H-PMP of the Whole-Arm experiments. Turn it off to send the Cartesian torques directly. Scripts call <code>robot.mode.hpmp()</code>; the topic
-      is <code>robot{N}_hpmp_enable</code> (the old names still work). See
-      <a href="#hpmp" onclick="showPage('hpmp')">H-PMP</a>.</li>
-    <li><strong>Steadier H-PMP elbow</strong> &mdash; H-PMP's inverse kinematics starts from its previous solution, so
-      the elbow posture is held by the joints: a push on the elbow no longer drags the set-point with it, and the arm
-      no longer drifts after a push.</li>
-    <li><strong>Mode names</strong> &mdash; mode 4 is Joint HAP-FIC, mode 6 Cartesian Impedance with Planner and mode 8
-      Cartesian HAP-FIC.</li>
-    <li><strong>Simulating like the real robot</strong> &mdash; give a robot its measured joint friction, damping and
-      torque-sensor noise (Robot Config &rarr; Hardware, or measure them on the arm with
-      <code>python3 -m fic_studio.hardware_model</code>) and the simulator behaves like the arm, so tunes made in
-      simulation carry over. See <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Simulation vs.
-      Hardware</a>.</li>
+    <li><strong>MuJoCo 3.15</strong> &mdash; one MuJoCo release for every simulator: installs, the Docker image and the GPU
+      simulator (Newton 1.7.0).</li>
+    <li><strong>Your own objects in the MuJoCo Playground</strong> &mdash; drop an STL or OBJ file on the Objects panel; the
+      arm now starts at its home pose with the gripper open. See
+      <a href="#playground" onclick="showPage('playground')">MuJoCo Playground</a>.</li>
+    <li><strong>H-PMP from the first Cart press</strong> &mdash; a controller started after the Studio now gets the H-PMP
+      setting with its first Cartesian mode.</li>
+  </ul>
+</div>
+
+<div class="admonition tip" style="margin-top:24px">
+  <div class="adm-title">What's new in v5.8.0</div>
+  <ul style="margin:6px 0 4px 0">
+    <li><strong>MuJoCo Playground</strong> &mdash; a sandbox for learning to program the robot: pick an arm and a scene
+      with objects, press Start, then move, record waypoints, play sequences, trace trajectories and pick objects. See
+      <a href="#playground" onclick="showPage('playground')">MuJoCo Playground</a>.</li>
+    <li><strong>Quick Actions</strong> &mdash; New sequence, Step and Speed, and trajectory templates (a line, a circle, a
+      figure-eight) to run or to save as a sequence; extensions can add their own actions.</li>
+    <li><strong>Simulated Kinova gripper</strong> &mdash; opens and closes like the real Robotiq 2F-85 and touches the
+      floor, objects and the arm.</li>
+    <li><strong>Since v5.7.0</strong> &mdash; H-PMP on by default,
+      a steadier H-PMP elbow, the mode names, and simulating like the real robot (see
+      <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Simulation vs. Hardware</a>).</li>
   </ul>
 </div>
 

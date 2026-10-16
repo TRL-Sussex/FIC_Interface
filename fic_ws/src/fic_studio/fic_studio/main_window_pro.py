@@ -71,7 +71,7 @@ class ProfessionalRobotGUI(
     GamepadMixin, KeyboardMixin, HelpMixin, WebRemoteMixin, WebUIMixin, InnerLoopMixin,
 ):
     APP_NAME = "FIC Control Studio"
-    APP_VERSION = "5.7.0"
+    APP_VERSION = "5.9.0"
     
     def __init__(self, node: FicStudioNode):
         super().__init__()
@@ -1559,6 +1559,7 @@ class ProfessionalRobotGUI(
 
     def _send_mode_from_toolbar(self):
         mode_idx = self.tb_mode_dropdown.currentIndex() + 1
+        self._send_hpmp_for_mode(mode_idx)
         self.node.publish_mode(mode_idx)
         self.log_message("INFO", f"Sent mode: {mode_idx} - {self.tb_mode_dropdown.currentText()}", "Control")
         self._sync_mode_menu_check()
@@ -1940,6 +1941,7 @@ class ProfessionalRobotGUI(
 
     def _set_mode_from_menu(self, mode_id: int):
         """Robot > Control Mode > (1-8) — publish mode and update the dropdown."""
+        self._send_hpmp_for_mode(mode_id)
         self.node.publish_mode(mode_id)
         # Sync the Robot Control panel dropdown (0-indexed)
         if hasattr(self, '_rc_mode_dropdown'):

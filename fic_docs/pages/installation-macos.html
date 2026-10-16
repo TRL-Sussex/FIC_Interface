@@ -95,7 +95,7 @@ conda activate fic_ros
 mamba install -c conda-forge -c robostack-staging \
     compilers cmake ninja pkg-config colcon-common-extensions \
     ros-humble-ament-cmake eigen tinyxml2 yaml-cpp pinocchio \
-    pyqt pyqtgraph 'numpy>=2' pyyaml 'mujoco>=3.3' 'setuptools<80'
+    pyqt pyqtgraph 'numpy>=2' pyyaml 'mujoco=3.15.0' 'setuptools<80'
 
 # 4. Build the simulation packages (or the whole workspace: drop --packages-select)
 cd fic_ws

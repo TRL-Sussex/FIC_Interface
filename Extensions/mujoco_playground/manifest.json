@@ -6,6 +6,7 @@
   "sidebar_section": "Programming",
   "web": {
     "page": "page.js",
+    "local_only": ["mesh_upload"],
     "poll_ms": 400,
     "css": "page.css"
   }

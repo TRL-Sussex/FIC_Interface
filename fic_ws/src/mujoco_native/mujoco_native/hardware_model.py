@@ -12,6 +12,13 @@ command delay it returns.
       torque_noise: [...]       # N m, standard deviation of the measured joint torque at rest
       command_delay_ms: 0       # torque command applied this late
       torque_filter_hz: 200     # read by fic_simulation (the measured-torque filter)
+      torque_sensor: motor      # measured joint torque: motor (the actuator torque, default) or
+                                # output (`link_side_torque`: less the joint's own friction, damping
+                                # and rotor inertia, as a sensor after the gearbox reads it)
+
+Which one the Kinova's sensors are closer to is open (15 Oct 2026): `output` reproduces the H-PMP
+instability seen on the arm on modes 7/8, `motor` the ~2 N friction effort its wrench estimate shows in
+motion (the friction and damping values were fitted with it).
 
 Lists are per joint, in the order of the robot's joint_names; a missing list keeps the MJCF's
 own values. Absent block, or enabled: false: nothing changes (the ideal simulator). The
@@ -73,9 +80,11 @@ def apply(model, hm: dict, dt: float) -> dict:
     """Set the per-joint friction, damping and armature of the named hinge joints on `model`.
     Returns {'noise': {dof address: std}, 'delay_steps': n, 'applied': [joint names]}."""
     import mujoco
-    out = {'noise': {}, 'delay_steps': 0, 'applied': []}
+    out = {'noise': {}, 'delay_steps': 0, 'applied': [], 'torque_sensor': 'motor'}
     if not hm:
         return out
+    sensor = str(hm.get('torque_sensor') or 'motor').strip().lower()
+    out['torque_sensor'] = sensor if sensor in ('motor', 'output') else 'motor'
     names = hm.get('joint_names') or []
     noise = hm.get('torque_noise') or []
     for k, name in enumerate(names):
@@ -93,3 +102,24 @@ def apply(model, hm: dict, dt: float) -> dict:
     delay = float(hm.get('command_delay_ms') or 0.0)
     out['delay_steps'] = max(0, int(round(delay * 1e-3 / dt))) if dt > 0 else 0
     return out
+
+
+def link_side_torque(model, data, dofs):
+    """Joint torque at the output side of each dof in `dofs` (the arm's torque sensors): the actuator
+    torque plus the passive forces (damping, negative) plus the dof friction-loss constraint forces,
+    less the rotor-inertia torque armature * qacc. At rest it is gravity less the external torque, so
+    the joint-torque wrench estimate does not read the joint's own losses as an external wrench."""
+    import mujoco
+    import numpy as np
+    dofs = np.asarray(dofs, dtype=int)
+    tau = (np.asarray(data.qfrc_actuator)[dofs] + np.asarray(data.qfrc_passive)[dofs]
+           - np.asarray(model.dof_armature)[dofs] * np.asarray(data.qacc)[dofs])
+    n = int(data.nefc)
+    if n:
+        typ = np.asarray(data.efc_type)[:n]
+        rows = np.nonzero(typ == int(mujoco.mjtConstraint.mjCNSTR_FRICTION_DOF))[0]
+        if rows.size:
+            fric = np.zeros(model.nv)
+            np.add.at(fric, np.asarray(data.efc_id)[rows], np.asarray(data.efc_force)[rows])
+            tau = tau + fric[dofs]
+    return tau

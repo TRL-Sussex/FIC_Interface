@@ -48,16 +48,42 @@ def test_without_a_sim_limit_both_targets_get_max_joint_vel():
     assert pubs['robot1']['vel'].sent == [[1.0, 0.5, 1.0]]
 
 
-def _profile_host(target):
-    return types.SimpleNamespace(robot_target=lambda rid=None: target)
+def _profile_host(target, hardware_model=None):
+    cfg = {} if hardware_model is None else {'hardware_model': hardware_model}
+    host = types.SimpleNamespace(
+        robot_target=lambda rid=None: target, robot_configs={'R': cfg},
+        robot_dropdown=types.SimpleNamespace(currentText=lambda: 'R'))
+    host._rc_simulated_like_hardware = (
+        lambda: RobotControlMixin._rc_simulated_like_hardware(host))
+    return host
 
 
-def test_config_follows_the_target():
+def test_config_follows_the_target(monkeypatch):
     """'sim' in simulation when the robot has it; 'default' otherwise."""
+    monkeypatch.delenv('FIC_HARDWARE_MODEL', raising=False)
     pick = RobotControlMixin._rc_target_default_profile
     assert pick(_profile_host('simulation'), ['default', 'sim']) == 'sim'
     assert pick(_profile_host('hardware'), ['default', 'sim']) == 'default'
     assert pick(_profile_host('simulation'), ['default', 'Stiff']) == 'default'
+
+
+def test_simulated_like_the_robot_uses_the_robots_config(monkeypatch):
+    """With an enabled hardware_model the simulation runs the tuning the arm runs ('default')."""
+    monkeypatch.delenv('FIC_HARDWARE_MODEL', raising=False)
+    pick = RobotControlMixin._rc_target_default_profile
+    assert pick(_profile_host('simulation', {'enabled': True}), ['default', 'sim']) == 'default'
+    assert pick(_profile_host('simulation', {'enabled': False}), ['default', 'sim']) == 'sim'
+    monkeypatch.setenv('FIC_HARDWARE_MODEL', 'off')            # the ideal simulator for this run
+    assert pick(_profile_host('simulation', {'enabled': True}), ['default', 'sim']) == 'sim'
+
+
+def test_simulated_like_the_robot_gets_the_hardware_velocity_limit():
+    host, pubs = _safety_host({'robot1': 'simulation'},
+                              {'max_joint_vel': 1.0, 'sim_max_joint_vel': 3.0,
+                               'max_cart_vel': 0.5, 'enabled': True})
+    host._safety_like_hardware = True
+    SafetyMixin._publish_safety_limits(host)
+    assert pubs['robot1']['vel'].sent == [[1.0, 0.5, 1.0]]
 
 
 def test_kinova_ships_the_sim_tuning():

@@ -119,7 +119,9 @@ else
 fi
 # PyQt5, pyqtgraph, pyyaml, numpy and OpenCV come from apt (step 1): pip has no
 # PyQt5 wheels for arm64 and apt's builds match the system Python everywhere.
-PIP_PACKAGES="mujoco"
+# MuJoCo 3.15.0: the release Newton 1.7.0 (below) is built for, so both simulators run the same
+# physics; the Docker image pins the same one.
+PIP_PACKAGES="'mujoco==3.15.0'"
 # The Studio's web UI window needs the SYSTEM QtWebEngine (python3-pyqt5.qtwebengine,
 # step 1). A pip PyQtWebEngine / PyQt5 wheel in ~/.local shadows it and breaks it
 # with an "undefined symbol" error, so say so rather than leave it to be found.
@@ -150,9 +152,9 @@ rm -f "$NEWTON_HINT_FILE"
 if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
     GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
     echo "[optional] NVIDIA GPU detected ($GPU_NAME) — installing Newton backend..."
-    # newton[sim] pins compatible mujoco_warp + mujoco; [importers] adds trimesh;
-    # pyglet (>=2.0) is required by newton.viewer.ViewerGL for the OpenGL window.
-    NEWTON_PKGS="'newton[sim,importers]' 'pyglet>=2.0' 'numpy<2'"
+    # newton[sim] pins compatible mujoco_warp + mujoco (1.7.0: MuJoCo 3.15, as above); [importers]
+    # adds trimesh; pyglet (>=2.0) is required by newton.viewer.ViewerGL for the OpenGL window.
+    NEWTON_PKGS="'newton[sim,importers]==1.7.0' 'mujoco==3.15.0' 'pyglet>=2.0' 'numpy<2'"
     su - "$REAL_USER" -c "pip3 install --user $NEWTON_PKGS" || \
         su - "$REAL_USER" -c "pip3 install --user --break-system-packages $NEWTON_PKGS" || true
     if su - "$REAL_USER" -c "python3 -c 'import newton'" >/dev/null 2>&1; then

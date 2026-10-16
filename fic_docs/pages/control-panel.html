@@ -17,7 +17,7 @@ Localization</a>. The Contact readout to its right is likewise hardware-only now
 <table>
   <tr><th>Button</th><th>Behaviour</th></tr>
   <tr><td><strong>▲ Joint</strong></td><td>Opens the joint menu. Owns modes 1&ndash;4, the Admittance-planner option, and a config selector.</td></tr>
-  <tr><td><strong>▲ Cart</strong></td><td>Opens the Cartesian menu. Owns modes 5&ndash;8, the Postural / Elbow / <a href="#hpmp" onclick="showPage('hpmp')">H-PMP</a> options, and a config selector. Disabled entirely for legged robots, which configure <code>kinematics_solver: none</code> and cannot run Cartesian modes.</td></tr>
+  <tr><td><strong>▲ Cart</strong></td><td>Opens the Cartesian menu. Owns modes 5&ndash;8, the Postural / Elbow / <a href="#hpmp" onclick="showPage('hpmp')">H-PMP</a> options, and a config selector. Choosing a Cartesian mode sends the H-PMP toggle as it shows just before the mode, so a controller started after the Studio runs what the toggle says. Disabled entirely for legged robots, which configure <code>kinematics_solver: none</code> and cannot run Cartesian modes.</td></tr>
   <tr><td><strong>▲ Gripper</strong></td><td>Gripper width. Hidden for robots whose config sets <code>has_gripper: false</code>.</td></tr>
   <tr><td><strong>⌂ Home</strong></td><td>Fires immediately, no panel. See <em>Home</em> below.</td></tr>
   <tr><td><strong>◈ Contact</strong></td><td><strong>Calibrate</strong> (calls <code>{rid}/contact/calibrate</code>) and a <strong>Ground truth</strong> combo (none plus the seven link names, set on the contact node's <code>link_truth</code> parameter) for a recorded run. The viewer launch toggle itself lives in the top toolbar now, not this panel &mdash; see the note above.</td></tr>

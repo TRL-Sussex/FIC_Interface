@@ -88,6 +88,8 @@ class _TeleopHooks:
         in. Used when the lab is driven from the control PC rather than from
         this machine's own screen.
         """
+        if hasattr(self.mw, '_send_hpmp_for_mode'):
+            self.mw._send_hpmp_for_mode(int(mode), self.rid)
         self.mw.node.publish_mode(int(mode), robot_id=self.rid)
         self._sync_mode_ui()
 

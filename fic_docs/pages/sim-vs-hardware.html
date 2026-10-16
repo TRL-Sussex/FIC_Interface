@@ -153,7 +153,9 @@ robot than in simulation. The two nodes ran the same controller; what differed w
 simulator gives the arm's joints the measured friction, damping and rotor inertia and adds the torque-sensor noise and
 command delay (<code>mujoco_native/hardware_model.py</code>), and <code>fic_simulation</code> measures torque as
 <code>fic_hardware</code> does: the robot's filter, H-PMP's push estimated from the joint torques, the robot's H-PMP task
-deadband and its velocity damper. A robot without the block, or with <code>enabled: false</code>, is simulated as
+deadband and its velocity damper. The Studio's simulation then also runs the tuning the arm runs (the
+<code>default</code> config) instead of the robot's simulation-only <code>sim</code> config, so what you try in
+simulation is what goes on the robot. A robot without the block, or with <code>enabled: false</code>, is simulated as
 before.</p>
 <table>
   <tr><th>Key</th><th>Unit</th><th>Effect in simulation</th></tr>

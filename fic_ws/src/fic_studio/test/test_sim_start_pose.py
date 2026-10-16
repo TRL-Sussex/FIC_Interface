@@ -37,3 +37,12 @@ def test_kinova_starts_at_home():
     arg = ProcessMixin._sim_start_pose_arg(host, 'KinovaGen3_7DOF')
     values = [float(v) for v in arg.split(':=')[1].split(',')]
     assert values == kinova['q_home_rad']
+
+
+def test_an_extension_can_start_a_robot_at_home():
+    """_sim_start_home_override (host.set_simulation_start_at_home) does what the flag does."""
+    host = types.SimpleNamespace(robot_configs={'Arm': {'q_home_rad': [0.0, 0.25]}},
+                                 _sim_start_home_override={'Arm'})
+    assert ProcessMixin._sim_start_pose_arg(host, 'Arm') == " initial_joint_positions:=0.0,0.25"
+    host._sim_start_home_override = set()
+    assert ProcessMixin._sim_start_pose_arg(host, 'Arm') == ''

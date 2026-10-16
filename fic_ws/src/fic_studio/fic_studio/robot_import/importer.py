@@ -1063,7 +1063,7 @@ def _build_from_urdf(plan, mujoco_urdf, xml_dir, rid, arm, home_rad, inner_free)
     for name in plan.mechanism_joints:
         joint = spec.joint(name)
         if name not in arm and joint is not None and \
-                joint.type in (mujoco.mjtJoint.mjJNT_HINGE, mujoco.mjtJoint.mjJNT_SLIDE):
+                int(joint.type) in (mujoco.mjtJoint.mjJNT_HINGE, mujoco.mjtJoint.mjJNT_SLIDE):
             joint.damping = [passive, 0.0, 0.0]       # MuJoCo 3.10: a 3-term polynomial
     header = open(out).read().split('<mujoco', 1)[0]
     mechanism.home_key(spec, dict(zip(arm, home_rad)))

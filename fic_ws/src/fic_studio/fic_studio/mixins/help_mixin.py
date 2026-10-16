@@ -1,5 +1,5 @@
 """
-Help page mixin for FIC Control Studio v5.7.0.
+Help page mixin for FIC Control Studio v5.9.0.
 
 Provides ``HelpMixin._build_help_page() -> QWidget`` which assembles a
 searchable, theme-aware help page: a ``QLineEdit`` search bar and a
@@ -57,7 +57,7 @@ HELP_SECTIONS: List[Tuple[str, str, Union[str, Callable]]] = []
 
 _HTML_GETTING_STARTED = """
 <h2>Getting Started</h2>
-<p><b>FIC Control Studio v5.7.0</b> is the operator GUI for the Fractal
+<p><b>FIC Control Studio v5.9.0</b> is the operator GUI for the Fractal
 Impedance Control (FIC) framework. It connects to robots running the FIC
 C++ controller over ROS 2 / DDS and lets you drive, tune, and monitor
 up to four robot stations simultaneously.</p>
@@ -549,7 +549,7 @@ _HTML_GLOSSARY = """
 
 _HTML_ABOUT = """
 <h2>About FIC Control Studio</h2>
-<p><b>FIC Control Studio v5.7.0</b></p>
+<p><b>FIC Control Studio v5.9.0</b></p>
 <p>The operator GUI for the Fractal Impedance Control robot framework.</p>
 <ul>
   <li><b>Package:</b> <code>fic_studio</code></li>

@@ -127,6 +127,47 @@ def load_model(path: str) -> mujoco.MjModel:
     return mujoco.MjModel.from_xml_path(path)
 
 
+def base_free_joint(model: mujoco.MjModel) -> int:
+    """The free joint of the robot's floating base, or -1 for a fixed-base robot.
+
+    A free joint is the robot's base only when its body carries actuated joints:
+    the free objects of a scene (the MuJoCo Playground's cubes) do not make an arm
+    floating.
+    """
+    actuated = {int(model.jnt_bodyid[model.actuator_trnid[i][0]]) for i in range(model.nu)
+                if int(model.actuator_trntype[i]) == int(mujoco.mjtTrn.mjTRN_JOINT)}
+    for j in range(model.njnt):
+        if model.jnt_type[j] != mujoco.mjtJoint.mjJNT_FREE:
+            continue
+        base = int(model.jnt_bodyid[j])
+        for b in actuated:
+            while b > 0 and b != base:
+                b = int(model.body_parentid[b])
+            if b == base:
+                return j
+    return -1
+
+
+def start_ctrl(model: mujoco.MjModel) -> np.ndarray:
+    """Each actuator's setpoint before its first command: the scene's
+    <custom><numeric name="start_ctrl_<actuator>" data="..."/> (clamped to the
+    actuator's ctrlrange), else 0."""
+    ctrl = np.zeros(model.nu)
+    for i in range(model.nnumeric):
+        name = model.numeric(i).name
+        if not name.startswith('start_ctrl_') or model.numeric_size[i] < 1:
+            continue
+        aid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, name[len('start_ctrl_'):])
+        if aid < 0:
+            continue
+        value = float(model.numeric_data[model.numeric_adr[i]])
+        if model.actuator_ctrllimited[aid]:
+            lo, hi = model.actuator_ctrlrange[aid]
+            value = min(max(value, float(lo)), float(hi))
+        ctrl[aid] = value
+    return ctrl
+
+
 def model_name(model: mujoco.MjModel) -> str:
     """The MJCF `<mujoco model=...>` name (the first entry of `names`)."""
     return bytes(model.names).split(b'\0', 1)[0].decode(errors='replace')
@@ -298,15 +339,18 @@ class NativeMujocoSimulation(Node):
         # published; sim_reset requests must carry the same name.
         self._model_name = model_name(self._model)
         self._frame_id = self._model_name or 'world'
-        self._floating = any(
-            self._model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE
-            for i in range(self._model.njnt))
+        self._floating = base_free_joint(self._model) >= 0
         # Actuators that keep their last setpoint when their command goes
         # stale: any with a bias term (position/velocity servos such as the
         # Robotiq gripper). Plain torque motors are zeroed instead.
         self._hold_setpoint = [
             int(self._model.actuator_biastype[i]) != int(mujoco.mjtBias.mjBIAS_NONE)
             for i in range(self._model.nu)]
+        # Until its first command a servo holds the setpoint its scene names in
+        # <custom><numeric name="start_ctrl_<actuator>"/> (the Kinova's gripper: open); every
+        # other actuator holds 0.
+        self._start_ctrl = start_ctrl(self._model)
+        self._data.ctrl[:] = self._start_ctrl
 
         # Caches for actuator/sensor id lookups keyed by commanded name so we
         # don't call mj_name2id every control step.
@@ -384,10 +428,7 @@ class NativeMujocoSimulation(Node):
         self._hold_pose = False
         self._first_cmd_seen = False
         self._spawn_qpos = self._data.qpos.copy()
-        has_free_joint = any(
-            self._model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE
-            for i in range(self._model.njnt))
-        if not has_free_joint:
+        if base_free_joint(self._model) < 0:      # free objects in the scene do not count
             self._apply_initial_joint_positions()
             return
         if self._model.nkey < 1:
@@ -767,7 +808,7 @@ class NativeMujocoSimulation(Node):
         # No command yet -> hold zero control so nothing moves on its own
         # (this also discards any ctrl a keyframe reset loaded).
         if not table:
-            self._data.ctrl[:] = 0.0
+            self._data.ctrl[:] = self._start_ctrl
             return
 
         now = time.monotonic()
@@ -803,7 +844,7 @@ class NativeMujocoSimulation(Node):
             if len(self._ctrl_hist) > self._delay_steps:
                 self._data.ctrl[:] = self._ctrl_hist.popleft()
             else:
-                self._data.ctrl[:] = 0.0
+                self._data.ctrl[:] = self._start_ctrl
         # Diagnostic: log the first few commands so the user can confirm the FIC
         # controller is wired up correctly, then suppress to avoid 1 kHz spam.
         if not getattr(self, '_cmd_log_done', False):
@@ -897,7 +938,11 @@ class NativeMujocoSimulation(Node):
         names = list(self._js_hinge_names)
         positions = d.qpos[self._js_qadr].tolist()
         velocities = d.qvel[self._js_dadr].tolist()
-        efforts = d.qfrc_actuator[self._js_dadr].tolist()
+        if self._hw['applied'] and self._hw.get('torque_sensor') == 'output':
+            # torque sensors at the joint output (hardware_model torque_sensor: output)
+            efforts = hardware_model.link_side_torque(self._model, d, self._js_dadr).tolist()
+        else:
+            efforts = d.qfrc_actuator[self._js_dadr].tolist()
         if self._hw['noise']:
             for k, dof in enumerate(self._js_dadr):
                 sd = self._hw['noise'].get(int(dof))
@@ -1038,8 +1083,7 @@ class NativeMujocoSimulation(Node):
             # Base pose goes to the (first) free joint. The C++ node wrote it
             # to qpos[0:7] unconditionally, i.e. over a fixed-base arm's joint
             # angles; a fixed base ignores it here.
-            jid = next(i for i in range(m.njnt)
-                       if m.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE)
+            jid = base_free_joint(m)
             a = int(m.jnt_qposadr[jid])
             p, o = request.base_pose.position, request.base_pose.orientation
             d.qpos[a:a + 7] = [p.x, p.y, p.z, o.w, o.x, o.y, o.z]
@@ -1061,7 +1105,7 @@ class NativeMujocoSimulation(Node):
     def _clear_commands(self) -> None:
         with self._cmd_lock:
             self._cmd_table.clear()
-        self._data.ctrl[:] = 0.0
+        self._data.ctrl[:] = self._start_ctrl
 
     @staticmethod
     def _hinge_gravity_torques(full_tau: list, hinge_joints: list) -> list:

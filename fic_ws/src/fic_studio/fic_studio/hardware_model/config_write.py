@@ -23,7 +23,7 @@ def _fmt(v):
 def render(hm, indent=4):
     pad = ' ' * indent
     keys = ('enabled', 'source', 'joint_friction', 'joint_damping', 'armature', 'torque_noise',
-            'torque_filter_hz', 'command_delay_ms')
+            'torque_filter_hz', 'command_delay_ms', 'torque_sensor')
     lines = [pad + 'hardware_model:']
     for k in keys + tuple(k for k in hm if k not in keys):
         if k in hm:

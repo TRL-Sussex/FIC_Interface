@@ -27,7 +27,9 @@ wheel), so no Linux binaries or CUDA are needed.
 zsh fic_install/macos/install-fic-studio-macos.sh
 ```
 
-(`bash install.sh` from the repository root calls this on a Mac.)
+(`bash install.sh` from the repository root calls this on a Mac. `--dry-run` shows what it would
+install and create without changing anything; the full list is in
+[`../WHAT-GETS-INSTALLED.md`](../WHAT-GETS-INSTALLED.md).)
 
 The installer is safe to re-run and never uses `sudo`. It:
 

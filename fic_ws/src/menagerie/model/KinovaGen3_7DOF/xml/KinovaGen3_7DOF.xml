@@ -77,6 +77,11 @@
                  forcerange="-10 10" forcelimited="true" gaintype="fixed" gainprm="-186.92"
                  biastype="affine" biasprm="148.8 -200 -5"/>
     </actuator>
+    <!-- The simulator holds a servo at its start_ctrl_<actuator> setpoint until its first command:
+         the gripper starts open (85 mm), as the real one rests. -->
+    <custom>
+        <numeric name="start_ctrl_gripper" data="0.85"/>
+    </custom>
     <!-- Base_Link is welded to the world, so MuJoCo's parent-child filter does not
          remove its contact with Shoulder_Link: the meshes overlap by ~12 mm at the
          joint and the condim-4 (torsional) contact friction held joint 1 (base yaw)

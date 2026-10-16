@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>fic_hardware</name>
-  <version>5.7.0</version>
+  <version>5.9.0</version>
   <description>FIC Hardware - ROS 2 controller node for real robots (FIC control loop and robot driver bridge)</description>
 
   <maintainer email="at717@sussex.ac.uk">Adnan</maintainer>

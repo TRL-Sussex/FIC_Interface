@@ -64,6 +64,7 @@ class FicStudioNode(Node):
         # Per-robot publisher table: pubs["robot1"]["mode_select"] = Publisher
         self.pubs: dict[str, dict] = {}
         self._active_robots: list[int] = []
+        self._hpmp_sent: dict[str, bool] = {}   # rid -> the last H-PMP on/off sent
 
         # Bring up the requested robots. Default = [station_id] for back-compat.
         if active_robots is None:
@@ -157,6 +158,7 @@ class FicStudioNode(Node):
         # H-PMP is on by default in the Cartesian modes (latched: a controller started later
         # gets it); the toggle turns it off, sending the Cartesian torques directly.
         pubs["hpmp_enable"].publish(Bool(data=True))
+        self._hpmp_sent[rid] = True
         self._active_robots.append(n)
         self._refresh_legacy_aliases()
         self.get_logger().info(f'Added robot {rid}')
@@ -295,6 +297,11 @@ class FicStudioNode(Node):
 
     def publish_mode(self, mode: int, robot_id=None):
         rid = self._resolve_rid(robot_id)
+        if 5 <= mode <= 8 and rid in self.pubs:
+            # The controllers start with H-PMP off and miss the H-PMP messages sent before they
+            # started, so every Cartesian mode carries the last one sent to this robot (on, as the
+            # toggle starts): a controller started later then runs as one that ran all along.
+            self.pubs[rid]["hpmp_enable"].publish(Bool(data=self._hpmp_sent.get(rid, True)))
         if 1 <= mode <= len(self._MODE_NAMES):
             self.pubs[rid]["mode_select"].publish(
                 String(data=self._MODE_NAMES[mode - 1]))
@@ -310,6 +317,7 @@ class FicStudioNode(Node):
 
     def publish_hpmp_enable(self, enabled: bool, robot_id=None):
         rid = self._resolve_rid(robot_id)
+        self._hpmp_sent[rid] = bool(enabled)
         self.pubs[rid]["hpmp_enable"].publish(Bool(data=bool(enabled)))
 
     def publish_admittance_planner(self, enabled: bool, robot_id=None):

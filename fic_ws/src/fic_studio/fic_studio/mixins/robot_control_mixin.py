@@ -2,6 +2,7 @@
 # Merges the former simulation_mixin.py and control_mixin.py into a single page
 # with a Simulation / Hardware toggle.
 
+import os
 import math
 
 from fic_studio import theme
@@ -544,6 +545,7 @@ class RobotControlMixin:
         self._rc_mode_dropdown.setCurrentIndex(mode_idx)
 
         # Publish mode to the first active robot (card 1)
+        self._send_hpmp_for_mode(mode_idx + 1)
         self.node.publish_mode(mode_idx + 1)
 
         # Profiles are robot-scoped — the list is stable — but the
@@ -626,6 +628,23 @@ class RobotControlMixin:
     def _on_rc_elbow_toggled(self, checked: bool):
         self.node.publish_elbow_enable(bool(checked))
         self.log_message("INFO", f"Elbow {'ON' if checked else 'OFF'}", "Control")
+
+    def _send_hpmp_for_mode(self, mode, robot_id=None, toggle=None):
+        """Before a Cartesian mode (5-8) is sent, send the H-PMP toggle as it shows.
+
+        The controllers start with H-PMP off and hear only the toggle messages sent after they
+        start (the Studio's first one, at its own start, is missed), so a Cart press would
+        otherwise run the plain Cartesian mode while the toggle reads H-PMP. A repeat changes
+        nothing in the controller. ``toggle`` is a robot card's own checkbox (default card 1's).
+        """
+        if not 5 <= int(mode) <= 8:
+            return
+        if toggle is None:
+            toggle = getattr(self, '_rc_hpmp_toggle', None)
+        checked = getattr(toggle, 'isChecked', None)
+        publish = getattr(self.node, 'publish_hpmp_enable', None)
+        if callable(publish):
+            publish(bool(checked()) if callable(checked) else True, robot_id=robot_id)
 
     def _on_rc_hpmp_toggled(self, checked: bool):
         self.node.publish_hpmp_enable(bool(checked))
@@ -1882,10 +1901,26 @@ class RobotControlMixin:
 
     def _rc_target_default_profile(self, profiles):
         """Return the config used until the user picks one: 'sim' on the
-        Simulation target when the robot defines it, else 'default'."""
+        Simulation target when the robot defines it, else 'default'. A robot
+        simulated like the real one (its hardware_model) uses 'default' in
+        simulation too: the tuning tried there is the one the arm runs."""
         target = (self.robot_target() if hasattr(self, 'robot_target')
                   else getattr(self, 'control_target', 'simulation'))
-        return 'sim' if target == 'simulation' and 'sim' in profiles else 'default'
+        if target != 'simulation' or 'sim' not in profiles:
+            return 'default'
+        return 'default' if self._rc_simulated_like_hardware() else 'sim'
+
+    def _rc_simulated_like_hardware(self):
+        """The selected robot has an enabled hardware_model (robots_config.yaml) and
+        FIC_HARDWARE_MODEL does not switch it off for this Studio's simulator."""
+        env = dict(os.environ, **(getattr(self, '_sim_env_override', None) or {}))
+        if env.get('FIC_HARDWARE_MODEL', '').strip().lower() in ('off', '0', 'false', 'ideal'):
+            return False
+        dd = getattr(self, 'robot_dropdown', None)
+        robot = dd.currentText() if dd is not None else ''
+        cfg = (getattr(self, 'robot_configs', {}) or {}).get(robot) or {}
+        hm = cfg.get('hardware_model')
+        return isinstance(hm, dict) and bool(hm.get('enabled', True))
 
     def _rc_note_profile_choice(self):
         """Remember a config the user picked; the target's own default is not

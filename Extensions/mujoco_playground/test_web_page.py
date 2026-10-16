@@ -62,6 +62,9 @@ class Host:
         else:
             self.scenes.pop(name, None)
 
+    def set_simulation_start_at_home(self, on, name=None):
+        self.calls.append(('home', name, on))
+
     def simulation_scene(self, name=None):
         return self.scenes.get(name or self.robot)
 
@@ -152,7 +155,8 @@ def test_objects_are_added_edited_and_removed(ext):
 def test_start_runs_the_studio_simulator_with_the_scene_then_the_controller(ext):
     ext.web_action('start', {})
     h = ext.host
-    assert h.calls[:4] == [('fic', 'stop'), ('sim', 'stop'), ('scene', 'KinovaGen3_7DOF', True), ('sim', 'start')]
+    assert h.calls[:5] == [('fic', 'stop'), ('sim', 'stop'), ('scene', 'KinovaGen3_7DOF', True),
+                           ('home', 'KinovaGen3_7DOF', True), ('sim', 'start')]       # the arm starts at home
     scene = h.scenes['KinovaGen3_7DOF']
     assert scene.endswith('kinovagen3_7dof_playground.xml') and os.path.isfile(scene)
     assert ext.web_state()['starting'] and ext.web_state()['running']
@@ -161,7 +165,8 @@ def test_start_runs_the_studio_simulator_with_the_scene_then_the_controller(ext)
     ext._fired.pop()()                                        # the delayed controller start
     assert h.calls[-1] == ('fic', 'start') and not ext.web_state()['starting']
     ext.web_action('stop', {})
-    assert h.calls[-3:] == [('fic', 'stop'), ('sim', 'stop'), ('scene', 'KinovaGen3_7DOF', False)]
+    assert h.calls[-4:] == [('fic', 'stop'), ('sim', 'stop'), ('scene', 'KinovaGen3_7DOF', False),
+                            ('home', 'KinovaGen3_7DOF', False)]
     assert not ext.web_state()['running'] and h.simulation_scene('KinovaGen3_7DOF') is None
 
 
@@ -212,3 +217,51 @@ def test_pick_builds_the_sequence_and_plays_it(ext):
 def test_a_robot_without_a_gripper_offers_no_pick(ext):
     ext.web_action('robot', {'name': 'Franka_FR3'})
     assert not ext.web_state()['can_pick']
+
+
+def _send(ext, filename, data, chunk=1000):
+    import base64
+    up = ext.web_action('mesh_upload', {'op': 'begin', 'filename': filename, 'size': len(data)})['upload']
+    for off in range(0, len(data), chunk):
+        ext.web_action('mesh_upload', {'op': 'chunk', 'upload': up, 'offset': off,
+                                       'data': base64.b64encode(data[off:off + chunk]).decode()})
+    return ext.web_action('mesh_upload', {'op': 'finish', 'upload': up})
+
+
+def test_a_dropped_mesh_becomes_an_object_and_builds(ext):
+    from Extensions.mujoco_playground.test_scene_builder import _box_stl
+    r = _send(ext, 'Gear Housing.stl', _box_stl((0, 0, 0), (50, 40, 30)))
+    s = ext.web_state()
+    o = s['objects'][-1]
+    assert s['meshes'] == ['gear_housing.stl'] and r['index'] == len(s['objects']) - 1
+    assert (o['name'], o['shape'], o['units']) == ('gear_housing', 'mesh', 'mm')
+    assert o['size'] == pytest.approx([0.05, 0.04, 0.03]) and (o['x'], o['y']) != (0.5, -0.15)
+    _send(ext, 'gear_housing.stl', _box_stl((0, 0, 0), (50, 40, 30)))   # the same file again: a second object
+    assert ext.web_state()['objects'][-1]['name'] == 'gear_housing_2'
+    ext.web_action('update_object', {'index': r['index'], 'object': dict(o, units='cm')})   # 0.5 m now
+    assert ext.web_state()['objects'][r['index']]['size'] == pytest.approx([0.5, 0.4, 0.3])
+    ext.web_action('start', {})                                         # the scene builds with them
+    assert os.path.isfile(ext.host.scenes['KinovaGen3_7DOF'])
+
+
+def test_mesh_uploads_are_checked(ext):
+    with pytest.raises(ValueError, match='STL or OBJ'):
+        ext.web_action('mesh_upload', {'op': 'begin', 'filename': 'part.step', 'size': 10})
+    with pytest.raises(ValueError, match='limit'):
+        ext.web_action('mesh_upload', {'op': 'begin', 'filename': 'big.stl', 'size': 10 ** 9})
+    up = ext.web_action('mesh_upload', {'op': 'begin', 'filename': 'a.stl', 'size': 10})['upload']
+    with pytest.raises(ValueError, match='missing'):
+        ext.web_action('mesh_upload', {'op': 'chunk', 'upload': up, 'offset': 5, 'data': 'AAAA'})
+    with pytest.raises(ValueError, match='empty'):                      # nothing arrived
+        ext.web_action('mesh_upload', {'op': 'finish', 'upload': up})
+    with pytest.raises(ValueError, match='cannot read'):
+        _send(ext, 'junk.stl', b'not a mesh')
+    ext.web_action('start', {})
+    with pytest.raises(ValueError, match='Stop'):
+        ext.web_action('mesh_upload', {'op': 'begin', 'filename': 'a.stl', 'size': 10})
+
+
+def test_mesh_uploads_come_only_from_the_studio_window():
+    import json
+    manifest = json.load(open(ROOT / 'Extensions' / 'mujoco_playground' / 'manifest.json'))
+    assert manifest['web']['local_only'] == ['mesh_upload']

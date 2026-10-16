@@ -522,6 +522,7 @@ class MultiRobotMixin:
             self._highlight_extra_mode_tab(robot_id, buttons[mode_idx], kind)
         self._update_extra_section_visibility(robot_id, CONTROL_MODE_NAMES[mode_idx])
         topic_rid = self._card_topic_rid(robot_id)
+        self._send_hpmp_for_mode(mode_idx + 1, topic_rid, getattr(self, f'{robot_id}_hpmp_toggle', None))
         self.node.publish_mode(mode_idx + 1, robot_id=topic_rid)
         # Profile is robot-scoped — list is stable, but the "(fallback)"
         # decoration depends on mode, so refresh and re-publish for parity

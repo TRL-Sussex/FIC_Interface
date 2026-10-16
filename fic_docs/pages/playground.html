@@ -11,7 +11,8 @@ started in one click, then move it, record waypoints, play sequences, trace traj
     <em>Pick and place</em> (two cubes), <em>Stacking</em> (three cubes), <em>Shapes</em> (a cube, a ball and a can)
     or <em>Empty table</em>.</li>
   <li>Press <strong>Start</strong>. The Studio's own simulator and FIC controller start with the scene, exactly as
-    its <strong>SIM</strong> and <strong>FIC</strong> buttons would, so everything else in the Studio works on it.
+    its <strong>SIM</strong> and <strong>FIC</strong> buttons would, so everything else in the Studio works on it. The
+    arm starts at its home pose (<code>q_home_rad</code>) with the gripper open.
     <strong>Stop</strong> stops both and goes back to the robot's own scene.</li>
 </ol>
 <p>The robot list comes from <code>robots_config.yaml</code>: any fixed-base arm whose simulator scene has the torque
@@ -28,12 +29,30 @@ little short of them, as the real one does.</p>
 
 <h2>The scene</h2>
 <p>A table stands in front of the robot (its top 0.2&nbsp;m up; switch it off to put objects on the floor). Each
-object has a name, a shape (box, sphere, cylinder), a size, a position (x, y in the base frame) and a colour; it is
-placed resting on the table or the floor. Edit, add or remove objects while the Playground is stopped; the scene is
+object has a name, a shape (box, sphere, cylinder, or a mesh file: below), a size, a position (x, y in the base
+frame), a mass and a colour; it is placed resting on the table or the floor. Edit, add or remove objects while the Playground is stopped; the scene is
 remembered.</p>
 <p>The scene file is written to <code>~/.fic_studio/playground/&lt;robot&gt;_playground.xml</code>: the robot's own
 scene with the table and objects added (built with MuJoCo's model editor, <code>mujoco.MjSpec</code>), keeping every
 joint and actuator name, so the robot's tuning, gripper and hardware model apply as usual.</p>
+<h3>Your own objects: mesh files</h3>
+<p>Drop an <strong>STL</strong> or <strong>OBJ</strong> file on the Objects panel, or press <strong>Choose a
+file&hellip;</strong> (in the Studio window; a remote browser cannot add files). It is checked in MuJoCo, kept in
+<code>~/.fic_studio/playground/meshes/</code>, and added to the scene in grey at a free spot. Then edit it like any
+object: its name, position, colour, mass and <strong>units</strong>.</p>
+<ul>
+  <li><strong>Which files.</strong> STL (binary or text) and OBJ, the formats MuJoCo reads directly; an OBJ's
+    materials and textures are ignored. From CAD (STEP, IGES, SolidWorks parts), export the part as STL; convert
+    other mesh formats (DAE, GLB, PLY) to STL or OBJ, e.g. in Blender. Up to 30&nbsp;MB.</li>
+  <li><strong>Units.</strong> A file more than 1 unit across is read as millimetres (what CAD programs export),
+    otherwise as metres; change it with Edit (m, cm, mm, in) if the size shown is wrong. Objects are 5&nbsp;mm to
+    0.6&nbsp;m across.</li>
+  <li><strong>Contact.</strong> MuJoCo collides a mesh as its convex hull (here at most 64 vertices), so a concave
+    part, the inside of a cup or of an L-bracket, behaves as if filled in. Its inertia comes from that hull and the
+    mass you give, so open or non-watertight meshes work too.</li>
+  <li>Its pose (and a Pick) is the middle of its bounding box; it rests on the table or the floor as it lies in the
+    file, so orient the part in CAD as it should stand.</li>
+</ul>
 <p><strong>Where things are</strong> lists each object's live position: the simulator publishes the poses of the
 bodies named <code>obj_*</code> on <code>robot&lt;N&gt;_simulation/object_poses</code> (JSON, 10&nbsp;Hz).</p>
 

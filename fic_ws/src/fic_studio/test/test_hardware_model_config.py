@@ -41,3 +41,10 @@ def test_controller_copy_keeps_and_updates_the_block():
     assert controller_robots({'R': {}}, old)['R']['hardware_model']['joint_friction'] == [0.6]
     new = controller_robots({'R': {'hardware_model': {'enabled': False}}}, old)
     assert new['R']['hardware_model'] == {'enabled': False}
+
+
+def test_torque_sensor_position_is_accepted_and_checked():
+    from fic_studio.web_remote.robot_config import Refused, _hardware_model
+    assert _hardware_model({'torque_sensor': 'output'}, 7) == {'torque_sensor': 'output'}
+    with pytest.raises(Refused):
+        _hardware_model({'torque_sensor': 'gearbox'}, 7)

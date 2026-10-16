@@ -237,7 +237,8 @@ def generic_pose(model, data, start=None, scale=0.25, seed=0):
     rng = np.random.default_rng(seed)
     data.qpos[:] = model.qpos0 if start is None else start
     for j in range(model.njnt):
-        if model.jnt_type[j] not in (mujoco.mjtJoint.mjJNT_HINGE, mujoco.mjtJoint.mjJNT_SLIDE):
+        # int(): from MuJoCo 3.16 an enum is not equal to a model array's NumPy integer
+        if int(model.jnt_type[j]) not in (mujoco.mjtJoint.mjJNT_HINGE, mujoco.mjtJoint.mjJNT_SLIDE):
             continue
         adr = model.jnt_qposadr[j]
         value = data.qpos[adr] + rng.uniform(-scale, scale)

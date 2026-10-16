@@ -121,7 +121,9 @@ def load(path):
     name = lambda kind, i: mujoco.mj_id2name(model, kind, i) or ''  # noqa: E731
     joints, balls = [], []
     for j in range(model.njnt):
-        t = model.jnt_type[j]
+        # int(): from MuJoCo 3.16 an enum is not equal to the NumPy integer of a model array, so
+        # `x in (enum, ...)` is always False without it
+        t = int(model.jnt_type[j])
         if t in (mujoco.mjtJoint.mjJNT_HINGE, mujoco.mjtJoint.mjJNT_SLIDE):
             joints.append(name(mujoco.mjtObj.mjOBJ_JOINT, j))
         elif t == mujoco.mjtJoint.mjJNT_BALL:
@@ -151,7 +153,7 @@ def load(path):
         kid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, 'home')
         qpos = model.key_qpos[kid if kid >= 0 else 0]
         for j in range(model.njnt):
-            if model.jnt_type[j] in (mujoco.mjtJoint.mjJNT_HINGE, mujoco.mjtJoint.mjJNT_SLIDE):
+            if int(model.jnt_type[j]) in (mujoco.mjtJoint.mjJNT_HINGE, mujoco.mjtJoint.mjJNT_SLIDE):
                 home[name(mujoco.mjtObj.mjOBJ_JOINT, j)] = float(qpos[model.jnt_qposadr[j]])
     return SourceModel(path=os.path.abspath(path), spec=spec, model=model, joints=joints,
                        balls=balls, actuators=actuators, gripper=gripper,
@@ -198,8 +200,8 @@ def reference_state(src, info):
     q = {}
     for j in range(model.njnt):
         jname = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, j)
-        if jname in info.joints and model.jnt_type[j] in (mujoco.mjtJoint.mjJNT_HINGE,
-                                                          mujoco.mjtJoint.mjJNT_SLIDE):
+        if jname in info.joints and int(model.jnt_type[j]) in (mujoco.mjtJoint.mjJNT_HINGE,
+                                                               mujoco.mjtJoint.mjJNT_SLIDE):
             q[jname] = float(data.qpos[model.jnt_qposadr[j]])
     return data, link_poses(info, q)
 
@@ -260,7 +262,7 @@ def compare(src, info, tol_m=0.005, tol_deg=2.0):
     out = []
     for j in range(model.njnt):
         jname = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, j)
-        if jname not in info.joints or model.jnt_type[j] not in (
+        if jname not in info.joints or int(model.jnt_type[j]) not in (
                 mujoco.mjtJoint.mjJNT_HINGE, mujoco.mjtJoint.mjJNT_SLIDE):
             continue
         child = poses[info.joints[jname].child]

@@ -12,13 +12,26 @@
 #  This installer is idempotent — safe to re-run. It never uses sudo; all
 #  installs are user-scoped (conda, and Homebrew if present).
 #
-#  Usage:   zsh install-fic-studio-macos.sh
+#  Usage:   zsh install-fic-studio-macos.sh [--dry-run] [--yes]
+#    --dry-run   show what would be installed and created, change nothing
+#    --yes       accepted for install.sh's sake (this installer asks no questions)
 #  Override repo location:   FIC_ROOT=/path/to/FIC_Interface zsh install-fic-studio-macos.sh
+#  Everything it installs and creates: fic_install/WHAT-GETS-INSTALLED.md
 # ============================================================================
 set -e
 
 ENV_NAME="fic_ros"
 ROS_DISTRO="humble"
+
+DRY_RUN=0
+for _arg in "$@"; do
+  case "$_arg" in
+    --dry-run) DRY_RUN=1 ;;
+    --yes|-y) ;;
+    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "Ignoring unknown option: $_arg (see --help)" >&2 ;;
+  esac
+done
 
 # --- Resolve FIC_ROOT (repo root) relative to this script, unless overridden.
 SCRIPT_DIR="${0:A:h}"
@@ -59,6 +72,30 @@ for _prot in "$HOME/Documents" "$HOME/Desktop" "$HOME/Downloads"; do
     exit 1
   fi
 done
+
+# --- Dry run: the plan, nothing changed --------------------------------------
+if [[ "$DRY_RUN" == 1 ]]; then
+  _mf="already present"
+  if ! command -v conda >/dev/null 2>&1 && [[ ! -f "$HOME/miniforge3/etc/profile.d/conda.sh" ]]; then
+    if command -v brew >/dev/null 2>&1; then _mf="would install: brew install --cask miniforge"
+    else _mf="would download Miniforge3-MacOSX-arm64.sh from github.com/conda-forge and install it into ~/miniforge3"; fi
+  fi
+  _env="would create (ROS 2 ${ROS_DISTRO} desktop from conda-forge and robostack-staging, a few GB)"
+  command -v conda >/dev/null 2>&1 && conda env list 2>/dev/null | grep -qE "^\s*${ENV_NAME}\s" && _env="exists: missing packages would be added"
+  echo ""
+  echo "Dry run: nothing is installed or changed. The installer would:"
+  echo "  1. Miniforge (conda/mamba): $_mf"
+  echo "  2. conda env '${ENV_NAME}': $_env"
+  echo "     plus compilers, cmake, colcon, eigen, tinyxml2, yaml-cpp, pinocchio, PyQt,"
+  echo "     pyqtgraph, numpy, scipy, mujoco and the other packages listed in this script"
+  echo "  3. build the workspace in $WS_PATH (inside the repo)"
+  echo "  4. write the .command launchers into fic_install/macos/ (inside the repo)"
+  echo "  5. create ~/Applications/FIC Control Studio.app and FIC Dev Console.app"
+  echo "     (replacing any previous copies) and register them with Launchpad/Spotlight"
+  echo "It never uses sudo and does not edit your shell profile. Full list:"
+  echo "  $FIC_ROOT/fic_install/WHAT-GETS-INSTALLED.md"
+  exit 0
+fi
 
 # --- 1-2. Miniforge (conda/mamba) ------------------------------------------
 # Homebrew is optional: without it, Miniforge is installed straight into
@@ -107,7 +144,7 @@ echo "→ Installing build + simulation + FIC dependencies…"
 mamba install -n "$ENV_NAME" -y -c conda-forge -c robostack-staging \
   compilers cmake ninja pkg-config colcon-common-extensions \
   "ros-${ROS_DISTRO}-ament-cmake" eigen tinyxml2 yaml-cpp pinocchio \
-  pyqt pyqtgraph "numpy>=2" pyyaml scipy cryptography matplotlib "mujoco>=3.3" "setuptools<80" \
+  pyqt pyqtgraph "numpy>=2" pyyaml scipy cryptography matplotlib "mujoco=3.15.0" "setuptools<80" \
   pyobjc-framework-cocoa pyqtwebengine
 
 conda activate "$ENV_NAME"

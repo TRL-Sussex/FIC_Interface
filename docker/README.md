@@ -691,7 +691,7 @@ use it without a download.
   image. The tuning the Studio saves (`fic_library/config`) is the file the
   controller reads through `install/`, which does not survive copying or
   moving the workspace.
-- **The simulator is `mujoco_native`** on the `mujoco==3.10.0` wheel, which is
+- **The simulator is `mujoco_native`** on the `mujoco==3.15.0` wheel, which is
   native on both architectures.
 - **The virtual desktop** is TigerVNC (`Xtigervnc`) behind noVNC 1.7.0 and
   websockify, with openbox and tint2. Only this computer can reach it

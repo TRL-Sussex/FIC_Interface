@@ -433,6 +433,16 @@ class ExtensionHost(QObject):
         (e.g. {"FIC_HARDWARE_MODEL": "off"} for the ideal simulator); None or {} clears them."""
         self._mw._sim_env_override = {str(k): str(v) for k, v in (env or {}).items()}
 
+    def set_simulation_start_at_home(self, on: bool, robot_name: Optional[str] = None) -> None:
+        """From the simulator's next start, spawn ``robot_name`` (default: the selected robot) at
+        its home (robots_config.yaml ``q_home_rad``) instead of every joint at 0; False goes back
+        to the robot's own setting (``sim_start_at_home``)."""
+        name = robot_name or self.current_robot_name()
+        homes = getattr(self._mw, "_sim_start_home_override", None)
+        if homes is None:
+            homes = self._mw._sim_start_home_override = set()
+        (homes.add if on else homes.discard)(name)
+
     def refresh_profile(self) -> None:
         """Re-pick the tuning config the Studio uses until the user picks one ('sim' or 'default',
         which follows whether the simulator runs like the real robot) and send it to the robot."""

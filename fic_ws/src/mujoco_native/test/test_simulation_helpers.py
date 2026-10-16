@@ -130,3 +130,47 @@ def test_kinova_joint_damping():
     np.testing.assert_allclose(load_model(KINOVA).dof_damping[:7], 5.0)
     wall = os.path.join(os.path.dirname(KINOVA), 'scene_wall.xml')
     np.testing.assert_allclose(load_model(wall).dof_damping[:4], 45.0)
+
+
+_ARM_WITH_OBJECTS = """
+<mujoco>
+  <worldbody>
+    <body name="link1"><joint name="j1" type="hinge"/><geom size="0.05" mass="1"/>
+      <body name="finger" pos="0 0 0.2"><joint name="knuckle" type="hinge"/><geom size="0.02" mass="0.1"/></body>
+    </body>
+    <body name="obj_cube" pos="0.5 0 0.1"><freejoint/><geom type="box" size="0.02 0.02 0.02" mass="0.05"/></body>
+  </worldbody>
+  <actuator>
+    <motor name="torq_j1" joint="j1"/>
+    <general name="gripper" joint="knuckle" ctrlrange="0 0.85" ctrllimited="true" biastype="affine" biasprm="0 -1 0"/>
+  </actuator>
+  <custom><numeric name="start_ctrl_gripper" data="2.0"/><numeric name="start_ctrl_nothing" data="1"/></custom>
+</mujoco>
+"""
+
+_FLOATING = """
+<mujoco>
+  <worldbody>
+    <body name="trunk"><freejoint/><geom size="0.1" mass="5"/>
+      <body name="leg"><joint name="hip" type="hinge"/><geom size="0.02" mass="0.5"/></body>
+    </body>
+    <body name="obj_ball" pos="1 0 0"><freejoint/><geom size="0.03" mass="0.1"/></body>
+  </worldbody>
+  <actuator><motor name="hip" joint="hip"/></actuator>
+</mujoco>
+"""
+
+
+def test_free_objects_do_not_make_an_arm_floating():
+    """Only a free joint carrying the actuated joints is the robot's base."""
+    from mujoco_native.simulation_node import base_free_joint
+    assert base_free_joint(mujoco.MjModel.from_xml_string(_ARM_WITH_OBJECTS)) == -1
+    m = mujoco.MjModel.from_xml_string(_FLOATING)
+    assert base_free_joint(m) == 0          # the trunk's, not the ball's
+
+
+def test_a_servo_starts_at_the_setpoint_its_scene_names():
+    """start_ctrl_<actuator>, clamped to the ctrlrange; other actuators start at 0."""
+    from mujoco_native.simulation_node import start_ctrl
+    m = mujoco.MjModel.from_xml_string(_ARM_WITH_OBJECTS)
+    assert list(start_ctrl(m)) == [0.0, 0.85]

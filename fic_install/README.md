@@ -98,6 +98,8 @@ PC shows the interface.
 
 ### 3. What the installer does
 
+Every package, download and file it adds, per platform: [WHAT-GETS-INSTALLED.md](WHAT-GETS-INSTALLED.md).
+
 1. **Checks for ROS 2** and detects your distro automatically
 2. **Scans for missing dependencies** across three categories:
    - **System (apt):** cmake, build-essential, colcon, Eigen, TinyXML2, yaml-cpp, Boost, GLFW (viewer fallback)
@@ -128,6 +130,9 @@ PC shows the interface.
 ---
 
 ## Uninstalling
+
+The full list, including the settings files, the pip packages and macOS/Docker:
+[WHAT-GETS-INSTALLED.md, Removing it](WHAT-GETS-INSTALLED.md#removing-it).
 
 ```bash
 rm ~/.local/share/applications/fic-control-studio.desktop ~/.local/share/applications/fic-dev-console.desktop

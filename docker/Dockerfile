@@ -26,8 +26,9 @@ ARG ROS_DISTRO
 ARG DEBIAN_FRONTEND=noninteractive
 
 # The MuJoCo release the simulator (and the contact twin, the playground and
-# the model tools) run on. Pinned so an image rebuild cannot change physics.
-ARG MUJOCO_VERSION=3.10.0
+# the model tools) run on. Pinned so an image rebuild cannot change physics; the same
+# release as fic_install/install-deps.sh (the newest Newton 1.7.0 supports).
+ARG MUJOCO_VERSION=3.15.0
 ARG NOVNC_VERSION=1.7.0
 ARG NOVNC_SHA256=b1003a11b6e6e8d8f7f5e5586daae7f8ca651d8aee0aa155ff9ac841c48f52c6
 

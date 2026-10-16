@@ -23,6 +23,106 @@ Studio is published here as one commit, with its entry below.
 
 ---
 
+## [5.9.0] — 2026-10-16 — MuJoCo 3.15 everywhere; Playground objects from mesh files
+
+### Changed
+- **MuJoCo 3.15.0 for every simulator** (from 3.8.0 on Linux installs and 3.10.0 in the Docker image):
+  `fic_install/install-deps.sh`, the Docker image and the macOS installer pin the same release, and
+  the GPU simulator moves to **Newton 1.7.0**, the Newton release built for MuJoCo 3.15 (Newton pins
+  its MuJoCo, so both simulators now run the same physics). Every robot model compiles to the same
+  joints, actuators, masses and contacts as on 3.8 (only mesh bounding sizes move by about a micron).
+
+### Added
+- MuJoCo Playground: **your own objects from mesh files.** Drop an STL or OBJ file on the Objects panel
+  (or choose one), in the Studio window: it is checked in MuJoCo, kept in
+  `~/.fic_studio/playground/meshes/` and added to the scene at a free spot, its units guessed (a file
+  more than 1 unit across is read as millimetres) and changeable with Edit (m, cm, mm, in). It collides
+  as its convex hull (at most 64 vertices) and takes its inertia from that hull, with the mass you give
+  (a Mass field for every object), so open or non-watertight meshes work too; its pose is the middle of
+  its bounding box, so Pick aims at it. Up to 30 MB, 5 mm to 0.6 m across.
+- MuJoCo Playground: the arm starts at its home pose (`q_home_rad`), for every robot it lists
+  (`ExtensionHost.set_simulation_start_at_home`).
+
+### Fixed
+- Code that MuJoCo 3.11 and later broke, kept working on earlier releases too: `mj_fullM` takes the
+  `MjData`, and a MuJoCo enum is
+  no longer equal to the NumPy integer of a model array, which made the robot importer skip every
+  joint when checking a MuJoCo model against its URDF (it compares plain ints now).
+- The H-PMP toggle starts on, but a controller started after the Studio started with H-PMP off (the
+  nodes miss the Studio's first `{rid}_hpmp_enable`), so pressing Cart ran the plain Cartesian mode
+  until the toggle was changed. The Studio now sends the toggle as it shows just before every
+  Cartesian mode (5-8) it sends: the Cart menu, the toolbar, the Robot menu, the other robot cards,
+  the fleet page and the mode re-sent when the arm's controller starts. A Cartesian mode sent any other
+  way (extensions, scripts) carries the last H-PMP setting sent to that robot (on by default), so an
+  extension that turned H-PMP off keeps it off.
+- Simulation: the Kinova Gen3's gripper starts open, as the real one rests (it started closed until
+  the first gripper command). A scene names a servo's start setpoint as
+  `<custom><numeric name="start_ctrl_<actuator>"/>`; the simulator holds it until the first command and
+  after a reset.
+- Simulation: free objects in a scene (the Playground's) made a fixed-base arm count as floating, so
+  it skipped its start pose and warned that it might free-fall. Only a free joint that carries the
+  actuated joints is now a robot's floating base.
+
+---
+
+## [5.8.0] — 2026-10-15 — MuJoCo Playground; Quick Actions for trajectories and sequences
+
+### Added
+- **MuJoCo Playground**, reworked as a sandbox for learning to program the robot (web page, Programming
+  section): pick an arm and a ready-made scene (a table with cubes, a ball, a can; or your own objects),
+  press Start, and the Studio's own simulator and FIC controller start with that scene, so every panel
+  works on it. It lists where each object is (the simulator publishes their poses on
+  `robot<N>_simulation/object_poses`), walks through exercises (move, record, play, trajectories, pick,
+  script) and picks an object as the sequence `pick_<object>` (home, open, above it pointing down, down,
+  close, lift) that can be stepped through and edited. Robots come from `robots_config.yaml` (an arm
+  whose scene has the FIC torque motors; the others say why). It runs the ideal simulator unless
+  "Simulate like the real robot" is on, and never starts on a robot running its real arm. The scene is
+  built with MuJoCo's model editor and written to `~/.fic_studio/playground/` (it used to fail to load
+  for every robot). Docs: fic_docs "MuJoCo Playground".
+- **Quick Actions** for learning: New sequence, Step, Speed, and a trajectory template (a line, a
+  circle or a figure-eight from where the end effector is, in a chosen plane: run it, or save one cycle
+  as a sequence to compare); extensions add their own rows (`ExtensionHost.add_quick_action`), on the
+  desktop and in the web dock.
+- Sequences: the trajectory player (60 Hz targets, speed ramped up and down so it starts and stops at
+  rest, 300 mm/s at most in simulation; on a real robot 50 mm/s, a confirmation and no mode change); a
+  waypoint may carry its own `tolerance_mm` and `timeout_s`; on the Simulation target the robot is
+  switched to a mode that follows each waypoint (Joint or Cartesian Impedance with Planner).
+- Extension host: `set_simulation_scene` (a scene for the simulator), `set_simulation_env`,
+  `stop_simulation`, `stop_fic_simulation`, `select_robot`, `control_mode`, `send_hpmp`,
+  `refresh_profile`.
+- Simulating like the real robot: `hardware_model: torque_sensor: output` reports the measured joint
+  torque at the joint's output (less the joint's own friction, damping and rotor inertia, as a torque
+  sensor after the gearbox reads it); the default, `motor`, is the actuator torque as before.
+- `fic_install/WHAT-GETS-INSTALLED.md`, linked from the README's install section: every package,
+  download, admin-rights step and file outside the repository that each install route (Linux,
+  Linux by hand, macOS, Docker) adds, and how to remove them.
+
+### Changed
+- Kinova Gen3: modes 7 and 8 (Cartesian Admittance and Cartesian HAP-FIC) are stiffer near their
+  goal (position law 520 N/m up to 2.5 cm, then the same force limits; mode 8's y axis 438 N/m), and
+  their orientation law and mode 7's position law no longer rise past their first force limit (mode
+  7 was 200 N/m against 13 N at 10 cm). Simulated like the real arm, they stopped 12-17 mm short of
+  the goal after a push and crawled the rest of the way against joint friction; now about 3 mm.
+- The Studio runs a robot simulated like the real one on its `default` config in simulation too (not its
+  simulation-only `sim` config), so the tuning tried in simulation is the one the arm runs.
+
+### Fixed
+- Kinova Gen3 in simulation: the Robotiq gripper opens and closes like the real one. Its knuckles
+  turned the wrong way, so "closed" was the real gripper's open width and "open" spread the fingers to
+  124 mm; the commanded width now gives that opening within 1 mm (0 to 80 mm). The gripper now touches
+  the floor, objects and the arm, and its finger pads touch each other.
+- Extensions' mode changes (`ExtensionHost.set_mode`) did not reach the simulator: they sent only the
+  mode's name, which the simulation node does not read; they now send the name and the number, as the
+  mode buttons do.
+- Quick Actions' sequence list on the desktop stayed empty (it was filled before the sequences loaded);
+  it is read again whenever Quick Actions or Snapshot opens.
+- Gripper waypoints of a sequence on the Simulation target drive the simulated gripper (they were only
+  logged).
+- On macOS `bash install.sh --dry-run` ran the full install (the macOS installer ignored its
+  options); it now shows the plan and changes nothing.
+
+---
+
 ## [5.7.0] — 2026-10-15 — H-PMP, on by default; mode names; Whole-Arm Experiments
 
 ### Changed

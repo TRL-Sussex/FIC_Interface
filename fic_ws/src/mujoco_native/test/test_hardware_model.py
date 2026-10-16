@@ -50,7 +50,7 @@ def test_apply_sets_named_joints_only():
 def test_apply_empty_changes_nothing():
     m = mujoco.MjModel.from_xml_path(KINOVA)
     before = m.dof_damping.copy()
-    assert hardware_model.apply(m, {}, 0.001) == {'noise': {}, 'delay_steps': 0, 'applied': []}
+    assert hardware_model.apply(m, {}, 0.001) == {'noise': {}, 'delay_steps': 0, 'applied': [], 'torque_sensor': 'motor'}
     assert (m.dof_damping == before).all()
 
 
@@ -60,3 +60,37 @@ def test_kinova_block_in_repository(monkeypatch):
     assert hm['torque_filter_hz'] == 200.0 and len(hm['joint_friction']) == 7 and len(hm['torque_noise']) == 7
     m = mujoco.MjModel.from_xml_path(KINOVA)
     assert len(hardware_model.apply(m, hm, 0.001)['applied']) == 7
+
+
+def test_link_side_torque_leaves_out_the_joints_own_losses():
+    """A torque sensor after the gearbox reads the torque that moves the link (M qacc + bias, no
+    contact): the actuator torque less damping, friction loss and rotor inertia."""
+    mujoco = pytest.importorskip('mujoco')
+    import numpy as np
+    from mujoco_native.hardware_model import link_side_torque
+    xml = """<mujoco><option timestep="0.001"/><worldbody><body pos="0 0 0">
+      <joint name="j" type="hinge" axis="0 1 0" damping="15" frictionloss="0.6" armature="0.2"/>
+      <geom type="capsule" fromto="0 0 0 0.4 0 0" size="0.03" mass="2"/></body></worldbody>
+      <actuator><motor joint="j"/></actuator></mujoco>"""
+    m = mujoco.MjModel.from_xml_string(xml)
+    d = mujoco.MjData(m)
+    d.ctrl[0] = 6.0
+    for _ in range(300):
+        mujoco.mj_step(m, d)
+    tau = link_side_torque(m, d, [0])[0]
+    M = np.zeros((m.nv, m.nv))
+    try:
+        mujoco.mj_fullM(m, d, M)                           # MuJoCo 3.10 and later
+    except TypeError:
+        mujoco.mj_fullM(m, M, d.qM)                        # earlier
+    link_dyn = (M[0, 0] - m.dof_armature[0]) * d.qacc[0] + d.qfrc_bias[0]
+    assert abs(tau - link_dyn) < 1e-6
+    assert abs(d.qfrc_actuator[0] - tau) > 1.0            # damping and friction were acting
+
+
+def test_torque_sensor_option_defaults_to_the_motor_torque():
+    m = mujoco.MjModel.from_xml_path(KINOVA)
+    assert hardware_model.apply(m, {'joint_names': NAMES}, 0.002)['torque_sensor'] == 'motor'
+    out = hardware_model.apply(m, {'joint_names': NAMES, 'torque_sensor': 'output'}, 0.002)
+    assert out['torque_sensor'] == 'output'
+    assert hardware_model.apply(m, {'joint_names': NAMES, 'torque_sensor': 'x'}, 0.002)['torque_sensor'] == 'motor'

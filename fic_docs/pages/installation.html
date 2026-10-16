@@ -2,7 +2,7 @@
 <h1>Installation (Linux / Ubuntu)</h1>
 <p class="subtitle">One-click installer or manual setup, for Ubuntu + ROS 2.</p>
 
-<div class="admonition tip"><div class="adm-title">One command on any supported OS</div><p><code>bash install.sh</code> at the repo root detects your platform and runs the right installer — the flow on this page on Ubuntu 22.04/24.04, or the <a href="#installation-macos" onclick="showPage('installation-macos')">RoboStack setup</a> on an Apple Silicon Mac. Everything below still applies; <code>install.sh</code> is just the front door.</p></div>
+<div class="admonition tip"><div class="adm-title">One command on any supported OS</div><p><code>bash install.sh</code> at the repo root detects your platform and runs the right installer — the flow on this page on Ubuntu 22.04/24.04, or the <a href="#installation-macos" onclick="showPage('installation-macos')">RoboStack setup</a> on an Apple Silicon Mac. Everything below still applies; <code>install.sh</code> is just the front door. Everything it installs or creates, per platform, and how to remove it: <code>fic_install/WHAT-GETS-INSTALLED.md</code> in the repository; <code>bash install.sh --dry-run</code> shows the plan without changing anything.</p></div>
 
 <div class="admonition warning"><div class="adm-title">This is the Linux/Ubuntu install — not compatible with macOS</div><p>Everything on this page (the <code>Install_FIC_Studio.desktop</code> installer, <code>apt</code>/<code>pkexec</code> package installs, <code>/opt/ros</code> sourcing, <code>.desktop</code> launcher registration, and the NVIDIA/Newton GPU backend) is <strong>Ubuntu-only and will not work on macOS</strong>. On macOS there is no <code>apt</code>, no system ROS 2 under <code>/opt/ros</code>, and the Linux installer's apt/desktop steps do not apply. <strong>On an Apple Silicon Mac, follow <a href="#installation-macos" onclick="showPage('installation-macos')">Installation (macOS)</a> instead</strong>, which uses RoboStack (conda-forge ROS 2) and a native CPU MuJoCo backend.</p></div>
 
@@ -162,19 +162,19 @@ falling back to zenity and then to terminal prompts. The workspace build shows a
 <p>If <code>nvidia-smi</code> succeeds during install, the installer offers to add NVIDIA's
 <strong>Newton</strong> physics backend (MuJoCo solver running on Warp/CUDA, ~141&nbsp;MB)
 alongside the standard CPU MuJoCo. Accepting runs
-<code>pip install --break-system-packages 'newton[sim,importers]' 'pyglet&gt;=2.0'</code>,
+<code>pip install --break-system-packages 'newton[sim,importers]==1.7.0' 'mujoco==3.15.0' 'pyglet&gt;=2.0'</code>,
 which pulls the following pinned versions:</p>
 <table>
   <tr><th>Package</th><th>Version</th><th>Purpose</th></tr>
-  <tr><td><code>newton</code></td><td>1.3.0</td><td>Physics engine API</td></tr>
-  <tr><td><code>warp-lang</code></td><td>1.14.0</td><td>NVIDIA Warp runtime (ships its own CUDA 12.x kernels)</td></tr>
-  <tr><td><code>mujoco-warp</code></td><td>3.8.1 (<code>~= 3.8.0</code>)</td><td>MuJoCo solver compiled to Warp</td></tr>
-  <tr><td><code>mujoco</code></td><td>3.8.1 (<code>~= 3.8.0</code>)</td><td>MJCF parser (shared)</td></tr>
+  <tr><td><code>newton</code></td><td>1.7.0</td><td>Physics engine API</td></tr>
+  <tr><td><code>warp-lang</code></td><td>1.18.0 (≥ 1.17.0)</td><td>NVIDIA Warp runtime (ships its own CUDA 12.x kernels)</td></tr>
+  <tr><td><code>mujoco-warp</code></td><td>3.15.0 (<code>~= 3.15.0</code>)</td><td>MuJoCo solver compiled to Warp</td></tr>
+  <tr><td><code>mujoco</code></td><td>3.15.0 (<code>~= 3.15.0</code>)</td><td>MJCF parser (shared)</td></tr>
   <tr><td><code>trimesh</code></td><td>≥ 4</td><td>Mesh loading for STL/OBJ refs in MJCF</td></tr>
   <tr><td><code>pyglet</code></td><td>2.1.15 (≥ 2.0)</td><td>OpenGL window for Newton's <code>ViewerGL</code> — without this Newton runs headless</td></tr>
 </table>
-<div class="admonition warning"><div class="adm-title">Let the <code>newton[sim]</code> extra choose the <code>mujoco</code> / <code>mujoco-warp</code> versions</div><p>Each Newton release pins the MuJoCo pair it was built against (newton 1.3.0 → <code>mujoco ~= 3.8.0</code> + <code>mujoco-warp ~= 3.8.0</code>). Don't upgrade pip <code>mujoco</code> past that pin while Newton is installed — newton 1.3.0 supports at most MuJoCo 3.8.x, so a manual <code>pip install -U mujoco</code> to 3.9/3.10 will break the GPU backend at runtime. (Historical note: the reverse also held — newton 1.1.0 only worked with the 3.6.0 pair.)</p></div>
-<div class="admonition tip"><div class="adm-title">Both simulators use the pip <code>mujoco</code> wheel</div><p>The CPU simulator (<code>mujoco_native</code>) runs on whichever pip <code>mujoco</code> is installed, so with Newton present it runs on Newton's pinned 3.8.x, and otherwise on the latest wheel (the Docker image pins 3.10.0). Until v4.5.0 the default Linux simulator was a C++ package that linked a vendored MuJoCo 3.10.0; it was retired.</p></div>
+<div class="admonition warning"><div class="adm-title">Let the <code>newton[sim]</code> extra choose the <code>mujoco</code> / <code>mujoco-warp</code> versions</div><p>Each Newton release pins the MuJoCo pair it was built against (newton 1.7.0 → <code>mujoco ~= 3.15.0</code> + <code>mujoco-warp ~= 3.15.0</code>). Don't upgrade pip <code>mujoco</code> past that pin while Newton is installed — a manual <code>pip install -U mujoco</code> to 3.16 breaks the GPU backend at runtime. The installer pins MuJoCo 3.15.0 for the CPU simulator too, so both simulators run the same physics. (Earlier pairs: newton 1.3.0 with MuJoCo 3.8, newton 1.1.0 with 3.6.)</p></div>
+<div class="admonition tip"><div class="adm-title">Both simulators use the pip <code>mujoco</code> wheel</div><p>The CPU simulator (<code>mujoco_native</code>) runs on whichever pip <code>mujoco</code> is installed: 3.15.0 from the installer, with or without Newton, as in the Docker image. Until v4.5.0 the default Linux simulator was a C++ package that linked a vendored MuJoCo 3.10.0; it was retired.</p></div>
 <p>On a successful Newton install the installer writes
 <code>~/.fic_studio_install_hints.yaml</code> (<code>newton_available: true</code>). On first
 launch the Studio defaults the simulator backend to <strong>Newton</strong> only if that
@@ -225,15 +225,18 @@ sudo bash fic_install/install-deps.sh          # optional argument: the ROS 2 di
 ./build.sh
 source fic_ws/install/setup.bash
 ros2 run fic_studio fic_studio_pro</code></pre>
-<p><code>install-deps.sh</code> installs the same packages as the installer (step 4 above), plus
-<code>ros-dev-tools</code> for colcon, and pip-installs <code>mujoco</code> for your user. On amd64, when the camera extensions are in the
+<p><code>install-deps.sh</code> installs a similar set of packages to the installer's (step 4 above; the exact
+lists are in <code>fic_install/WHAT-GETS-INSTALLED.md</code>), plus <code>ros-dev-tools</code> for colcon, and
+pip-installs <code>mujoco</code> for your user. On amd64, when the camera extensions are in the
 checkout, it also installs <code>pyrealsense2</code> and <code>mediapipe</code>. With a working
 <code>nvidia-smi</code> it also installs Newton. It does not build the workspace or add launcher entries:
 <code>./build.sh</code> builds, and <code>bash fic_install/install-desktop-entry.sh</code> adds the Studio's
 launcher entry.</p>
 <div class="admonition warning"><div class="adm-title">QtWebEngine: use the apt package, not pip</div><p>The Studio's window shows the web interface, which needs QtWebEngine built against the system Qt: <code>sudo apt install python3-pyqt5.qtwebengine</code> (both scripts do this). Do <strong>not</strong> <code>pip install PyQtWebEngine</code> or <code>PyQt5</code>: a pip wheel in <code>~/.local</code> shadows the system one and fails with an <code>undefined symbol</code> error. If you already did, run <code>pip uninstall PyQtWebEngine PyQtWebEngine-Qt5 PyQt5 PyQt5-Qt5 PyQt5-sip</code>. If QtWebEngine cannot load, the Studio offers the classic interface (also <code>--classic</code>).</p></div>
 <div class="admonition warning"><div class="adm-title">numpy stays below 2</div><p>The pip installs ask for <code>numpy&lt;2</code>: apt's matplotlib, SciPy, OpenCV and ROS are built against NumPy 1.x, and a NumPy 2 in <code>~/.local</code> shadows theirs and breaks their imports. If you pip-install something that pulls NumPy 2 in, put it back with <code>pip install --user 'numpy&lt;2'</code>.</p></div>
-<div class="admonition tip"><div class="adm-title">Ubuntu 24.04 marks the system Python as externally managed</div><p>pip then refuses system-wide installs (PEP 668). The scripts install <code>mujoco</code> with <code>--user</code>, adding <code>--break-system-packages</code> only if pip insists.</p></div>
+<div class="admonition tip"><div class="adm-title">Ubuntu 24.04 marks the system Python as externally managed</div><p>pip then refuses system-wide installs (PEP 668). The installer installs <code>mujoco</code> with <code>--user --break-system-packages</code>; <code>install-deps.sh</code>
+tries <code>--user</code> first and adds <code>--break-system-packages</code> only if pip insists. Either way the packages go
+into <code>~/.local</code>, not the system Python.</p></div>
 
 <h3>Optional: Newton GPU backend</h3>
 <p>Only on machines with a working NVIDIA driver (check with <code>nvidia-smi</code>):</p>

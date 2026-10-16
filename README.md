@@ -36,6 +36,10 @@ extensions ready; nothing else is installed on your computer. See
 
 **Native install (Ubuntu 22.04 or 24.04, or macOS on Apple Silicon):**
 
+> **Before you install:** see [everything the installer puts on your computer](fic_install/WHAT-GETS-INSTALLED.md):
+> the packages, when it asks for admin rights, the files it creates outside this folder, and how to
+> remove them. `bash install.sh --dry-run` shows the plan without changing anything.
+
 ```bash
 git clone https://github.com/TRL-Sussex/FIC_Interface ~/FIC_Interface
 cd ~/FIC_Interface

@@ -196,6 +196,10 @@ def _hardware_model(hm, n):
     for key, (label, lo, hi) in HW_SCALARS.items():
         if key in hm and hm[key] is not None:
             out[key] = _num_list([hm[key]], label, 1, lo, hi)[0]
+    if 'torque_sensor' in hm and hm['torque_sensor'] is not None:
+        if hm['torque_sensor'] not in ('motor', 'output'):
+            raise Refused('Measured joint torque: motor or output', 'bad_args')
+        out['torque_sensor'] = hm['torque_sensor']
     if 'source' in hm:
         out['source'] = _text(hm['source'], 'Where the values come from')
     return out

@@ -26,6 +26,8 @@ def _node():
     n._active_robots = [1]
     n.published_modes = []
     n.publish_mode = lambda m: n.published_modes.append(m)
+    n.published_hpmp = []
+    n.publish_hpmp_enable = lambda on, robot_id=None: n.published_hpmp.append((on, len(n.published_modes)))
     n.published_wrenches = []
     n.publish_desired_wrench = lambda w, rid=None: n.published_wrenches.append((list(w), rid))
     n._resolve_rid = lambda rid=None: rid or 'robot1'
@@ -144,10 +146,11 @@ class TestModeMenus:
         assert h.node.published_modes == [3]
 
     def test_cart_rows_publish_modes_five_to_eight(self):
-        """Cart row 1 publishes mode 5 (Cartesian Impedance)."""
+        """Cart row 1 publishes mode 5 (Cartesian Impedance), the H-PMP toggle just before it."""
         h = _Host()
         h._cb_mode_buttons['cart'][0].click()
         assert h.node.published_modes == [5]
+        assert h.node.published_hpmp == [(True, 0)]
 
     def test_each_menu_offers_four_modes(self):
         """Eight modes split into two menus of four."""

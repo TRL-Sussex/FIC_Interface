@@ -441,6 +441,8 @@ class ProcessMixin:
         selector, because the topic is VOLATILE and fires only on change.
         """
         mode = int(getattr(self, '_rc_selected_mode_idx', 0)) + 1
+        if hasattr(self, '_send_hpmp_for_mode'):
+            self._send_hpmp_for_mode(mode)
         self.node.publish_mode(mode)
         self.log_message(
             'INFO', f'Re-asserted control mode {mode} for late subscribers',
@@ -509,12 +511,16 @@ class ProcessMixin:
     def _sim_start_pose_arg(self, robot_name):
         """Return the launch argument that spawns the arm at its home pose.
 
-        Only for a robot whose config sets ``sim_start_at_home`` and has a
-        ``q_home_rad``; otherwise the simulator starts with every joint at 0.
+        Only for a robot whose config sets ``sim_start_at_home``, or that an
+        extension asked to start at home (``_sim_start_home_override``, e.g. the
+        MuJoCo Playground), and has a ``q_home_rad``; otherwise the simulator
+        starts with every joint at 0.
         """
         cfg = getattr(self, 'robot_configs', {}).get(robot_name, {}) or {}
         home = cfg.get('q_home_rad') or []
-        if not cfg.get('sim_start_at_home') or not home:
+        at_home = cfg.get('sim_start_at_home') or robot_name in (
+            getattr(self, '_sim_start_home_override', None) or ())
+        if not at_home or not home:
             return ''
         try:
             values = ','.join(repr(float(v)) for v in home)

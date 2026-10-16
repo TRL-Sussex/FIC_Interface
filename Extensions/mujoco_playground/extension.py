@@ -9,8 +9,10 @@ into a sequence, play it, run trajectory templates, and pick an object.
 
 The Studio side is web_state() / web_action(); web/page.js only draws.
 """
+import base64
 import json
 import os
+import uuid
 
 from fic_studio.extensions.base import Extension as _Base
 
@@ -22,6 +24,8 @@ WS_SRC = os.path.abspath(os.path.join(HERE, '..', '..', 'fic_ws', 'src'))
 #: Seconds between starting the simulator and starting the FIC controller.
 FIC_DELAY_MS = 3000
 LOG_LINES = 100
+#: Where a dropped mesh goes when no spot is named: these (x, y) in turn, the first clear one.
+DROP_SPOTS = [(0.5, 0.0), (0.45, 0.25), (0.45, -0.25), (0.6, 0.15), (0.6, -0.15), (0.35, 0.0)]
 
 
 class Extension(_Base):
@@ -47,6 +51,7 @@ class Extension(_Base):
         self._poses_sub = None
         self._log = []
         self._robots_cache = None
+        self._uploads = {}               # upload id -> {'name', 'data': bytearray}
         if hasattr(host, 'add_quick_action'):
             host.add_quick_action('pick', 'Pick', self._quick_pick, choices=self._pickable, button='Pick',
                                   hint='Playground: builds the pick as a sequence and plays it')
@@ -168,6 +173,8 @@ class Extension(_Base):
         self.host.stop_fic_simulation()
         self.host.stop_simulation()
         self.host.set_simulation_scene(path, name)
+        if hasattr(self.host, 'set_simulation_start_at_home'):
+            self.host.set_simulation_start_at_home(True, name)     # the arm starts at its home
         if hasattr(self.host, 'set_simulation_env'):
             self.host.set_simulation_env({} if self._robot_like else {'FIC_HARDWARE_MODEL': 'off'})
         if hasattr(self.host, 'refresh_profile'):
@@ -203,6 +210,8 @@ class Extension(_Base):
         self.host.stop_simulation()
         if self._robot:
             self.host.set_simulation_scene(None, self._robot)
+            if hasattr(self.host, 'set_simulation_start_at_home'):
+                self.host.set_simulation_start_at_home(False, self._robot)
         if hasattr(self.host, 'set_simulation_env'):
             self.host.set_simulation_env(None)
         if hasattr(self.host, 'refresh_profile'):
@@ -210,6 +219,72 @@ class Extension(_Base):
         self._scene_path = None
         self._unsubscribe()
         self._say('Stopped')
+
+    # ── Mesh files dropped on the page ────────────────────────────────────
+    def _free_spot(self):
+        for x, y in DROP_SPOTS:
+            if all((o['x'] - x) ** 2 + (o['y'] - y) ** 2 > 0.1 ** 2 for o in self._objects):
+                return x, y
+        return DROP_SPOTS[0]
+
+    def _unique_name(self, name):
+        names = {o['name'] for o in self._objects}
+        out, k = name, 2
+        while out in names:
+            out, k = '%s_%d' % (name[:28], k), k + 1
+        return out
+
+    def _mesh_upload(self, args):
+        """A dropped STL/OBJ file, in base64 chunks: begin {filename, size}, chunk {upload,
+        offset, data}, finish {upload} (stores it and adds it to the scene), cancel {upload}."""
+        op = args.get('op')
+        if op == 'begin':
+            size = int(args.get('size') or 0)
+            if size > sb.MAX_MESH_BYTES:
+                raise ValueError('That file is %d MB; the limit is %d MB' % (size >> 20, sb.MAX_MESH_BYTES >> 20))
+            if os.path.splitext(str(args.get('filename') or ''))[1].lower() not in sb.MESH_TYPES:
+                raise ValueError('Drop an STL or OBJ file')
+            self._uploads.clear()                      # one at a time
+            uid = uuid.uuid4().hex[:12]
+            self._uploads[uid] = {'name': str(args.get('filename')), 'data': bytearray()}
+            return {'upload': uid}
+        up = self._uploads.get(str(args.get('upload') or ''))
+        if op == 'cancel':
+            self._uploads.pop(str(args.get('upload') or ''), None)
+            return {}
+        if up is None:
+            raise ValueError('That upload is gone: drop the file again')
+        if op == 'chunk':
+            if int(args.get('offset', -1)) != len(up['data']):
+                raise ValueError('A piece of the file went missing: drop it again')
+            try:
+                up['data'] += base64.b64decode(str(args.get('data') or ''), validate=True)
+            except ValueError:
+                raise ValueError('The file did not arrive intact: drop it again')
+            if len(up['data']) > sb.MAX_MESH_BYTES:
+                self._uploads.clear()
+                raise ValueError('That file is over %d MB' % (sb.MAX_MESH_BYTES >> 20))
+            return {}
+        if op != 'finish':
+            raise ValueError('No such upload step')
+        self._uploads.clear()
+        info = sb.save_mesh(up['name'], bytes(up['data']))
+        x, y = self._free_spot()
+        obj = {'name': self._unique_name(info['name']), 'shape': 'mesh', 'mesh': info['mesh'],
+               'units': info['units'], 'x': x, 'y': y, 'color': 'grey', 'mass': 0.1}
+        try:
+            obj = sb.check_object(obj)
+        except ValueError as exc:
+            raise ValueError('%s is stored, but not added: %s. Add it with the form, in other units'
+                             % (info['mesh'], exc))
+        if len(self._objects) >= sb.MAX_OBJECTS:
+            raise ValueError('%s is stored, but the scene has %d objects already' % (info['mesh'], sb.MAX_OBJECTS))
+        self._objects.append(obj)
+        self._save()
+        dims = ' x '.join('%.0f' % (1000 * v) for v in obj['size'])
+        self._say('Added %s from %s (%s mm, read as %s; change the units with Edit if that is wrong)'
+                  % (obj['name'], info['mesh'], dims, info['units']))
+        return {'message': 'Added %s (%s mm)' % (obj['name'], dims), 'index': len(self._objects) - 1}
 
     # ── The web page ──────────────────────────────────────────────────────
     def web_state(self):
@@ -227,6 +302,10 @@ class Extension(_Base):
             'objects': self._objects,
             'shapes': {k: list(v['fields']) for k, v in sb.SHAPES.items()},
             'colors': list(sb.COLORS),
+            'meshes': sb.meshes(),
+            'units': list(sb.UNITS),
+            'mesh_types': list(sb.MESH_TYPES),
+            'max_mesh_mb': sb.MAX_MESH_BYTES >> 20,
             'robot_like': self._robot_like,
             'running': self._active(),
             'starting': self._starting,
@@ -300,6 +379,9 @@ class Extension(_Base):
             self._stop()
         elif name == 'pick':
             return {'message': self._pick(str(args.get('name') or ''))}
+        elif name == 'mesh_upload':
+            idle()
+            return self._mesh_upload(args)
         else:
             raise ValueError('No such action: %s' % name)
         return {}
