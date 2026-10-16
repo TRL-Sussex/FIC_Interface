@@ -20,7 +20,7 @@ window.FIC.pages.robot_config = function buildRobots(root) {
   const pickDir = h('input', { type: 'file', hidden: true, webkitdirectory: true });
   const dropZone = h('div', { class: 'dz', id: 'rc-drop', role: 'group', 'aria-label': 'Add a robot by dropping files' },
     h('div', { class: 'dz-title', text: 'Add a robot' }),
-    h('div', { class: 'dz-hint', text: 'Drop a URDF, a .xacro, a description-package folder or a .zip here.' }),
+    h('div', { class: 'dz-hint', text: 'Drop a URDF, a .xacro, a description-package folder or a .zip anywhere on this page (up to 200 MB in all).' }),
     h('div', { class: 'btn-row dz-btns' }, h('button', { class: 'btn', type: 'button', text: 'Choose files', onclick: () => pickFiles.click() }),
       h('button', { class: 'btn', type: 'button', text: 'Choose folder', onclick: () => pickDir.click() })), dzNote, pickFiles, pickDir);
   const importBox = h('div'), upState = { id: null }, pathIn = h('input', { class: 'input', type: 'text', placeholder: '/path/to/robot.urdf, its folder or zip', 'aria-label': 'URDF path', style: 'min-width:16rem' });
@@ -276,13 +276,20 @@ window.FIC.pages.robot_config = function buildRobots(root) {
   dropZone.addEventListener('dragenter', e => { if (dropOk(e)) { e.preventDefault(); depth++; dropZone.classList.add('over'); } });
   dropZone.addEventListener('dragover', e => { if (dropOk(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; dropZone.classList.add('over'); } });
   dropZone.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (!depth) dropZone.classList.remove('over'); });
-  dropZone.addEventListener('drop', async e => {
+  async function onDrop(e) {
     e.preventDefault(); depth = 0; dropZone.classList.remove('over');
     setText(dzNote, 'Reading what was dropped…');
     try { await uploadAndReview(await collectDrop(e.dataTransfer)); } catch (err) { setText(dzNote, 'Could not read the drop: ' + err.message); }
-  });
-  // a file dropped beside the zone must not navigate the window away to that file
-  const stray = e => { if (dropOk(e) && !dropZone.contains(e.target)) { e.preventDefault(); } };
+  }
+  dropZone.addEventListener('drop', onDrop);
+  // files dropped anywhere else on the page are taken too (the window must not open them); the zone lights up
+  let glow = 0;
+  const stray = e => {
+    if (!dropOk(e) || dropZone.contains(e.target)) return;
+    e.preventDefault();
+    if (e.type === 'dragover') { e.dataTransfer.dropEffect = 'copy'; dropZone.classList.add('over'); clearTimeout(glow); glow = setTimeout(() => dropZone.classList.remove('over'), 300); return; }
+    onDrop(e);
+  };
   window.addEventListener('dragover', stray); window.addEventListener('drop', stray);
   for (const input of [pickFiles, pickDir]) input.addEventListener('change', () => { const items = collectPicked(input); input.value = ''; uploadAndReview(items); });
   let timer = null;

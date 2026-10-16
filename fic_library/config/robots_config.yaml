@@ -209,6 +209,14 @@ robots:
       joint_tau: 2.0
       cart_force: 4.0
       cart_torque: 0.2
+      # On the arm (and simulating it): its joint-torque force estimate reads friction and the arm's
+      # own motion as 4-8 N along the motion, which Cartesian HAP-FIC's and H-PMP's task-space
+      # admittance, a mass and damper with no spring, integrated into a goal drift while tracking.
+      # Pushes under 10 N do not move the goal.
+      cart_force_hardware: 10.0
+      # On the arm its moment estimate reads 0.3-1 N m with nothing touching it, which the orientation
+      # admittance integrated into a drifting orientation goal while teaching (16 Oct 2026).
+      cart_torque_hardware: 1.5
     # The real arm as the simulator reproduces it (fic_docs: Simulation vs. Hardware). With it on,
     # the simulated Kinova has the arm's joint friction and torque-sensor noise and measures torque
     # as fic_hardware does (200 Hz filter, H-PMP's push estimated from the joint torques, the
@@ -300,6 +308,9 @@ robots:
         sim_max_joint_vel: 3.0
         max_cart_vel: 0.5
         enabled: true
+        # On the arm: joint impedance (modes 1, 2) moves its target towards a far command at no more than this
+        # (rad/s), instead of the joint law's full effort at once (the Studio's Safety page changes it).
+        joint_target_speed: 0.5
     urdf_path_gripper: menagerie/model/KinovaGen3_7DOF/URDF/KinovaGen3_7DOF_gripper.urdf
   IIWA_14:
     display_name: KUKA iiwa 14

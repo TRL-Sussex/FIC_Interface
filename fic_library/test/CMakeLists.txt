@@ -54,6 +54,11 @@ if(Eigen3_FOUND AND TINYXML2_INCLUDE AND TINYXML2_LIB)
   target_include_directories(test_hpmp_task_admittance PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})
   target_link_libraries(test_hpmp_task_admittance PRIVATE Eigen3::Eigen ${TINYXML2_LIB})
   add_test(NAME hpmp_task_admittance COMMAND test_hpmp_task_admittance)
+  # The joint target speed of the joint impedance modes: the law's target moves at most `speed` rad/s.
+  add_executable(test_joint_target_slew test_joint_target_slew.cpp)
+  target_include_directories(test_joint_target_slew PRIVATE ${FIC_INCLUDE})
+  target_link_libraries(test_joint_target_slew PRIVATE Eigen3::Eigen)
+  add_test(NAME joint_target_slew COMMAND test_joint_target_slew)
   # H-PMP's split admittance drive: a task-space deadband on the end-effector part of the torque gap.
   add_executable(test_hpmp_split_drive test_hpmp_split_drive.cpp)
   target_include_directories(test_hpmp_split_drive PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})

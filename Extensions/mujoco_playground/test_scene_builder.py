@@ -109,7 +109,7 @@ def test_dropped_meshes_are_stored_with_their_units_guessed(tmp_path):
 
 
 def test_files_mujoco_cannot_use_are_refused(tmp_path):
-    with pytest.raises(ValueError, match='STL or OBJ'):
+    with pytest.raises(ValueError, match='STL, OBJ'):
         sb.save_mesh('part.step', b'ISO-10303-21;', mesh_dir=str(tmp_path))
     with pytest.raises(ValueError, match='cannot read'):
         sb.save_mesh('junk.stl', b'not a mesh at all', mesh_dir=str(tmp_path))
@@ -121,6 +121,52 @@ def test_files_mujoco_cannot_use_are_refused(tmp_path):
     sb.save_mesh('big.stl', _box_stl((0, 0, 0), (900, 900, 900)), mesh_dir=str(tmp_path))
     with pytest.raises(ValueError, match='across'):      # 0.9 m: too big for the table
         sb.check_object({'name': 'x', 'shape': 'mesh', 'mesh': 'big.stl', 'units': 'mm'}, mesh_dir=str(tmp_path))
+
+
+def _sphere_tris(n):
+    """A UV sphere of radius 30 (mm) with 2*n*n triangles, as an (m, 3, 3) array."""
+    import numpy as np
+    th, ph = np.linspace(0, np.pi, n + 1), np.linspace(0, 2 * np.pi, n + 1)
+    P = 30 * np.stack([np.sin(th)[:, None] * np.cos(ph), np.sin(th)[:, None] * np.sin(ph),
+                       np.cos(th)[:, None] * np.ones_like(ph)], axis=-1)
+    a, b, c, d = P[:-1, :-1], P[1:, :-1], P[1:, 1:], P[:-1, 1:]
+    return np.concatenate([np.stack([a, b, c], -2).reshape(-1, 3, 3), np.stack([a, c, d], -2).reshape(-1, 3, 3)])
+
+
+def test_a_mesh_over_mujocos_triangle_limit_is_simplified(tmp_path, monkeypatch):
+    monkeypatch.setattr(sb, 'MAX_STL_FACES', 2000)          # MuJoCo's own limit is 200,000: the same path, faster
+    monkeypatch.setattr(sb, 'SIMPLIFY_TO', 1500)
+    data = sb.stl_bytes(_sphere_tris(60))                     # 7,200 triangles
+    assert sb.stl_faces(data) == 7200 and len(sb.read_stl(data)) == 7200
+    info = sb.save_mesh('Ball.stl', data, mesh_dir=str(tmp_path))
+    kept = sb.stl_faces(open(tmp_path / info['mesh'], 'rb').read())
+    assert 300 < kept <= 1500 and 'simplified from 7,200' in info['note']
+    assert info['units'] == 'mm' and info['size'] == pytest.approx([0.06, 0.06, 0.06], abs=0.003)
+
+
+def test_text_stl_reads_and_writes_back_as_binary():
+    tris = sb.read_stl(_box_stl((0, 0, 0), (1, 2, 3)))
+    text = 'solid t\n' + ''.join('facet normal 0 0 0\nouter loop\n' + ''.join('vertex %g %g %g\n' % tuple(v) for v in t)
+                                  + 'endloop\nendfacet\n' for t in tris) + 'endsolid t\n'
+    assert sb.stl_faces(text.encode()) == 12
+    assert sb.read_stl(text.encode()) == pytest.approx(tris)
+    assert sb.read_stl(sb.stl_bytes(tris)) == pytest.approx(tris)
+
+
+def test_other_mesh_formats_become_stl(tmp_path):
+    trimesh = pytest.importorskip('trimesh')
+    ply = trimesh.creation.box((40, 30, 50)).export(file_type='ply')
+    info = sb.save_mesh('Block.ply', ply, mesh_dir=str(tmp_path))
+    assert info['mesh'] == 'block.stl' and 'converted from PLY' in info['note']
+    assert info['size'] == pytest.approx([0.04, 0.03, 0.05], abs=1e-6)
+    assert '.ply' in sb.upload_types()
+
+
+def test_other_formats_without_trimesh_say_what_to_do(monkeypatch):
+    monkeypatch.setattr(sb, '_trimesh', lambda: None)
+    assert sb.upload_types() == ('.stl', '.obj')
+    with pytest.raises(ValueError, match='need trimesh'):
+        sb.check_upload_name('part.glb')
 
 
 def test_mesh_objects_sit_centred_on_their_pose_and_rest_on_the_table(tmp_path):

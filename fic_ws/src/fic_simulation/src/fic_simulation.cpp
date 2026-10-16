@@ -541,26 +541,33 @@ void FicSimulationNode<T>::loadRobotModel(const std::string& robot_name) {
             velocity_limits_enabled_ ? "true" : "false");
     }
 
-    // Apply per-robot admittance deadbands loaded from robots_config.yaml
+    // Apply per-robot admittance deadbands loaded from robots_config.yaml. Simulating the arm
+    // (hardware_model on), the Cartesian force deadband is the arm's (cart_force_hardware), as
+    // fic_hardware sets it; the ideal simulator keeps cart_force.
+    const double cart_force_db = current_robot_config_.hardware_model.enabled
+        ? current_robot_config_.cartForceDeadbandOnArm() : current_robot_config_.deadband_cart_force;
+    const double cart_torque_db = current_robot_config_.hardware_model.enabled
+        ? current_robot_config_.cartTorqueDeadbandOnArm() : current_robot_config_.deadband_cart_torque;
     fic_ctrl_.setDeadbands(
         current_robot_config_.deadband_joint_tau,
-        current_robot_config_.deadband_cart_force,
-        current_robot_config_.deadband_cart_torque);
+        cart_force_db,
+        cart_torque_db);
     // H-PMP's split admittance drive keeps the library's task deadband: the simulated measured
     // torque is the node's own command, with no sensor bias for a wider deadband to absorb. With the
     // robot's hardware_model the measured torque carries the arm's friction and sensor noise, and the
     // deadband is the robot's, as fic_hardware sets it.
     if (current_robot_config_.hardware_model.enabled)
-        fic_ctrl_.setHpmpSplitDrive(true, current_robot_config_.deadband_cart_force,
-                                    current_robot_config_.deadband_cart_torque);
+        fic_ctrl_.setHpmpSplitDrive(true, cart_force_db, cart_torque_db);
     else
         fic_ctrl_.setHpmpSplitDrive(true, 1.0, 0.1);
     RCLCPP_INFO(this->get_logger(), "Hardware model (robots_config.yaml hardware_model): %s, measured-torque filter %.0f Hz",
         current_robot_config_.hardware_model.enabled ? "on" : "off (ideal simulator)", torqueCutoffHz());
     RCLCPP_INFO(this->get_logger(),
-        "H-PMP admittance drive: %s, task deadband %.2f N / %.3f N m, joint deadband %.2f N m",
+        "H-PMP admittance drive: %s, task deadband %.2f N / %.3f N m, joint deadband %.2f N m; "
+        "Cartesian admittance deadband %.2f N / %.2f N m",
         fic_ctrl_.hpmp_split_drive_ ? "split" : "per joint", fic_ctrl_.hpmp_task_db_force_,
-        fic_ctrl_.hpmp_task_db_torque_, fic_ctrl_.deadband_joint_tau_);
+        fic_ctrl_.hpmp_task_db_torque_, fic_ctrl_.deadband_joint_tau_, fic_ctrl_.deadband_cart_force_,
+        fic_ctrl_.deadband_cart_torque_);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1213,9 +1220,13 @@ void FicSimulationNode<T>::velocitySafetyCallback(const std_msgs::msg::Float64Mu
         max_joint_velocity_ = msg->data[0];
         max_cart_velocity_ = msg->data[1];
         velocity_limits_enabled_ = msg->data[2] > 0.5;
+        // optional 4th value: the joint target speed of the joint modes (rad/s, 0: off)
+        if (msg->data.size() >= 4 && std::isfinite(msg->data[3])) joint_slew_.speed = std::max(0.0, msg->data[3]);
 
-        RCLCPP_INFO(this->get_logger(), "Updated velocity limits: joint=%.2f rad/s, cart=%.2f m/s (enabled: %s)",
-            max_joint_velocity_, max_cart_velocity_, velocity_limits_enabled_ ? "true" : "false");
+        RCLCPP_INFO(this->get_logger(), "Updated velocity limits: joint=%.2f rad/s, cart=%.2f m/s (enabled: %s), "
+            "joint target speed %.2f rad/s%s",
+            max_joint_velocity_, max_cart_velocity_, velocity_limits_enabled_ ? "true" : "false",
+            joint_slew_.speed, joint_slew_.speed > 0.0 ? "" : " (off)");
     }
 }
 
@@ -1581,6 +1592,11 @@ void FicSimulationNode<T>::controlLoop() {
 
     int CartAdmMode = 0;
     if (static_cast<int>(local_control_mode) <= 4) {
+        // modes 1 and 2: the joint target the law sees, at most joint_slew_.speed rad/s from the last (off:
+        // the commanded one); the joint admittance modes (3, 4) update their own target
+        if (static_cast<int>(local_control_mode) >= 1 && static_cast<int>(local_control_mode) <= 2)
+            local_q_target = joint_slew_.apply(local_q_target, local_q_current, static_cast<int>(local_control_mode),
+                                               joint_continuous_, fic::dt);
         for (size_t i = 0; i < local_num_joints; ++i) {
             switch (local_control_mode) {
                 case ControlMode::JOINT_IMPEDANCE:

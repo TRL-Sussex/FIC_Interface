@@ -38,10 +38,11 @@ export default function build(root, api) {
 
   // ── Mesh files: dropped here or chosen, sent to the Studio in chunks, added to the scene ──
   const dzNote = h('div', { class: 'dz-note faint', 'aria-live': 'polite' });
-  const pick = h('input', { type: 'file', accept: '.stl,.obj', hidden: true });
+  const pick = h('input', { type: 'file', accept: '.stl,.obj,.ply,.off,.glb,.3mf', hidden: true });
+  const dzTitle = h('div', { class: 'dz-title', text: 'Drop a mesh file here (STL, OBJ)' });
   const dz = h('div', { class: 'dz pg-dz', role: 'group', 'aria-label': 'Add an object from a mesh file' },
-    h('div', { class: 'dz-title', text: 'Drop an STL or OBJ file here' }),
-    h('div', { class: 'dz-hint', text: 'It is added to the scene at a free spot; its units are guessed (CAD files are usually in mm), change them with Edit. In the Studio window.' }),
+    dzTitle,
+    h('div', { class: 'dz-hint', text: 'Anywhere on this page. It is added to the scene at a free spot; its units are guessed (CAD files are usually in mm), change them with Edit. A mesh over 200,000 triangles is simplified. In the Studio window.' }),
     h('div', { class: 'btn-row dz-btns' }, ui.button({ label: 'Choose a file…', onClick: () => pick.click() })), dzNote, pick);
   const b64 = blob => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = no; r.readAsDataURL(blob); });
   async function upload(file) {
@@ -57,7 +58,7 @@ export default function build(root, api) {
         dzNote.textContent = 'Sending ' + file.name + '… ' + Math.round(100 * Math.min(file.size, off + CHUNK) / file.size) + '%';
       }
     } catch (e) { dzNote.textContent = 'The upload stopped: drop the file again.'; api.call('mesh_upload', { op: 'cancel', upload: begin.upload }); return; }
-    dzNote.textContent = 'Checking it in MuJoCo…';
+    dzNote.textContent = 'Checking it in MuJoCo (a large mesh is simplified first: up to a minute)…';
     const r = await api.call('mesh_upload', { op: 'finish', upload: begin.upload });
     dzNote.textContent = r ? r.message : '';
   }
@@ -66,10 +67,17 @@ export default function build(root, api) {
   dz.addEventListener('dragenter', e => { if (hasFiles(e)) { e.preventDefault(); depth++; dz.classList.add('over'); } });
   dz.addEventListener('dragover', e => { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
   dz.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (!depth) dz.classList.remove('over'); });
-  dz.addEventListener('drop', e => { e.preventDefault(); depth = 0; dz.classList.remove('over'); upload((e.dataTransfer.files || [])[0]); });
+  dz.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); depth = 0; dz.classList.remove('over'); upload((e.dataTransfer.files || [])[0]); });
   pick.addEventListener('change', () => { const f = pick.files[0]; pick.value = ''; upload(f); });
-  // a file dropped beside the zone must not make the window open it
-  const stray = e => { if (hasFiles(e) && !dz.contains(e.target)) e.preventDefault(); };
+  // a file dropped anywhere else on the page is taken too (the window must not open it); the zone lights up
+  let glow = 0;
+  const stray = e => {
+    if (!hasFiles(e) || dz.contains(e.target)) return;
+    e.preventDefault();
+    if (e.type === 'dragover') { e.dataTransfer.dropEffect = 'copy'; dz.classList.add('over'); clearTimeout(glow); glow = setTimeout(() => dz.classList.remove('over'), 300); return; }
+    dz.classList.remove('over');
+    if (root.isConnected) upload((e.dataTransfer.files || [])[0]);
+  };
   window.addEventListener('dragover', stray); window.addEventListener('drop', stray);
 
   // ── Live poses ──
@@ -145,8 +153,12 @@ export default function build(root, api) {
   return {
     update(state) {
       s = state;
-      robot.setOptions(s.robots.map(r => ({ value: r.name, label: r.name + (r.ok ? (r.gripper ? '' : '  (no gripper)') : '  — ' + r.reason) })), s.robot);
-      preset.setOptions(s.presets.map(p => ({ value: p.key, label: p.title })), s.preset);
+      // a value the list lacks would leave the box blank: no usable robot, or a scene edited away from its preset
+      const robots = s.robots.map(r => ({ value: r.name, label: r.name + (r.ok ? (r.gripper ? '' : '  (no gripper)') : '  — ' + r.reason) }));
+      robot.setOptions(s.robot ? robots : [{ value: '', label: 'No robot can run here: open the list to see why' }, ...robots], s.robot || '');
+      const presets = s.presets.map(p => ({ value: p.key, label: p.title }));
+      if (!presets.some(p => p.value === s.preset)) presets.push({ value: s.preset || 'custom', label: 'Custom (edited)' });
+      preset.setOptions(presets, s.preset || 'custom');
       const busy = s.running || s.starting;
       robot.disabled = busy; preset.disabled = busy; table.input.disabled = busy;
       table.set(s.table);
@@ -176,6 +188,11 @@ export default function build(root, api) {
         poses.replaceChildren(...(rows.length ? rows : [ui.note(s.running ? 'Waiting for the simulator…' : 'Start the Playground to see where the objects are.')]));
       }
       log.set(s.log);
+      const types = (s.mesh_types || ['.stl', '.obj']).map(t => t.slice(1).toUpperCase()).join(', ');
+      if (dzTitle.textContent !== 'Drop a mesh file here (' + types + ')') {
+        dzTitle.textContent = 'Drop a mesh file here (' + types + ')';
+        pick.accept = (s.mesh_types || []).join(',');
+      }
     },
     dispose() { window.removeEventListener('dragover', stray); window.removeEventListener('drop', stray); },
   };

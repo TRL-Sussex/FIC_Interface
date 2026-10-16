@@ -132,7 +132,7 @@ def state(w, ctx=None):
         'overall': overall,
         'cartesian': cart,
         'joints': {'enabled': bool(joint.get('enabled', True)), 'rows': rows},
-        'velocity': dict(limits['velocity']),
+        'velocity': dict({'joint_target_speed': 0.0}, **limits['velocity']),
         'bounds': {'cart_abs': MAX_CART_ABS_M, 'joint_vel': MAX_JOINT_VEL, 'cart_vel': MAX_CART_VEL},
     }
 
@@ -218,6 +218,10 @@ def _check_velocity(edit, current):
             if not 0 < out[key] <= MAX_CART_VEL:
                 raise Refused('Maximum Cartesian velocity must be above 0 and at most %g m/s'
                               % MAX_CART_VEL, 'bad_args')
+        elif key == 'joint_target_speed':
+            out[key] = _finite(value, 'Joint target speed')
+            if not 0 <= out[key] <= MAX_JOINT_VEL:
+                raise Refused('Joint target speed must be 0 (off) to %g rad/s' % MAX_JOINT_VEL, 'bad_args')
         elif key == 'enabled':
             out[key] = _flag(value, 'velocity limits enabled')
         else:
@@ -238,8 +242,9 @@ def _describe_change(old, new):
         parts.append('joint limits changed')
     if old['velocity'] != new['velocity']:
         v = new['velocity']
-        parts.append('velocity %.2f rad/s, %.2f m/s%s' % (
-            v['max_joint_vel'], v['max_cart_vel'], '' if v['enabled'] else ' (off)'))
+        parts.append('velocity %.2f rad/s, %.2f m/s%s, joint target speed %s' % (
+            v['max_joint_vel'], v['max_cart_vel'], '' if v['enabled'] else ' (off)',
+            '%.2f rad/s' % v['joint_target_speed'] if v.get('joint_target_speed') else 'off'))
     return '; '.join(parts) or 'no change'
 
 

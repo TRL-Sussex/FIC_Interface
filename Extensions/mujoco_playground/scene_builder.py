@@ -9,9 +9,13 @@ in any simulation. Objects are bodies named ``obj_<name>``: the simulator publis
 
 Plain functions of their arguments (no ROS, no Qt), so they can be tested headless.
 """
+import io
 import os
 import re
 import shutil
+import struct
+
+import numpy as np
 
 
 def _mujoco():
@@ -40,7 +44,14 @@ MAX_OBJECTS = 12
 #: Mesh files an object can be made from (MuJoCo reads both): STL (binary or text) and OBJ
 #: (geometry only; materials and textures are ignored).
 MESH_TYPES = ('.stl', '.obj')
-MAX_MESH_BYTES = 30 * 1024 * 1024
+#: Mesh files turned into STL when they are dropped, with trimesh (installed with the Newton packages):
+#: PLY, OFF, binary glTF and 3MF. Geometry only, all parts of the file in one mesh.
+CONVERT_TYPES = ('.ply', '.off', '.glb', '.3mf')
+MAX_MESH_BYTES = 250 * 1024 * 1024
+#: MuJoCo reads at most this many triangles from an STL file; a dropped mesh with more is simplified to
+#: SIMPLIFY_TO triangles (collisions use the convex hull anyway, so only the drawn detail is lost).
+MAX_STL_FACES = 200000
+SIMPLIFY_TO = 150000
 #: Mesh units: the scale that turns the file's numbers into metres.
 UNITS = {'m': 1.0, 'cm': 0.01, 'mm': 0.001, 'in': 0.0254}
 #: A mesh object's largest side, after scaling (m).
@@ -115,17 +126,156 @@ def guess_units(path):
     return 'm' if max(size) <= 1.0 else 'mm'
 
 
+def _trimesh():
+    try:
+        import trimesh
+    except ImportError:
+        return None
+    return trimesh
+
+
+def upload_types():
+    """The mesh file types a drop accepts here: STL and OBJ, and the CONVERT_TYPES when trimesh is installed."""
+    return MESH_TYPES + (CONVERT_TYPES if _trimesh() is not None else ())
+
+
+def check_upload_name(filename):
+    """ValueError when a file of this name cannot become a Playground mesh here."""
+    ext = os.path.splitext(str(filename or ''))[1].lower()
+    if ext not in MESH_TYPES + CONVERT_TYPES:
+        raise ValueError('Drop an STL, OBJ, PLY, OFF, GLB or 3MF file (%s is not one)' % (filename or 'that'))
+    if ext in CONVERT_TYPES and _trimesh() is None:
+        raise ValueError('%s files need trimesh (pip install trimesh); or export the part as STL or OBJ'
+                         % ext[1:].upper())
+
+
+def stl_faces(data):
+    """The number of triangles in STL bytes (binary or text)."""
+    if len(data) >= 84:
+        n = struct.unpack('<I', data[80:84])[0]
+        if len(data) == 84 + 50 * n:
+            return n
+    return data.count(b'facet normal')
+
+
+def read_stl(data):
+    """The triangles of STL bytes (binary or text) as an (n, 3, 3) array."""
+    n = struct.unpack('<I', data[80:84])[0] if len(data) >= 84 else -1
+    if len(data) == 84 + 50 * n:
+        rec = np.frombuffer(data, dtype=np.dtype([('n', '<f4', 3), ('v', '<f4', (3, 3)), ('a', '<u2')]),
+                            count=n, offset=84)
+        return rec['v'].astype(np.float64)
+    nums = re.findall(rb'vertex\s+(\S+)\s+(\S+)\s+(\S+)', data)
+    if not nums or len(nums) % 3:
+        raise ValueError('it is not a readable STL file')
+    return np.array(nums, dtype=np.float64).reshape(-1, 3, 3)
+
+
+def stl_bytes(tris):
+    """Binary STL bytes of an (n, 3, 3) array of triangles."""
+    tris = np.asarray(tris, dtype=np.float64)
+    nrm = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])
+    nrm /= np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-30)
+    rec = np.zeros(len(tris), dtype=np.dtype([('n', '<f4', 3), ('v', '<f4', (3, 3)), ('a', '<u2')]))
+    rec['n'], rec['v'] = nrm, tris
+    return b'FIC Playground mesh'.ljust(80, b' ') + struct.pack('<I', len(tris)) + rec.tobytes()
+
+
+def _cluster(v, lo, cell):
+    """Vertex clustering on a grid of side ``cell``: (cluster of each vertex, faces as cluster triples)."""
+    key = np.floor((v - lo) / cell).astype(np.int64)
+    span = int(key.max()) + 1
+    _, inv = np.unique((key[:, 0] * span + key[:, 1]) * span + key[:, 2], return_inverse=True)
+    inv = inv.reshape(-1)
+    f = inv.reshape(-1, 3)
+    f = f[(f[:, 0] != f[:, 1]) & (f[:, 1] != f[:, 2]) & (f[:, 0] != f[:, 2])]
+    m = int(inv.max()) + 1
+    srt = np.sort(f, axis=1)
+    if m < 2 ** 20:                                            # one int64 per face: fast de-duplication
+        _, first = np.unique((srt[:, 0] * m + srt[:, 1]) * m + srt[:, 2], return_index=True)
+    else:
+        _, first = np.unique(srt, axis=0, return_index=True)
+    return inv, f[np.sort(first)]
+
+
+def simplify(tris, target=None):
+    """At most ``target`` triangles in the shape of ``tris`` (n, 3, 3): vertices merged on the finest grid
+    that gets there, each merged vertex at the mean of its members."""
+    target = SIMPLIFY_TO if target is None else target
+    v = np.asarray(tris, dtype=np.float64).reshape(-1, 3)
+    lo = v.min(axis=0)
+    extent = float((v.max(axis=0) - lo).max()) or 1.0
+    best, a, b = None, 4, 4096                                 # grid cells along the longest side
+    while b - a > 1 or best is None:
+        n = a if best is None else (a + b) // 2
+        inv, f = _cluster(v, lo, extent / n)
+        if len(f) <= target:
+            best, a = (inv, f), n
+        elif best is None:
+            raise ValueError('it cannot be simplified to %d triangles' % target)
+        else:
+            b = n
+    inv, f = best
+    cnt = np.bincount(inv)
+    pos = np.stack([np.bincount(inv, weights=v[:, i]) / cnt for i in range(3)], axis=1)
+    return pos[f]
+
+
+def _load_triangles(ext, data, filename):
+    """The triangles of a mesh file trimesh reads (CONVERT_TYPES, or an OBJ), as an (n, 3, 3) array."""
+    trimesh = _trimesh()
+    if trimesh is None:
+        raise ValueError('%s files need trimesh (pip install trimesh); or export the part as STL or OBJ'
+                         % ext[1:].upper())
+    try:
+        mesh = trimesh.load(io.BytesIO(data), file_type=ext[1:], force='mesh')
+        tris = np.asarray(mesh.triangles, dtype=np.float64)
+    except Exception as exc:
+        raise ValueError('%s cannot be read: %s' % (filename, str(exc).splitlines()[0][:160] if str(exc) else exc))
+    if not len(tris):
+        raise ValueError('%s has no triangles' % filename)
+    return tris
+
+
+def prepare_mesh(filename, data):
+    """(ext, data, note) for storing a dropped mesh: an STL or OBJ as it is; a CONVERT_TYPES file turned into
+    STL; a mesh with more than MAX_STL_FACES triangles simplified to SIMPLIFY_TO, as STL. ``note`` says what
+    was done ('' when nothing)."""
+    check_upload_name(filename)
+    ext = os.path.splitext(str(filename or ''))[1].lower()
+    if ext == '.stl':
+        if stl_faces(data) <= MAX_STL_FACES:
+            return ext, data, ''
+        try:
+            tris = read_stl(data)
+        except ValueError as exc:
+            raise ValueError('%s: %s' % (filename, exc))
+        note = ''
+    elif ext == '.obj':
+        if data.count(b'\nf ') <= MAX_STL_FACES:              # MuJoCo reads it; at most this many faces
+            return ext, data, ''
+        tris, note = _load_triangles(ext, data, filename), ''
+    else:
+        tris, note = _load_triangles(ext, data, filename), 'converted from %s' % ext[1:].upper()
+    if len(tris) > MAX_STL_FACES:
+        n0 = len(tris)
+        tris = simplify(tris)
+        note = (note + ', ' if note else '') + 'simplified from {:,} to {:,} triangles (MuJoCo reads at most {:,})'.format(
+            n0, len(tris), MAX_STL_FACES)
+    return '.stl', stl_bytes(tris), note
+
+
 def save_mesh(filename, data, mesh_dir=None):
-    """Store a dropped mesh file (``data``, its bytes) as ``<clean name><ext>`` in the mesh
-    folder, after checking MuJoCo reads it. Returns {'mesh', 'name', 'units', 'size'}."""
-    stem, ext = os.path.splitext(os.path.basename(str(filename or '')))
-    ext = ext.lower()
-    if ext not in MESH_TYPES:
-        raise ValueError('Drop an STL or OBJ file (%s is not one)' % (filename or 'that'))
+    """Store a dropped mesh file (``data``, its bytes) as ``<clean name><ext>`` in the mesh folder, after
+    checking MuJoCo reads it; other formats and over-large meshes are stored as STL (prepare_mesh).
+    Returns {'mesh', 'name', 'units', 'size', 'note'}."""
+    stem = os.path.splitext(os.path.basename(str(filename or '')))[0]
+    check_upload_name(filename)
     if not data:
         raise ValueError('%s is empty' % filename)
     if len(data) > MAX_MESH_BYTES:
         raise ValueError('%s is %d MB; the limit is %d MB' % (filename, len(data) >> 20, MAX_MESH_BYTES >> 20))
+    ext, data, note = prepare_mesh(filename, data)
     name = clean_name(stem)
     folder = mesh_dir or default_mesh_dir()
     os.makedirs(folder, exist_ok=True)
@@ -140,7 +290,7 @@ def save_mesh(filename, data, mesh_dir=None):
         raise
     path = os.path.join(folder, name + ext)
     shutil.move(tmp, path)
-    return {'mesh': name + ext, 'name': name, 'units': units, 'size': size}
+    return {'mesh': name + ext, 'name': name, 'units': units, 'size': size, 'note': note}
 
 
 def meshes(mesh_dir=None):

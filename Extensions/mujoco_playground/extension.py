@@ -235,15 +235,14 @@ class Extension(_Base):
         return out
 
     def _mesh_upload(self, args):
-        """A dropped STL/OBJ file, in base64 chunks: begin {filename, size}, chunk {upload,
+        """A dropped mesh file (sb.upload_types()), in base64 chunks: begin {filename, size}, chunk {upload,
         offset, data}, finish {upload} (stores it and adds it to the scene), cancel {upload}."""
         op = args.get('op')
         if op == 'begin':
             size = int(args.get('size') or 0)
             if size > sb.MAX_MESH_BYTES:
                 raise ValueError('That file is %d MB; the limit is %d MB' % (size >> 20, sb.MAX_MESH_BYTES >> 20))
-            if os.path.splitext(str(args.get('filename') or ''))[1].lower() not in sb.MESH_TYPES:
-                raise ValueError('Drop an STL or OBJ file')
+            sb.check_upload_name(args.get('filename'))
             self._uploads.clear()                      # one at a time
             uid = uuid.uuid4().hex[:12]
             self._uploads[uid] = {'name': str(args.get('filename')), 'data': bytearray()}
@@ -282,9 +281,11 @@ class Extension(_Base):
         self._objects.append(obj)
         self._save()
         dims = ' x '.join('%.0f' % (1000 * v) for v in obj['size'])
-        self._say('Added %s from %s (%s mm, read as %s; change the units with Edit if that is wrong)'
-                  % (obj['name'], info['mesh'], dims, info['units']))
-        return {'message': 'Added %s (%s mm)' % (obj['name'], dims), 'index': len(self._objects) - 1}
+        done = ' (%s)' % info['note'] if info.get('note') else ''
+        self._say('Added %s from %s%s (%s mm, read as %s; change the units with Edit if that is wrong)'
+                  % (obj['name'], info['mesh'], done, dims, info['units']))
+        return {'message': 'Added %s (%s mm)%s' % (obj['name'], dims, '; ' + info['note'] if info.get('note') else ''),
+                'index': len(self._objects) - 1}
 
     # ── The web page ──────────────────────────────────────────────────────
     def web_state(self):
@@ -304,7 +305,7 @@ class Extension(_Base):
             'colors': list(sb.COLORS),
             'meshes': sb.meshes(),
             'units': list(sb.UNITS),
-            'mesh_types': list(sb.MESH_TYPES),
+            'mesh_types': list(sb.upload_types()),
             'max_mesh_mb': sb.MAX_MESH_BYTES >> 20,
             'robot_like': self._robot_like,
             'running': self._active(),

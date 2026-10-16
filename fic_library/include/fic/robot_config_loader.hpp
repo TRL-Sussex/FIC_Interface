@@ -115,6 +115,18 @@ struct RobotConfig {
     double deadband_joint_tau   = 1.5;   // Nm — joint admittance torque
     double deadband_cart_force  = 4.0;   // N  — Cartesian translational force
     double deadband_cart_torque = 0.2;   // Nm — Cartesian rotational torque
+    // The Cartesian force deadband on the physical arm (admittance_deadbands.cart_force_hardware),
+    // when its force estimate needs a wider one than the simulator; < 0: cart_force. Read by
+    // fic_hardware, and by fic_simulation when it simulates the arm (hardware_model on).
+    double deadband_cart_force_hardware = -1.0;
+    double cartForceDeadbandOnArm() const {
+        return deadband_cart_force_hardware >= 0.0 ? deadband_cart_force_hardware : deadband_cart_force;
+    }
+    // The same for the Cartesian moment (admittance_deadbands.cart_torque_hardware); < 0: cart_torque.
+    double deadband_cart_torque_hardware = -1.0;
+    double cartTorqueDeadbandOnArm() const {
+        return deadband_cart_torque_hardware >= 0.0 ? deadband_cart_torque_hardware : deadband_cart_torque;
+    }
 
     // Reflected wrench from a teleoperation partner, arriving on
     // `robot{N}_wrench_external`. How hard a remote contact is allowed to push
@@ -140,7 +152,7 @@ struct RobotConfig {
     // the block's joint friction, damping, armature, torque-sensor noise and command delay, and
     // fic_simulation measures torque as fic_hardware does: filtered at torque_filter_hz, H-PMP's
     // task-space admittance on the wrench estimated from that torque (not MuJoCo's contact force),
-    // and H-PMP's task deadband from admittance_deadbands.
+    // and H-PMP's task deadband from admittance_deadbands (cart_force_hardware when set).
     struct HardwareModel {
         bool enabled = false;
         double torque_filter_hz = 0.0;   // 0: the simulator's own measured-torque filter
@@ -165,6 +177,9 @@ struct RobotConfig {
     std::optional<double> safety_sim_max_joint_vel;
     std::optional<double> safety_max_cart_vel;
     std::optional<bool>   safety_velocity_enabled;
+    // The joint target speed of the joint modes on the physical arm (safety_zones.velocity.joint_target_speed,
+    // rad/s, fic/joint_target_slew.h); read by fic_hardware only, the simulator starts with it off.
+    std::optional<double> safety_joint_target_speed;
 
     // When true, read the wrench from the driver/API (shared memory tool_wrench).
     // When false (default), compute it from Jacobian and measured joint torques.
@@ -357,6 +372,8 @@ public:
                     config.deadband_joint_tau   = db["joint_tau"].as<double>(1.5);
                     config.deadband_cart_force  = db["cart_force"].as<double>(4.0);
                     config.deadband_cart_torque = db["cart_torque"].as<double>(0.2);
+                    config.deadband_cart_force_hardware = db["cart_force_hardware"].as<double>(-1.0);
+                    config.deadband_cart_torque_hardware = db["cart_torque_hardware"].as<double>(-1.0);
                 }
 
                 // Reflected-wrench limits for bilateral teleoperation (optional;
@@ -388,6 +405,8 @@ public:
                         config.safety_max_cart_vel = vel["max_cart_vel"].as<double>();
                     if (vel["enabled"])
                         config.safety_velocity_enabled = vel["enabled"].as<bool>();
+                    if (vel["joint_target_speed"])
+                        config.safety_joint_target_speed = vel["joint_target_speed"].as<double>();
                 }
 
                 // Hardware support

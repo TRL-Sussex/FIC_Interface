@@ -122,9 +122,21 @@ class WebUIMixin:
         view.setWindowTitle('FIC Studio')
         view.resize(1360, 860)
         # The theme's canvas before the page paints, not Chromium's white.
-        canvas = QColor('#ffffff' if self._web_ui_brightness() == 'light' else '#14161a')
+        light = self._web_ui_brightness() == 'light'
+        canvas = QColor('#ffffff' if light else '#14161a')
         view.page().setBackgroundColor(canvas)
-        view.setStyleSheet('background: %s;' % canvas.name())
+        # The canvas on the view itself only: a bare 'background' rule reaches every child, the right-click
+        # menu too, which then drew the default black text on that background. The menu gets its own colours.
+        menu = (('#ffffff', '#1f2937', '#eef1f4', '#9ca3af', '#d1d5db') if light
+                else ('#1e2126', '#e6e8eb', '#2c3138', '#6b7280', '#3a3f47'))
+        view.setStyleSheet(
+            'QWebEngineView { background: %s; }'
+            ' QMenu { background-color: %s; color: %s; border: 1px solid %s; padding: 4px 0; }'
+            ' QMenu::item { padding: 6px 24px 6px 18px; color: %s; background: transparent; }'
+            ' QMenu::item:selected { background-color: %s; color: %s; }'
+            ' QMenu::item:disabled { color: %s; }'
+            ' QMenu::separator { height: 1px; background-color: %s; margin: 4px 10px; }'
+            % (canvas.name(), menu[0], menu[1], menu[4], menu[1], menu[2], menu[1], menu[3], menu[4]))
         self._web_ui_window = view             # keep a reference: a dropped view vanishes
         self._web_ui_shown = False
         # Shown once the page has loaded (the splash stays up until then), so the
@@ -139,7 +151,7 @@ class WebUIMixin:
         if view is None or getattr(self, '_web_ui_shown', False):
             return
         self._web_ui_shown = True
-        view.show()
+        view.showMaximized()                  # full screen when opened (the window can still be resized)
         view.raise_()
         view.activateWindow()
         done = getattr(self, '_web_ui_on_shown', None)

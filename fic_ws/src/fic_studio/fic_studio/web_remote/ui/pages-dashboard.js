@@ -1,13 +1,13 @@
 /* Dashboard: the classic monitoring page, Overview and Detailed tabs.
-   Base (processes, mode, target, config, telemetry), Joints, End effector
+   Base (mode, target, config, telemetry), Joints, End effector
    with the tool wrench, Safety; and, in Detailed, limits and headroom, the
-   whole pose, the robot and the telemetry channels. Read-only except for the
-   start and stop of the three base processes. Above the tabs, the live view
+   whole pose, the robot and the telemetry channels. Read-only (the base processes start and stop one at a
+   time in Settings → Processes). Above the tabs, the live view
    (pages-dashlive.js): the robot in 3D with path overlays beside live plots. A channel with no live source
    shows a dash; nothing is made up. */
 (() => {
 'use strict';
-const { $, h, fmt, setText, setSeg, section, pageTitle, cmd, toast, armed } = window.FIC;
+const { $, h, fmt, setText, setSeg, section, pageTitle, cmd, toast } = window.FIC;
 const TARGET = { simulation: 'simulation', hardware: 'hardware', vr: 'vr' };
 const EE_ROWS = ['commanded', 'pose', 'error', 'velocity'];
 const EE_COLS = ['x', 'y', 'z', 'ox', 'oy', 'oz'];
@@ -27,17 +27,6 @@ window.FIC.pages.dashboard = function buildDashboard(root) {
   root.append(...pageTitle('Dashboard'), head, liveBox, h('div', { style: 'margin-top:var(--s6)' }, tabs), overview, detailed);
 
   // ── Overview ──
-  const procRow = h('div', { class: 'procs' });
-  const procs = [['simulation', 'simulator', 'SIM'], ['fic', 'fic controller', 'FIC'], ['driver', 'driver', 'DRV']];
-  const procState = {};
-  for (const [id, label, key] of procs) {
-    const go = h('button', { class: 'btn', type: 'button', icon: 'play', 'aria-label': 'Start ' + label, title: 'Start ' + label });
-    const stop = h('button', { class: 'btn btn-danger', type: 'button', icon: 'stop', 'aria-label': 'Stop ' + label, title: 'Stop ' + label });
-    armed(go, 'Start?', () => cmd('process', { id, op: 'start', confirm: true }));
-    armed(stop, 'Stop?', () => cmd('process', { id, op: 'stop', confirm: true }));
-    const st = h('span', { class: 'faint', text: 'stopped' }); procState[key] = st;
-    procRow.append(h('span', { class: 'proc' }, h('span', { text: label }), go, stop, st));
-  }
   const baseRows = {};
   const base = h('div', { class: 'kvl' });
   for (const k of ['control mode', 'target', 'profile', 'telemetry']) { const v = h('span', { class: 'num' }); baseRows[k] = v; base.append(h('div', null, h('span', { class: 'k', text: k }), v)); }
@@ -49,7 +38,7 @@ window.FIC.pages.dashboard = function buildDashboard(root) {
   const safeEls = {};
   for (const [k, label] of [['joints', 'Joint limits'], ['velocity', 'Velocity limits'], ['torque', 'Force / torque']]) { const d = h('span', { class: 'dot ok' }), t = h('span', { text: label }); safeEls[k] = d; safety.append(h('span', { class: 'sr-item' }, d, t)); }
   overview.append(
-    section('Base', null, h('div', { class: 'kvl' }, h('div', null, h('span', { class: 'k', text: 'operating mode' }), procRow)), base),
+    section('Base', null, base),
     section('Joints', { id: 'jt-aside' }, tableOf(JOINT_COLS, jbody)),
     section('End effector', { id: 'ee-aside' }, tableOf(EE_COLS, ebody), wrenchHead, tableOf(['x', 'y', 'z'], wbody)),
     section('Safety', null, safety));
@@ -93,8 +82,6 @@ window.FIC.pages.dashboard = function buildDashboard(root) {
 
     const joints = d.joints || [];
     if (tab === 'overview') {
-      const p = sess.processes || {};
-      for (const [key, on] of [['SIM', p.simulation], ['FIC', p.fic], ['DRV', p.driver]]) { setText(procState[key], on ? 'running' : 'stopped'); procState[key].className = on ? 'ok-t' : 'faint'; }
       setText(baseRows['control mode'], (s.mode && s.mode.name) || '—');
       setText(baseRows.target, sess.target || '—');
       setText(baseRows.profile, (s.profiles && s.profiles.current) || '—');

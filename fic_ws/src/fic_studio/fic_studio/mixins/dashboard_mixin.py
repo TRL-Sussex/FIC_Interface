@@ -736,7 +736,8 @@ class DashboardMixin:
             rows['deadbands'].setText(
                 'τ %s · F %s · M %s' % (db.get('joint_tau', '--'),
                                         db.get('cart_force', '--'),
-                                        db.get('cart_torque', '--')))
+                                        db.get('cart_torque', '--'))
+                + (' · arm F %s' % db['cart_force_hardware'] if 'cart_force_hardware' in db else ''))
         else:
             rows['deadbands'].setText('--')
 

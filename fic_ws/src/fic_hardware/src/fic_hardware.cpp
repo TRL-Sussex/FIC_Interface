@@ -685,18 +685,28 @@ void FicHardwareNode<T>::loadRobotModel(const std::string& robot_name) {
     per_joint_torque_limit_ = current_robot_config_.joint_torque_max;
     hard_fault_ = false;
 
-    // Apply per-robot admittance deadbands loaded from robots_config.yaml
+    // Apply per-robot admittance deadbands loaded from robots_config.yaml; the Cartesian force one is
+    // the arm's (cart_force_hardware when set: the joint-torque force estimate reads friction and the
+    // arm's own motion as several N, which the task-space admittance would otherwise integrate).
+    // The joint target speed of the joint modes (safety_zones.velocity.joint_target_speed); the Studio's
+    // velocity limits may change it at run time (their 4th value).
+    if (current_robot_config_.safety_joint_target_speed) {
+        joint_slew_.speed = std::max(0.0, *current_robot_config_.safety_joint_target_speed);
+        RCLCPP_INFO(this->get_logger(), "Joint target speed of the joint modes: %.2f rad/s", joint_slew_.speed);
+    }
     fic_ctrl_.setDeadbands(
         current_robot_config_.deadband_joint_tau,
-        current_robot_config_.deadband_cart_force,
-        current_robot_config_.deadband_cart_torque);
+        current_robot_config_.cartForceDeadbandOnArm(),
+        current_robot_config_.cartTorqueDeadbandOnArm());
     // H-PMP's split admittance drive: on hardware the task deadband is the robot's Cartesian one, wide
     // enough for the joint-torque sensors' bias (the simulation keeps the library's narrower default).
-    fic_ctrl_.setHpmpSplitDrive(true, current_robot_config_.deadband_cart_force,
-                                  current_robot_config_.deadband_cart_torque);
+    fic_ctrl_.setHpmpSplitDrive(true, current_robot_config_.cartForceDeadbandOnArm(),
+                                  current_robot_config_.cartTorqueDeadbandOnArm());
     RCLCPP_INFO(this->get_logger(),
-        "H-PMP admittance drive: split, task deadband %.2f N / %.3f N m, joint deadband %.2f N m",
-        fic_ctrl_.hpmp_task_db_force_, fic_ctrl_.hpmp_task_db_torque_, fic_ctrl_.deadband_joint_tau_);
+        "H-PMP admittance drive: split, task deadband %.2f N / %.3f N m, joint deadband %.2f N m; "
+        "Cartesian admittance deadband %.2f N / %.2f N m",
+        fic_ctrl_.hpmp_task_db_force_, fic_ctrl_.hpmp_task_db_torque_, fic_ctrl_.deadband_joint_tau_,
+        fic_ctrl_.deadband_cart_force_, fic_ctrl_.deadband_cart_torque_);
 
     // Same clamp as the standard output guard: per-joint limits, or the
     // scalar fallback when the robot config has none.
@@ -1506,9 +1516,13 @@ void FicHardwareNode<T>::velocitySafetyCallback(const std_msgs::msg::Float64Mult
         max_joint_velocity_ = msg->data[0];
         max_cart_velocity_ = msg->data[1];
         velocity_limits_enabled_ = msg->data[2] > 0.5;
+        // optional 4th value: the joint target speed of the joint modes (rad/s, 0: off)
+        if (msg->data.size() >= 4 && std::isfinite(msg->data[3])) joint_slew_.speed = std::max(0.0, msg->data[3]);
 
-        RCLCPP_INFO(this->get_logger(), "Updated velocity limits: joint=%.2f rad/s, cart=%.2f m/s (enabled: %s)",
-            max_joint_velocity_, max_cart_velocity_, velocity_limits_enabled_ ? "true" : "false");
+        RCLCPP_INFO(this->get_logger(), "Updated velocity limits: joint=%.2f rad/s, cart=%.2f m/s (enabled: %s), "
+            "joint target speed %.2f rad/s%s",
+            max_joint_velocity_, max_cart_velocity_, velocity_limits_enabled_ ? "true" : "false",
+            joint_slew_.speed, joint_slew_.speed > 0.0 ? "" : " (off)");
     }
 }
 
@@ -1858,13 +1872,18 @@ void FicHardwareNode<T>::controlLoop() {
     // On the MCU path hpmp stops at tau_des; the MCU runs its joint layer.
     fic_ctrl_.hpmp_export_only_ = use_mcu_;
     if (current_control_mode_ <= 4 && current_control_mode_ > 0) {
+        // modes 1 and 2: the joint target the law sees, at most joint_slew_.speed rad/s from the last
+        // (off: q_target_); the joint admittance modes (3, 4) update their own target and keep q_target_
+        Eigen::VectorXd q_j = (current_control_mode_ <= 2)
+            ? joint_slew_.apply(q_target_, q_current_, current_control_mode_, joint_continuous_, fic::dt)
+            : q_target_;
         for (size_t i = 0; i < num_joints_; ++i) {
             if (current_control_mode_ == 1) {
-                fic_ctrl_.JC.impedance(i, traj_data, torque_data, q_target_[i], q_current_[i], num_joints_);
+                fic_ctrl_.JC.impedance(i, traj_data, torque_data, q_j[i], q_current_[i], num_joints_);
                 if (!current_robot_config_.gravity_compensated)
                     torque_data[i] += gravity_torques_[i];
             } else if (current_control_mode_ == 2) {
-                fic_ctrl_.JC.impedanceWithPlanner(i, traj_data, torque_data, q_target_[i], q_current_[i], num_joints_);
+                fic_ctrl_.JC.impedanceWithPlanner(i, traj_data, torque_data, q_j[i], q_current_[i], num_joints_);
                 if (!current_robot_config_.gravity_compensated)
                     torque_data[i] += gravity_torques_[i];
             } else if (current_control_mode_ >= 3) {

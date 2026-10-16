@@ -197,6 +197,24 @@ async function renderItems(pop, items) {
     pop.append(b);
   }
 }
+// The open list hangs from the menu bar's bottom edge (not the button's, which is shorter than the bar) and
+// stays inside the window; a submenu lines up with its item and opens to the left when the right is short.
+function placeMenu(btn, pop) {
+  const bar = btn.closest('.menubar'), menu = pop.parentElement;
+  pop.style.left = '0px';
+  if (bar) pop.style.top = (bar.getBoundingClientRect().bottom - menu.getBoundingClientRect().top - 1) + 'px';
+  const r = pop.getBoundingClientRect();
+  if (r.right > window.innerWidth - 8) pop.style.left = (window.innerWidth - 8 - r.right) + 'px';
+  for (const holder of pop.querySelectorAll('.mi.has-sub')) {
+    holder.addEventListener('mouseenter', () => {
+      const sub = holder.querySelector('.menu-pop.sub');
+      if (!sub) return;
+      sub.classList.remove('flip');
+      const sr = sub.getBoundingClientRect();
+      if (sr.right > window.innerWidth - 8) sub.classList.add('flip');
+    });
+  }
+}
 function buildMenus() {
   const bar = $('#menus'); bar.textContent = '';
   for (const [name, items] of MENUS) {
@@ -206,6 +224,7 @@ function buildMenus() {
       closeMenus();
       await renderItems(pop, items());
       pop.hidden = false; btn.setAttribute('aria-expanded', 'true'); openMenu = { btn, pop };
+      placeMenu(btn, pop);
     };
     btn.addEventListener('click', () => { if (openMenu && openMenu.btn === btn) closeMenus(); else open(); });
     btn.addEventListener('mouseenter', () => { if (openMenu && openMenu.btn !== btn) open(); });
@@ -267,7 +286,7 @@ function updateToolbar(s) {
   setSeg($('#target'), (sess.targets || []).map(t => ({ value: t, label: TARGET_LABELS[t] || t, disabled: !!sess.running })), sess.target, target => cmd('set_target', { target }));
   const view = sessionView(sess), btn = $('#sess');
   btn.dataset.stop = view.stop ? '1' : '';
-  if (!sessionArm) { btn.firstChild.textContent = view.stop ? 'Stop' : 'Start'; btn.className = 'btn ' + (view.stop ? 'btn-danger' : 'btn-primary'); }
+  if (!sessionArm) { btn.firstChild.textContent = view.stop ? 'Stop' : 'Start'; btn.className = 'btn ' + (view.stop ? 'btn-danger' : 'btn-go'); }
   $('#sess-dot').className = 'dot ' + view.cls;
   setText($('#sess-state'), view.text);
   $('#sess-state').title = (sess.process_list || []).filter(p => p.running).map(p => p.label).join(', ') || 'Nothing is running';

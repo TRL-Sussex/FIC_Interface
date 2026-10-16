@@ -71,7 +71,7 @@ class ProfessionalRobotGUI(
     GamepadMixin, KeyboardMixin, HelpMixin, WebRemoteMixin, WebUIMixin, InnerLoopMixin,
 ):
     APP_NAME = "FIC Control Studio"
-    APP_VERSION = "5.9.0"
+    APP_VERSION = "5.10.0"
     
     def __init__(self, node: FicStudioNode):
         super().__init__()

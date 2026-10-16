@@ -158,7 +158,8 @@ Feedback from MuJoCo is filtered through **second-order Butterworth low-pass fil
 With the robot's `hardware_model` on (`robots_config.yaml`; `FIC_HARDWARE_MODEL=off` in the
 environment turns it off) the node measures torque as `fic_hardware` does: the robot's filter
 cutoff, H-PMP's task-space admittance (modes 7/8) on the wrench estimated from the joint torques
-rather than MuJoCo's contact torques, H-PMP's task deadband from `admittance_deadbands`, and the
+rather than MuJoCo's contact torques, the Cartesian force deadband of the arm (`admittance_deadbands`
+`cart_force_hardware`, else `cart_force`) for H-PMP's and mode 8's task-space admittance, and the
 hardware velocity limit instead of `sim_max_joint_vel`. The simulator applies the block's joint
 friction and sensor noise (mujoco_native). See fic_docs: Simulation vs. Hardware.
 

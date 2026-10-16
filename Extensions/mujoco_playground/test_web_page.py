@@ -245,7 +245,7 @@ def test_a_dropped_mesh_becomes_an_object_and_builds(ext):
 
 
 def test_mesh_uploads_are_checked(ext):
-    with pytest.raises(ValueError, match='STL or OBJ'):
+    with pytest.raises(ValueError, match='STL, OBJ'):
         ext.web_action('mesh_upload', {'op': 'begin', 'filename': 'part.step', 'size': 10})
     with pytest.raises(ValueError, match='limit'):
         ext.web_action('mesh_upload', {'op': 'begin', 'filename': 'big.stl', 'size': 10 ** 9})

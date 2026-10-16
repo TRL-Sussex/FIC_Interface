@@ -41,6 +41,15 @@ def test_simulated_robots_get_the_sim_velocity_limit():
     assert pubs['robot2']['vel'].sent == [[1.0, 0.5, 1.0]]
 
 
+def test_the_joint_target_speed_goes_as_a_fourth_value():
+    """joint_target_speed (joint impedance, rad/s) rides on the velocity limits when the robot has one."""
+    host, pubs = _safety_host({'robot1': 'hardware'},
+                              {'max_joint_vel': 1.0, 'max_cart_vel': 0.5, 'enabled': True,
+                               'joint_target_speed': 0.5})
+    SafetyMixin._publish_safety_limits(host)
+    assert pubs['robot1']['vel'].sent == [[1.0, 0.5, 1.0, 0.5]]
+
+
 def test_without_a_sim_limit_both_targets_get_max_joint_vel():
     host, pubs = _safety_host({'robot1': 'simulation'},
                               {'max_joint_vel': 1.0, 'max_cart_vel': 0.5, 'enabled': True})

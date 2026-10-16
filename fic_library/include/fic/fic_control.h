@@ -226,6 +226,9 @@ namespace fic {
         std::vector<double> hpmp_cadm_offset_     = std::vector<double>(6, 0.0);
         std::vector<double> hpmp_cadm_last_delta_ = std::vector<double>(6, 0.0);
         int                 hpmp_cadm_last_mode_  = -1;
+        // H-PMP's task-space admittance in push-and-stay (host mode 7, teaching): the rotation bound of its
+        // goal, the profile's orientation admittance pose bound (initHpmpCartesian; before, a fixed pi/6).
+        double              hpmp_teach_rot_limit_ = M_PI / 6.0;
         Eigen::VectorXd     hpmp_q_shift_;
         static constexpr double kHpmpIkDamping = 0.01;   // DLS lambda of J#, as the elbow helper
 
@@ -251,6 +254,12 @@ namespace fic {
             // with the Cartesian layer's admittance parameters; its bounds are set per tick.
             for (int i = 0; i < 3; ++i) initCartesianAdmittance(off + i, cart_params.pos_axes[i]);
             for (int i = 3; i < 6; ++i) initCartesianAdmittance(off + i, cart_params.rot_axis);
+            const auto& rp = cart_params.rot_axis.admittance.pose;
+            if (!rp.empty()) {
+                double lim = 0.0;
+                for (double v : rp) lim = std::max(lim, std::abs(v));
+                if (lim > 0.0) hpmp_teach_rot_limit_ = lim;
+            }
             resetHpmpTaskAdmittance(-1);
             hpmp_task_engaged_f_ = hpmp_task_engaged_t_ = false;   // split drive's hysteresis
         }
@@ -1153,7 +1162,7 @@ namespace fic {
             const int off = hpmp_cart_planner_offset_;
             if (CartAdmMode != hpmp_cadm_last_mode_) resetHpmpTaskAdmittance(CartAdmMode);
             const double pose_limit = (CartAdmMode == 1) ? 0.30 : 0.05;
-            const double rot_limit  = (CartAdmMode == 1) ? M_PI / 6.0 : M_PI / 36.0;
+            const double rot_limit  = (CartAdmMode == 1) ? hpmp_teach_rot_limit_ : M_PI / 36.0;
             for (int ax = 0; ax < 3; ++ax) {
                 this->admCtrl(off + ax    ).setMinMax_Pose(-pose_limit, pose_limit);
                 this->admCtrl(off + ax + 3).setMinMax_Pose(-rot_limit,  rot_limit);

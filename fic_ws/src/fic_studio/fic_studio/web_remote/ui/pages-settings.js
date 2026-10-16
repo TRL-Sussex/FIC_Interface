@@ -1,4 +1,4 @@
-/* Settings: the classic page's cards, drawn from the description the Studio
+/* Settings: Processes (the simulator, controller and driver one at a time); the classic page's cards, drawn from the description the Studio
    gives (settings_get): Appearance, Startup, Network, Simulation, Playback
    tolerances, Shortcuts, Extensions, Gamepad, Web Remote and Developer with
    its build buttons. Save writes the Studio's own settings file through its own
@@ -10,7 +10,7 @@ const { $, h, fmt, setText, section: _s, csection, csectionTools, pageTitle, cmd
 window.FIC.pages.settings = function buildSettings(root) {
   const section = (title, aside, ...b) => csection('settings/' + title.split(' · ')[0], title, aside, ...b);
   const st = { cards: [], values: {}, edits: {}, ext: [], extEdits: null, gp: null, web: null };
-  const body = h('div', { id: 'st-body' }), askHost = h('div'), err = h('div', { class: 'bad-line' });
+  const body = h('div', { id: 'st-body', class: 'flow-auto' }), askHost = h('div'), err = h('div', { class: 'bad-line' });
   const head = h('div', { class: 'tn-head' }, h('div', { class: 'spacer' }),
     h('button', { class: 'btn btn-primary', type: 'button', text: 'Save settings', onclick: () => save() }),
     h('button', { class: 'btn', type: 'button', text: 'Discard', title: 'Discard unsaved changes and reload the saved settings', onclick: () => { st.edits = {}; st.extEdits = null; load(); } }),
@@ -54,9 +54,41 @@ window.FIC.pages.settings = function buildSettings(root) {
       body.append(section(c.title + (c.restart ? ' · restart to apply' : ''), null, c.hint ? h('p', { class: 'faint', style: 'font-size:var(--fs-m);margin-bottom:var(--s4)' }, c.hint) : null,
         h('div', { class: 'fgrid' }, ...c.fields.map(fieldEl))));
     }
+    body.prepend(procCard());
     body.append(extCard(), gamepadCard(), webCard(), buildCard());
     const q = new URLSearchParams((location.hash.split('?')[1] || '')).get('build');
     if (q && !st.opened) { st.opened = true; const sec = $('#st-build'); if (sec) { if (sec.csec) sec.csec.set(true, false); sec.scrollIntoView(); if (q === 'workspace' || q === 'clean') startBuild(q); } }
+  }
+
+  // ── Processes: the simulator, the controller and the driver one at a time (Start in the top bar runs them together) ──
+  const procState = {};
+  function procCard() {
+    const row = (id, label, key, startText) => {
+      const go = h('button', { class: 'btn' + (id === 'simulation' ? ' btn-primary' : ''), type: 'button', icon: 'play', text: startText, title: 'Start the ' + label + ' alone' });
+      const stop = h('button', { class: 'btn btn-danger', type: 'button', icon: 'stop', text: 'Stop', title: 'Stop the ' + label });
+      armed(go, 'Start?', () => cmd('process', { id, op: 'start', confirm: true }));
+      armed(stop, 'Stop?', () => cmd('process', { id, op: 'stop', confirm: true }));
+      procState[key] = h('span', { class: 'faint', text: 'stopped' });
+      return h('div', { class: 'proc' }, h('span', { class: 'proc-name', text: label }), go, stop, procState[key]);
+    };
+    // open until folded (its key is outside settings/, whose sections start folded): its buttons are what one comes for
+    const sec = csection('settings-processes', 'Processes', null,
+      h('p', { class: 'faint', style: 'font-size:var(--fs-m);margin-bottom:var(--s4)' },
+        'Start one part on its own. Simulator only runs the simulator without the FIC controller: nothing commands the robot. Start in the top bar runs what the target needs together; Simulation → Processes… lists every process.'),
+      h('div', { class: 'procs procs-col' },
+        row('simulation', 'simulator', 'SIM', 'Start simulator only (no controller)'),
+        row('fic', 'FIC controller (simulation)', 'FIC', 'Start controller'),
+        row('driver', 'robot driver', 'DRV', 'Start driver'),
+        row('controller', 'FIC controller (hardware)', 'CTL', 'Start controller')));
+    update(window.FIC.state());
+    return sec;
+  }
+  function update(s) {
+    const p = (s && s.session && s.session.processes) || {};
+    for (const [key, on] of [['SIM', p.simulation], ['FIC', p.fic], ['DRV', p.driver], ['CTL', p.controller]]) {
+      if (!procState[key]) continue;
+      setText(procState[key], on ? 'running' : 'stopped'); procState[key].className = on ? 'ok-t' : 'faint';
+    }
   }
 
   // ── Extensions ──
@@ -172,6 +204,6 @@ window.FIC.pages.settings = function buildSettings(root) {
     if (w.ok && JSON.stringify(w.web) !== JSON.stringify(st.web) && !(document.activeElement && webBox.contains(document.activeElement))) { st.web = w.web; drawWeb(); }
   }, 2000);
   load();
-  return { update() {}, dispose() { clearInterval(timer); clearInterval(gpTimer); } };
+  return { update, dispose() { clearInterval(timer); clearInterval(gpTimer); } };
 };
 })();

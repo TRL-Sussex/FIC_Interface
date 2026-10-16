@@ -23,6 +23,49 @@ Studio is published here as one commit, with its entry below.
 
 ---
 
+## [5.10.0] — 2026-10-17 — Joint target speed; Studio window polish; Playground mesh formats; Help rewritten
+
+### Added
+- **Settings → Processes**, first on the Settings page: start the simulator without the controller, either FIC
+  controller (simulation or hardware) or the robot driver on its own, and stop them. The Dashboard's Overview no
+  longer has process buttons.
+- MuJoCo Playground: **PLY, OFF, GLB and 3MF** files become objects too (turned into STL when dropped, with
+  `trimesh`), files up to **250 MB**, and a mesh over MuJoCo's **200,000-triangle** limit is simplified to about
+  150,000 triangles as it is added (a 2.2-million-triangle CAD export takes about 7 s). The docs list the limits.
+- Files dropped **anywhere** on the Robot Configuration or MuJoCo Playground page are taken (before: only on the
+  small drop box; a drop beside it did nothing).
+- **Joint target speed** for joint impedance (modes 1 and 2): the target the joint law sees moves towards a
+  command far from the arm (Home, a joint slider, a sequence step) at no more than this speed, instead of the
+  law's full effort at once, which on the arm moved fast enough to hit the safety limits. Set on the Safety page
+  ("Joint target speed", rad/s, 0 = off), sent as a 4th value of `robot{N}_safety/velocity_limits`, and for the
+  arm in `robots_config.yaml` (`safety_zones.velocity.joint_target_speed`; the Kinova 0.5 rad/s). Both
+  controller nodes use it (`fic/joint_target_slew.h`); the simulator starts with it off.
+- `admittance_deadbands.cart_force_hardware` in `robots_config.yaml`: the Cartesian force deadband on
+  the physical arm, when its force estimate needs a wider one than the simulator. `fic_hardware` uses
+  it, and `fic_simulation` when it simulates the arm (`hardware_model` on); the ideal simulator keeps
+  `cart_force`. Both nodes log the Cartesian admittance deadband they run with.
+
+### Changed
+- Studio window: opens maximised; pages use the window's width (up to about 2100 px) and Settings' sections flow
+  into columns on a wide window; drop-down lists open in the Studio's theme; the Start button is green with white
+  text (Stop stays red) and its small S badge is gone; menu-bar lists hang straight from the bar and stay on
+  screen.
+- The **Help** page is rewritten for the Studio window: its menu bar, top bar, control bar and pages, its
+  single-key shortcuts (the Ctrl ones are listed as the classic window's), Processes, Safety, Troubleshooting and
+  Glossary, all checked against the code.
+
+### Fixed
+- Studio window: the right-click menu showed black text on black, in the light theme too; on Settings, a page
+  with its sections folded scrolled far past the last one; hovering Start in the light theme turned it all white,
+  and the Playground's Start lost its label on hover (the window's Chromium 87 ignores `color-mix()`).
+- MuJoCo Playground: the Robot and Scene boxes were blank when no robot could run or the scene had been edited.
+- Kinova Gen3 on the arm: Cartesian HAP-FIC (mode 8) and H-PMP walked their goal up to 50 mm off the
+  streamed path while tracking. Their task-space admittance is a mass and damper with no spring, and
+  the arm's joint-torque force estimate reads friction and the arm's own motion as 4-8 N along the
+  motion, so every peak over the 4 N deadband moved the goal further. The arm's Cartesian force deadband is now 10 N (`cart_force_hardware`). Pushes under 10 N no longer move the goal on the arm.
+
+---
+
 ## [5.9.0] — 2026-10-16 — MuJoCo 3.15 everywhere; Playground objects from mesh files
 
 ### Changed

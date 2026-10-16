@@ -1,5 +1,5 @@
 """
-Help page mixin for FIC Control Studio v5.9.0.
+Help page mixin for FIC Control Studio v5.10.0.
 
 Provides ``HelpMixin._build_help_page() -> QWidget`` which assembles a
 searchable, theme-aware help page: a ``QLineEdit`` search bar and a
@@ -57,42 +57,49 @@ HELP_SECTIONS: List[Tuple[str, str, Union[str, Callable]]] = []
 
 _HTML_GETTING_STARTED = """
 <h2>Getting Started</h2>
-<p><b>FIC Control Studio v5.9.0</b> is the operator GUI for the Fractal
-Impedance Control (FIC) framework. It connects to robots running the FIC
-C++ controller over ROS 2 / DDS and lets you drive, tune, and monitor
-up to four robot stations simultaneously.</p>
+<p><b>FIC Control Studio v5.10.0</b> is the operator GUI for the Fractal
+Impedance Control (FIC) framework. It runs the FIC C++ controller and the
+simulator, talks to them over ROS 2 / DDS, and lets you drive, tune and
+monitor a robot; up to four robot stations can work side by side.</p>
+<p>These pages describe the Studio window (<code>fic_studio_pro --web-ui</code>,
+the default desktop launcher). Keys named here are single keys: press them
+when no text field has the focus.</p>
 
 <h3>First-time setup</h3>
 <ol>
-  <li>The <b>First-Launch Wizard</b> runs automatically on the first start
-      (re-launch via <em>Help &rarr; Run Setup Wizard</em>). It walks through:
-      <ul>
-        <li><b>Welcome / Robot</b> &ndash; choose your robot model.</li>
-        <li><b>Workspace</b> &ndash; set the ROS 2 workspace path.</li>
-        <li><b>Test Launch</b> &ndash; verify the simulator starts correctly.</li>
-        <li><b>Finish</b> &ndash; mark setup as complete.</li>
-      </ul>
-  </li>
-  <li>Open <b>Settings</b> (Ctrl+,) to configure appearance, network
-      (ROS_DOMAIN_ID, partner IP), simulation backend, and shortcuts.</li>
-  <li>Select a <b>Target</b> (Simulation / Hardware / VR) in the toolbar,
-      then press <b>&#9654; Start</b> to launch the relevant processes.</li>
-  <li>Open <b>&#9650; Joint</b> on the control bar, pick a control mode, set a
-      target pose or joint angles, and press <b>Send</b>.</li>
+  <li>The <b>First-Launch Wizard</b> opens on the very first start:
+      <em>Welcome</em> (choose your robot), <em>Verify Workspace</em>,
+      <em>Test Your Setup</em> (starts the simulator and the controller and
+      checks that data arrives) and <em>Setup Complete</em>, which offers a
+      first thing to do.</li>
+  <li>Open <b>Settings</b> (sidebar, or Help &rarr; Settings) for the
+      appearance, the network (ROS_DOMAIN_ID, partner IP), the simulator
+      backend and the extensions.</li>
+  <li>Choose a <b>Target</b> in the top bar (Simulation / Hardware / VR) and
+      press the green <b>Start</b> (or <b>S</b>), then click it again to
+      confirm. It starts what the target needs (simulator or driver, and the
+      FIC controller) and turns into a red <b>Stop</b>.</li>
+  <li>Open <b>Joint</b> (<b>J</b>) or <b>Cart</b> (<b>C</b>) on the control
+      bar at the bottom, choose a mode, set a target and press
+      <b>Send</b>.</li>
 </ol>
+<p>To start one part on its own, for example the simulator without the
+controller, use <b>Settings &rarr; Processes</b>.</p>
 
 <h3>Key concepts</h3>
 <ul>
   <li><b>FIC controller</b> &ndash; a real-time C++ loop reading
-      <code>config.xml</code>; parameters edited in the Tuning panel
-      (hot-reloaded without restarting).</li>
-  <li><b>Station selector</b> &ndash; the toolbar [1&ndash;4] buttons switch
-      which robot&rsquo;s topics the UI drives; each station publishes to
-      <code>robot{N}_*</code> topics.</li>
-  <li><b>Extensions</b> &ndash; optional feature packs enabled in
-      Settings &rarr; Extensions; each adds a sidebar page.</li>
-  <li><b>E-STOP</b> &ndash; Space bar, the &#11035; toolbar button, or the
-      menu item immediately halts all motion and kills active processes.</li>
+      <code>config.xml</code>; parameters edited on the Tuning Panel are
+      reloaded without a restart.</li>
+  <li><b>Station</b> &ndash; the <em>Robot</em> selector in the top bar
+      (Robot 1&ndash;4 or Master) picks which station this Studio is; each
+      station uses its own <code>robot{N}_*</code> topics. Changing it
+      restarts the Studio, so it is locked while running.</li>
+  <li><b>Extensions</b> &ndash; optional pages, switched on in
+      Settings &rarr; Extensions (restart to apply).</li>
+  <li><b>E-STOP</b> &ndash; the red button at the top right,
+      Robot &rarr; Emergency Stop, <b>Space</b> or <b>Esc</b>: halts all
+      motion and stops the running processes.</li>
 </ul>
 """
 
@@ -101,53 +108,63 @@ up to four robot stations simultaneously.</p>
 _HTML_WINDOW_LAYOUT = """
 <h2>Window Layout</h2>
 
-<h3>Toolbar</h3>
-<p>The toolbar (toggle with Ctrl+T) contains from left to right:</p>
+<h3>Menu bar</h3>
+<p>File, View, Robot, Simulation, Tools and Help. View shows or hides the
+toolbar and the sidebar; Robot holds the control modes and the emergency
+stop; Simulation starts and stops the simulator and the controller. The
+<b>Theme</b> button on the right switches light and dark (<b>T</b>).</p>
+
+<h3>Top bar</h3>
 <table>
   <tr><td><b>Target</b></td>
-      <td>Simulation / Hardware / VR &mdash; selects which process set
-          Start/Stop operates on.</td></tr>
-  <tr><td><b>&#9654; Start / &#9632; Stop</b></td>
-      <td>Launch or terminate the target&rsquo;s processes (simulator,
-          FIC controller, driver).</td></tr>
-  <tr><td><b>&#9654; EXP</b></td>
-      <td>Start / stop an experiment recording session.</td></tr>
-  <tr><td><b>&#9654; BAG</b></td>
-      <td>Start / stop <code>ros2 bag record -a</code>.</td></tr>
-  <tr><td><b>&#9654; PLT</b></td>
-      <td>Launch the live plotter.</td></tr>
-  <tr><td><b>Robot: [1&ndash;4]</b></td>
-      <td>Station selector &mdash; which robot this machine drives.</td></tr>
-  <tr><td><b>[robot type]</b></td>
-      <td>Currently active robot model.</td></tr>
-  <tr><td><b>Teleop</b></td>
-      <td>External-control / slave lock checkbox.</td></tr>
-  <tr><td><b>&#11035; E-STOP</b></td>
-      <td>Immediate emergency stop (also Space / Escape).</td></tr>
+      <td>Simulation / Hardware / VR: what Start runs.</td></tr>
+  <tr><td><b>Start / Stop</b></td>
+      <td>Green Start (click twice, or <b>S</b>) starts the target&rsquo;s
+          processes; it then reads Stop, in red. The text beside it says
+          Idle, Running or Partial.</td></tr>
+  <tr><td><b>EXP</b></td>
+      <td>Start / stop an experiment recording (Experiments extension).</td></tr>
+  <tr><td><b>BAG</b></td>
+      <td>Start / stop a rosbag recording.</td></tr>
+  <tr><td><b>PLT</b></td>
+      <td>Open the live plotter.</td></tr>
+  <tr><td><b>VIEW</b></td>
+      <td>Start the contact viewer.</td></tr>
+  <tr><td><b>Robot</b></td>
+      <td>Two selectors: the station (Robot 1&ndash;4, Master) and the
+          robot model.</td></tr>
+  <tr><td><b>E-STOP</b></td>
+      <td>Emergency stop (also <b>Space</b>, or <b>Esc</b> when nothing is
+          open to close).</td></tr>
 </table>
+<p>EXP, BAG, PLT and VIEW ask for a second click to confirm.</p>
 
 <h3>Sidebar</h3>
-<p>The left sidebar (toggle Ctrl+\\) gives one-click access to each page.
-Extension pages appear below the built-in items, grouped by
-<code>SIDEBAR_SECTION</code>.</p>
+<p>The &#9776; button (top left) or View &rarr; Show Sidebar shows or hides
+it; its Search box filters the pages. The main pages come first, then the
+extension pages under their own headings, then System (Robot Config, Topic
+Monitor, Safety); Users, Settings, Logs and Help sit at the bottom.
+<b>[</b> and <b>]</b> go to the previous and next page.</p>
 
-<h3>Status bar LEDs</h3>
+<h3>Control bar</h3>
+<p>Docked at the bottom of every page: see <em>Pages &rarr; Control
+bar</em>.</p>
+
+<h3>Status bar</h3>
 <table>
-  <tr><td><b>ROS2</b></td><td>ROS 2 node is active.</td></tr>
-  <tr><td><b>FIC</b></td><td>FIC controller is running.</td></tr>
-  <tr><td><b>SIM</b></td><td>MuJoCo / Newton simulator is running.</td></tr>
-  <tr><td><b>BAGS</b></td><td>rosbag is currently recording.</td></tr>
-  <tr><td><b>TELEOP</b></td>
-      <td>Teleop session active; sub-label shows MASTER / SLAVE / IDLE.</td></tr>
-  <tr><td><b>GAMEPAD</b></td><td>Gamepad controller is connected.</td></tr>
+  <tr><td><b>ROS2</b></td><td>The Studio&rsquo;s ROS 2 node is up.</td></tr>
+  <tr><td><b>FIC</b></td><td>The FIC controller is running.</td></tr>
+  <tr><td><b>SIM</b></td><td>The simulator is running.</td></tr>
+  <tr><td><b>BAGS</b></td><td>A rosbag is recording.</td></tr>
+  <tr><td><b>INNER</b></td><td>The inner control loop in use.</td></tr>
+  <tr><td><b>TELEOP</b></td><td>Teleoperation role (leader / follower).</td></tr>
+  <tr><td><b>GAMEPAD</b></td><td>A gamepad is connected.</td></tr>
+  <tr><td><b>WEB</b></td><td>Web Remote clients connected.</td></tr>
+  <tr><td><b>STUDIO</b></td><td>(right) The link to the Studio: rate, stale or offline.</td></tr>
 </table>
-<p>LED colours: green = connected/ok, red = disconnected/error,
-orange = warning, blue = active, grey = idle.
-During E-STOP the status bar shows <b>E-STOP ACTIVE</b> in red.</p>
-
-<h3>Log viewer</h3>
-<p>A collapsible log strip at the bottom of the window (toggle Ctrl+L)
-displays INFO / WARN / ERROR messages with a filter dropdown.</p>
+<p>Colours: green = ok / live, orange = warning or active, red = error or
+offline, grey = off. Messages go to the <b>Logs</b> page (View &rarr; Logs),
+filtered by level, source and text.</p>
 """
 
 # -- 3. Pages -----------------------------------------------------------------
@@ -155,132 +172,159 @@ displays INFO / WARN / ERROR messages with a filter dropdown.</p>
 _HTML_PAGES = """
 <h2>Pages</h2>
 
-<h3>Dashboard (Ctrl+0 &mdash; index 0)</h3>
-<p>Grouped numeric monitor refreshing at 20 Hz. Only the visible tab is
-   refreshed; a channel with no live source reads <code>--</code>.</p>
+<h3>Dashboard</h3>
+<p>The live view at the top: the robot in 3-D with path overlays (trail,
+commanded, target, zones, force) beside live plots of the end effector,
+the joints and the joint efforts. Below it, two tabs refreshed about 10
+times a second; a channel with no live source shows a dash:</p>
 <ul>
-  <li><b>Overview</b> &ndash; <b>Base</b> (process state with start/stop,
-      control mode, target, profile, telemetry rate); <b>Joints</b>
-      (commanded, position, error, velocity, torque per joint);
-      <b>End effector</b> (commanded / pose / error / velocity as XYZ plus
-      the &theta;x &theta;y &theta;z extrinsic triple, and the tool wrench
-      with a contact indicator); <b>Safety</b> (joint, velocity and
-      force/torque limit rows).</li>
-  <li><b>Detailed</b> &ndash; per-joint torque ceiling, percentage of torque
-      limit and percentage of travel; plus which wrench source is feeding
-      the readout.</li>
+  <li><b>Overview</b> &ndash; <b>Base</b> (control mode, target, profile,
+      telemetry rate); <b>Joints</b> (commanded, position, error, velocity,
+      torque); <b>End effector</b> (pose and error as x y z and ox oy oz, and
+      the tool wrench with a contact indicator); <b>Safety</b> (joint,
+      velocity and force/torque limits).</li>
+  <li><b>Detailed</b> &ndash; per-joint limits and headroom, the whole pose,
+      twist and wrench, the robot&rsquo;s model data and the telemetry
+      channels.</li>
 </ul>
 
 <h3>Control bar (bottom of every page)</h3>
-<p>Robot Control is no longer a page. Driving happens on the bar docked to the
-   bottom of the window, present on every page:</p>
 <ul>
-  <li><b>&#9650; Joint</b> and <b>&#9650; Cart</b> &ndash; the eight control
-      modes as two menus of four. Each menu owns its own modifiers
-      (Admittance planner for joint; Postural / Elbow / H-PMP for Cartesian)
-      and its config selector. Pressing a menu selects its base mode.</li>
-  <li><b>Control surface</b> &ndash; joint commanded-vs-actual rows two per
-      line, or EE position down the left and orientation down the right.
-      Each field supports click-to-type and drag-to-scrub.</li>
-  <li><b>&#9650; Gripper</b> &ndash; hidden for robots without one.</li>
-  <li><b>&#8962; Home</b> &ndash; commands q_home_deg in joint modes, or
-      default_ee_target in Cartesian modes without leaving Cartesian.</li>
-  <li><b>&#9673; Snapshot</b> and <b>&#9650; Quick Actions</b> &ndash; record
-      and play saved sequences.</li>
-  <li><b>Live indicator</b> &ndash; mode, target and loop rate; green when
-      telemetry is live, amber stale, grey offline, teal while playing.</li>
+  <li><b>Joint</b> (<b>J</b>) and <b>Cart</b> (<b>C</b>) &ndash; each opens
+      a panel with its four modes (Impedance, Imp.&nbsp;+&nbsp;Planner,
+      Admittance, HAP-FIC; <b>1</b>&ndash;<b>4</b>), its switches, the
+      targets (click to type or drag to scrub), Live publish, Reset, Send,
+      preset poses (Cart) and, on modes 7 and 8, a desired wrench.</li>
+  <li><b>Gripper</b> (<b>G</b>) &ndash; open, close or a width; hidden for
+      robots without one.</li>
+  <li><b>Home</b> (<b>Shift+H</b>) &ndash; the home joint angles in joint
+      modes, the default end-effector target in Cartesian modes.</li>
+  <li><b>Contact</b> &ndash; calibrate the contact estimate and compare
+      with ground truth.</li>
+  <li><b>Snapshot</b> and <b>Quick Actions</b> (Sequences extension) &ndash;
+      Snapshot adds the current pose to a sequence; Quick Actions plays,
+      steps or loops a sequence, sets its speed, and runs a line, circle or
+      figure-eight from where the arm is.</li>
+  <li>On the right: the mode, the target (SIM / HW / VR) and the loop
+      rate.</li>
 </ul>
-<p>Target (Simulation / Hardware / VR), the robot selector and E-STOP live in
-   the top toolbar. VR disables the bar's command surface &mdash; the headset
-   is driving.</p>
+<p>With the VR target the headset drives, so the command fields are
+off.</p>
 
-<h3>Multi-Robot (Ctrl+1 &mdash; index 1)</h3>
-<p>The &#65291; Add Robot cards for commanding up to four stations at once:</p>
+<h3>Multi-Robot</h3>
 <ul>
-  <li>Per-card station, robot type, mode, config and joint targets.</li>
-  <li>Robot selector and collapsible <b>Advanced</b> panel (null-space
-      Postural / Elbow / H-PMP / Admittance-Planner overlays, config
-      profile, presets, joysticks).</li>
-  <li>Action bar: Home, Reset, Live-publish toggle, Send.</li>
-</ul>
-
-<h3>Tuning Panel (Ctrl+2 &mdash; index 2)</h3>
-<ul>
-  <li>Per-mode FIC parameter editing with a full-width interactive
-      force-profile canvas.</li>
-  <li>MetricField params and breakpoint strips (error_max / force_max).</li>
-  <li>Collapsible Planner and Admittance sub-panels.</li>
-  <li>Live tracking-error / effort / wrench strip.</li>
-  <li>Changes save to <code>config.xml</code> and are hot-reloaded by the
-      FIC controller without a restart.</li>
+  <li><b>Robots</b> &ndash; a card per station (Control, Pause, Stop,
+      Remove) and <b>+ Add robot</b>.</li>
+  <li><b>Studios</b> &ndash; the other Studios on the network: drive, start
+      the simulation or the hardware, stop; <b>Stop every robot</b> and
+      <b>Pause all</b>.</li>
+  <li><b>Teleoperation</b> &ndash; leader, follower, scale and maximum speed,
+      then <b>Start teleop</b>.</li>
 </ul>
 
-<h3>Settings (Ctrl+, &mdash; index 9)</h3>
-<p>Single-scroll card layout with sections:</p>
+<h3>Locomotion</h3>
+<p>Gaits and velocity commands; shown for legged robots only.</p>
+
+<h3>Tuning Panel</h3>
 <ul>
-  <li>Appearance (theme, font)</li>
-  <li>Startup (default robot, auto-save)</li>
-  <li>Network (ROS_DOMAIN_ID, partner IP, DDS mode) &mdash;
-      <em>requires restart</em></li>
-  <li>Simulation (MuJoCo vs Newton backend)</li>
-  <li>Tolerances (joint deg, position mm, timeout s)</li>
-  <li>Shortcuts (rebindable keys)</li>
-  <li>Extensions (enable/disable) &mdash; <em>requires restart</em></li>
-  <li>Gamepad (axis / button assignments)</li>
-  <li>Developer (verbose logging, auto-save rosbag)</li>
+  <li>Mode, joint and config (<b>+ Config</b>, <b>Make active</b>).</li>
+  <li>The force profile: drag the handles, scroll to change K<sub>0</sub>;
+      the curve follows your edits before you save.</li>
+  <li>Controller, Planner and Admittance parameters; a live strip of
+      tracking error, effort and wrench.</li>
+  <li><b>Live trial</b> tries edits on the running controller (Keep or
+      Discard). <b>Save to XML</b> writes <code>config.xml</code>, which the
+      controller reloads without a restart; <b>Load from XML</b> and
+      <b>View XML</b>.</li>
 </ul>
 
-<h3>Robot Config (index 10)</h3>
-<p>Add, edit, and delete robot definitions via a 7-tab form. Sync
-definitions to the FIC <code>config.xml</code>.</p>
+<h3>Robot Config</h3>
+<p>Every robot the Studio can run. Drop a URDF, a .xacro, a
+description-package folder or a .zip anywhere on the page (up to 200&nbsp;MB)
+to add one, or start a blank robot. Each robot has five tabs: Overview
+(what is missing before it can be simulated), Joints, Frames, Hardware and
+Safety.</p>
 
-<h3>Topic Monitor (index 11)</h3>
-<p>Live ROS 2 topic list with message types and values.</p>
+<h3>Topic Monitor</h3>
+<p>Live ROS 2 topics with their message types and values.</p>
 
-<h3>Extension pages (index 3&ndash;8, 12+)</h3>
-<p>One page per enabled extension; index allocated at load time.</p>
+<h3>Safety</h3>
+<p>Cartesian zones, joint limits, velocity limits and force/torque limits;
+edits are reviewed, then applied to every robot&rsquo;s controller.</p>
+
+<h3>Users</h3>
+<p>Web Remote accounts, their pages and whether they may use the hardware
+(admins only).</p>
+
+<h3>Settings</h3>
+<p><b>Processes</b> comes first and stays open: start the simulator
+without the controller, the FIC controller or the robot driver on its own,
+and stop them. The other sections start folded (Expand all opens them):
+Appearance, Startup, Network (restart to apply), Simulation, Playback
+tolerances, Shortcuts, Extensions (restart to apply), Gamepad, Web Remote
+and Developer (with the build buttons). On a wide window they flow into
+columns.</p>
+
+<h3>Logs</h3>
+<p>Every message, filtered by level, source and text.</p>
+
+<h3>Extension pages</h3>
+<p>One page per enabled extension, under its own heading in the sidebar
+(for example the MuJoCo Playground under Programming): see
+<em>Extensions</em>.</p>
 """
 
 # -- 4. Control Modes ---------------------------------------------------------
 
 _HTML_CONTROL_MODES = """
 <h2>Control Modes</h2>
-<p>Select a mode from the control bar's Joint or Cart menu.
-Joint modes show joint rows; Cartesian modes show EE pose fields.</p>
+<p>Choose a mode in the control bar&rsquo;s <b>Joint</b> or <b>Cart</b>
+panel (then <b>1</b>&ndash;<b>4</b>), or Robot &rarr; Control Mode. Joint
+modes show joint rows; Cartesian modes show the end-effector pose.</p>
 
 <table>
   <tr><td><b>1 &mdash; Joint Impedance</b></td>
-      <td>Pure position stiffness K<sub>0</sub>(q<sub>des</sub>&minus;q<sub>act</sub>),
+      <td>Position stiffness K<sub>0</sub>(q<sub>des</sub>&minus;q<sub>act</sub>),
           no damping.</td></tr>
   <tr><td><b>2 &mdash; Joint Impedance + Planner</b></td>
-      <td>Smooth trajectory with damping_ratio / vel_desired / acc_max.
-          Recommended default for joint-space driving.</td></tr>
+      <td>Smooth trajectory (damping ratio, desired velocity, maximum
+          acceleration). The usual mode for joint-space driving.</td></tr>
   <tr><td><b>3 &mdash; Joint Admittance</b></td>
-      <td>Yields to external torque (InvM / Kv / flow / pose).</td></tr>
+      <td>Yields to external torque (inverse mass, damping, flow, pose
+          range).</td></tr>
   <tr><td><b>4 &mdash; Joint HAP-FIC</b></td>
-      <td>Force-feedback teleop leader in joint space.</td></tr>
+      <td>Joint admittance bounded by each joint&rsquo;s FIC law: yields to a
+          push and returns on release.</td></tr>
   <tr><td><b>5 &mdash; Cartesian Impedance</b></td>
       <td>End-effector spring, no damping.</td></tr>
   <tr><td><b>6 &mdash; Cartesian Impedance with Planner</b></td>
-      <td>Smooth EE trajectory (recommended for Cartesian driving).</td></tr>
+      <td>Smooth end-effector trajectory; the usual mode for Cartesian
+          driving.</td></tr>
   <tr><td><b>7 &mdash; Cartesian Admittance</b></td>
-      <td>EE yields to the external wrench and stays where pushed (&plusmn;30&nbsp;cm / &plusmn;30&deg;).</td></tr>
+      <td>The end effector yields to the external wrench and stays where it
+          is pushed, within the admittance pose range (by default
+          &plusmn;0.3&nbsp;m and &plusmn;0.5&nbsp;rad; Tuning Panel &rarr;
+          Admittance).</td></tr>
   <tr><td><b>8 &mdash; Cartesian HAP-FIC</b></td>
-      <td>Cartesian teleop follower.</td></tr>
+      <td>Cartesian admittance bounded by the FIC law: yields to a push and
+          returns on release.</td></tr>
 </table>
+<p>In modes 1 and 2 a target far from the arm is approached at no more than
+the <b>joint target speed</b> (Safety page; 0 = off), so a distant Home or
+preset does not hit the velocity limits.</p>
 
-<h3>Modifiers (control bar &rarr; Options)</h3>
+<h3>Switches (next to the mode buttons)</h3>
 <table>
-  <tr><td><b>Postural</b></td>
+  <tr><td><b>Postural</b> (<b>P</b>, Cart)</td>
       <td>Null-space joint-target overlay.</td></tr>
-  <tr><td><b>Elbow</b></td>
+  <tr><td><b>Elbow</b> (<b>E</b>, Cart)</td>
       <td>Null-space elbow-hold overlay.</td></tr>
-  <tr><td><b>H-PMP</b></td>
-      <td>The Cartesian controller nested in the joint HAP-FIC; on by default, engages on modes 5&ndash;8 (on 7/8 the
-          mode's task-space admittance also moves its goal). On mode 8 (Cartesian HAP-FIC) it is the H-PMP of the
-          Whole-Arm experiments; on modes 5&ndash;7 that mode nested the same way.</td></tr>
-  <tr><td><b>Admittance Planner</b></td>
-      <td>Planner inside admittance modes 3 and 4; on by default.</td></tr>
+  <tr><td><b>H-PMP</b> (<b>F</b>, Cart)</td>
+      <td>The Cartesian controller nested in the joint HAP-FIC, on modes
+          5&ndash;8 (on 7 and 8 the mode&rsquo;s task-space admittance also
+          moves its goal).</td></tr>
+  <tr><td><b>Planner</b> (<b>P</b>, Joint)</td>
+      <td>The planner inside the admittance modes 3 and 4.</td></tr>
 </table>
 """
 
@@ -329,10 +373,18 @@ Reads <code>/dev/input/jsN</code> directly &mdash; no extra ROS package required
   <tr><td>Fast</td><td>2.0 mm / 1.0&deg;</td><td>50&deg;/s</td></tr>
 </table>
 
+<p>Cart Step is applied every 10&nbsp;ms (100&nbsp;Hz), so Medium at full stick
+moves the end effector at 0.1&nbsp;m/s. <b>A</b> (Home) switches to Joint
+Impedance and needs the robot&rsquo;s <code>q_home_deg</code>; <b>B</b> runs the
+Studio&rsquo;s full E-STOP. On a legged robot the sticks drive the body velocity
+(<code>{rid}_cmd_vel</code>) instead.</p>
+
 <h3>Configuration</h3>
-<p>Settings &rarr; Gamepad tab. Deadzone, axis inversion checkboxes, and full
-button mapping editor. All buttons are remappable. The status bar shows the
-current state (e.g. <code>Joint J1,J2 Med | Impedance</code>).</p>
+<p>The <b>Gamepad</b> section of the Settings page: deadzone, axis inversion,
+the button map (every button can be reassigned) and, with more than one pad,
+which robot each pad drives. A pad plugged in while the Studio runs is found
+within half a second. The status bar shows the current state (e.g.
+<code>Joint J1,J2 Med | Impedance</code>).</p>
 
 <p>Gamepad publishes:</p>
 <ul>
@@ -352,32 +404,39 @@ current state (e.g. <code>Joint J1,J2 Med | Impedance</code>).</p>
 
 _HTML_PROCESSES = """
 <h2>Processes</h2>
-<p>The toolbar <b>&#9654; Start</b> / <b>&#9632; Stop</b> and the Dashboard
-Session card manage these processes:</p>
-
+<p>The green <b>Start</b> in the top bar (click twice, or <b>S</b>) starts what
+the target needs; the red <b>Stop</b> stops it:</p>
 <table>
-  <tr><td><b>MuJoCo Simulation</b></td>
-      <td>Physics simulator (MuJoCo or Newton backend, set in
-          Settings &rarr; Simulation).</td></tr>
-  <tr><td><b>FIC Simulation Controller</b></td>
-      <td>C++ FIC control loop connected to MuJoCo; reads
-          <code>config.xml</code>.</td></tr>
-  <tr><td><b>Hardware Driver</b></td>
-      <td>Vendor driver (Kinova Kortex / Franka FCI / &hellip;).</td></tr>
-  <tr><td><b>Hardware FIC Controller</b></td>
-      <td>C++ FIC loop connected to real hardware.</td></tr>
-  <tr><td><b>VR Relay</b></td>
-      <td>DDS relay for VR teleop sessions.</td></tr>
-  <tr><td><b>Rosbag</b></td>
-      <td><code>ros2 bag record -a</code> &mdash; use &#9654; BAG in the
-          toolbar or &#9654; EXP for named sessions.</td></tr>
-  <tr><td><b>Plotter</b></td>
-      <td>Live-plotting tool launched from &#9654; PLT in the toolbar.</td></tr>
+  <tr><td><b>Simulation</b></td><td>The simulator and the FIC simulation controller.</td></tr>
+  <tr><td><b>Hardware</b></td><td>The robot driver and the FIC hardware controller.
+      Refused when the robot has no <code>driver_command</code> (unless an
+      inner-loop MCU is present).</td></tr>
+  <tr><td><b>VR</b></td><td>The VR relay and one FIC controller per VR robot.</td></tr>
 </table>
-
-<p>The Dashboard Session card provides per-process start/stop controls
-for simulator, FIC controller, and driver. Status bar LEDs (FIC, SIM, BAGS)
-reflect running state in real time.</p>
+<p>One process on its own: <b>Settings &rarr; Processes</b> (the simulator
+without the controller, either controller, the robot driver), or
+<b>Simulation &rarr; Processes&hellip;</b>, which lists them all:</p>
+<table>
+  <tr><td><b>Simulation</b></td>
+      <td>The physics simulator: MuJoCo, or Newton when built (Settings &rarr;
+          Simulation; a robot&rsquo;s own <code>sim_backend</code> wins). A gripper
+          bridge starts with it.</td></tr>
+  <tr><td><b>FIC controller (simulation)</b></td>
+      <td>The C++ FIC loop on the simulator; reads <code>config.xml</code>.</td></tr>
+  <tr><td><b>Robot driver</b></td>
+      <td>The robot&rsquo;s own driver (Kinova Kortex, Franka FCI, &hellip;).</td></tr>
+  <tr><td><b>FIC controller (hardware)</b></td>
+      <td>The C++ FIC loop on the real robot.</td></tr>
+  <tr><td><b>Locomotion</b></td><td>Legged robots only.</td></tr>
+  <tr><td><b>VR relay</b></td><td>The ROS node that relays the VR headset.</td></tr>
+  <tr><td><b>Bag recording</b></td>
+      <td>A rosbag of the session (<b>BAG</b>, or <b>EXP</b> for a named
+          experiment), saved in <code>&lt;experiments&gt;/bags/</code>.</td></tr>
+</table>
+<p><b>PLT</b> opens the live plotter and <b>VIEW</b> the contact viewer. The
+status bar shows what runs (FIC, SIM, BAGS, &hellip;). Process output is
+logged to <code>/tmp/fic_sim_*.log</code>, <code>/tmp/fic_bag_*.log</code> and
+<code>/tmp/fic_vr_relay_*.log</code>.</p>
 """
 
 # -- 9. Safety ----------------------------------------------------------------
@@ -386,46 +445,55 @@ _HTML_SAFETY = """
 <h2>Safety</h2>
 
 <h3>E-STOP</h3>
-<p>Triggered by: <b>Space</b> key, <b>&#11035; E-STOP</b> toolbar button,
-or the menu item.  Sequence (v3.9.9):</p>
+<p>Triggered by the <b>E-STOP</b> button (top right), Robot &rarr; Emergency
+Stop, <b>Space</b>, <b>Esc</b> (when nothing is open to close) or gamepad
+<b>B</b>. It:</p>
 <ol>
-  <li>Fan out to every loaded extension (each halts its own activity).</li>
-  <li><b>Command a graceful torque ramp-down</b> ("Stop Controller", mode&nbsp;0)
-      to every robot and wait a short ramp window &mdash; the robot decays to a
-      safe hold instead of freezing its last torque on an abrupt kill.</li>
-  <li>Lock each robot at its last-known joint pose.</li>
-  <li>Tear down all processes (controller, driver, FIC, simulator, rosbag).</li>
-  <li>Status bar shows <b>E-STOP ACTIVE</b> in red.</li>
+  <li>tells every loaded extension to halt, and ends teleoperation (the
+      partner arms are stopped too);</li>
+  <li>commands a graceful torque ramp-down (&ldquo;Stop Controller&rdquo;) to
+      every robot and waits 250&nbsp;ms, so the robot settles into a hold
+      instead of keeping its last torque;</li>
+  <li>holds each robot at its last joint pose;</li>
+  <li>stops every process (controllers, driver, simulator, rosbag,
+      plotter) &mdash; including every <code>ros2 launch</code> running on
+      this computer;</li>
+  <li>shows &ldquo;E-STOP sent&rdquo; and, in the status bar,
+      &ldquo;E-STOP ACTIVE&rdquo;. Start is refused for 2&nbsp;s after.</li>
 </ol>
 
-<h3>Safety Zones</h3>
-<p>Open the dedicated <b>&#9216;&nbsp;Safety</b> page in the sidebar (or edit in
-<b>Robot Config &rarr; Safety Zones</b>).  The page shows an unmissable
-<b>enabled/disabled banner</b>, per-axis Cartesian workspace bounds and
-per-joint angle bounds, mode-aware emphasis (joint vs Cartesian), and a
-<b>live readout</b> of the current position against each limit (green in&#8209;zone,
-red past it).</p>
+<h3>Safety page</h3>
+<p>Cartesian zones (x, y, z minimum and maximum in metres), joint limits
+(degrees), velocity limits and force/torque limits, each with a live readout
+of where the robot is. Edits are reviewed, then applied to every
+robot&rsquo;s controller. They last until the robot is reselected or the
+Studio restarts; the permanent values are in <b>Robot Config &rarr;
+Safety</b>.</p>
 <ul>
-  <li><b>Cartesian workspace box</b> &mdash; X / Y / Z min/max (metres).</li>
-  <li><b>Joint angle bounds</b> &mdash; per-joint min/max (degrees).</li>
+  <li>The controller <b>clamps commanded targets</b> to the enabled joint and
+      Cartesian limits and holds the end effector inside the zone with a
+      virtual wall.</li>
+  <li><b>Joint modes and the workspace:</b> a joint target whose end effector
+      would leave the enabled Cartesian box is rejected.</li>
+  <li>The Studio checks the position 10 times a second, warns in the outer
+      10&nbsp;% of each range and logs every violation. The
+      <em>Stop the robot on a violation</em> switch has no effect at present:
+      the controller&rsquo;s clamping and wall do the bounding.</li>
+  <li><b>Velocity limits:</b> the maximum joint velocity acts as damping on
+      every joint (simulation uses the robot&rsquo;s <code>sim_max_joint_vel</code>
+      unless &ldquo;simulate like the real robot&rdquo; is on). The maximum
+      Cartesian velocity is stored but not yet used by the controllers.</li>
+  <li><b>Joint target speed</b> (rad/s; 0 = off): in modes 1 and 2 the joint
+      target moves towards a distant command at no more than this speed, so
+      Home or a preset far from the arm does not hit the velocity limits.
+      The Kinova uses 0.5&nbsp;rad/s on the real arm; simulation starts with it
+      off, and Apply sends the value shown.</li>
 </ul>
-<p>Enforcement (verified in simulation):</p>
-<ul>
-  <li>The controller <b>clamps commanded targets</b> to the enabled limits
-      (joint and Cartesian) before acting on them.</li>
-  <li><b>Joint mode &rarr; EE workspace:</b> each candidate joint target is run
-      through forward kinematics and <b>rejected</b> if the resulting EE would
-      leave the enabled Cartesian box &mdash; so the EE stays in its workspace even
-      when commanding in joint space.</li>
-  <li>The 10&nbsp;Hz monitor <b>commands a graceful stop</b> (debounced) when the
-      robot is actually past a limit &mdash; not just a warning.</li>
-</ul>
-<p>Limit topics (per station N, <code>Float64MultiArray</code>):</p>
-<ul>
-  <li><code>robot{N}_safety/cartesian_limits</code></li>
-  <li><code>robot{N}_safety/joint_limits</code></li>
-  <li><code>robot{N}_safety/velocity_limits</code></li>
-</ul>
+<p>Limit topics (per station N, <code>Float64MultiArray</code>):
+<code>robot{N}_safety/cartesian_limits</code>,
+<code>robot{N}_safety/joint_limits</code>,
+<code>robot{N}_safety/velocity_limits</code> (joint velocity, Cartesian
+velocity, torque scale, joint target speed).</p>
 
 <h3>Output-torque guard</h3>
 <p>Before publishing, commanded torques are forced finite (NaN/Inf&nbsp;&rarr;&nbsp;0)
@@ -433,10 +501,10 @@ and clamped to a safe per-joint ceiling &mdash; a backstop against control
 output that has gone non-finite or runaway.</p>
 
 <h3>Teleoperation</h3>
-<p>The <b>Teleop</b> checkbox puts the station into external-control / slave
-mode.  Bilateral force reflection to the operator's haptic device is
-<b>gain-scaled, NaN-guarded, and saturated</b> (force / torque ceilings) so a
-spiking F/T reading cannot be amplified unbounded onto the operator.</p>
+<p>Pair a leader and a follower on <b>Multi-Robot &rarr; Teleoperation</b>.
+Bilateral force reflection to the operator&rsquo;s haptic device is
+<b>gain-scaled, NaN-guarded and saturated</b> (force and torque ceilings), so
+a spiking F/T reading cannot be amplified onto the operator.</p>
 """
 
 # -- 10. Troubleshooting ------------------------------------------------------
@@ -444,52 +512,71 @@ spiking F/T reading cannot be amplified unbounded onto the operator.</p>
 _HTML_TROUBLESHOOTING = """
 <h2>Troubleshooting</h2>
 
-<h3>Robot does not respond to Send</h3>
+<h3>The robot does not respond to Send</h3>
 <ul>
-  <li>Check the <b>FIC</b> LED &mdash; the controller must be running.</li>
-  <li>Verify <b>ROS_DOMAIN_ID</b> matches the controller
-      (Settings &rarr; Network, then restart).</li>
-  <li>Confirm the correct station number [1&ndash;4] is selected in the
-      toolbar.</li>
-  <li>In Hardware mode, check the <b>ROS2</b> and driver LEDs.</li>
+  <li>Check the <b>FIC</b> LED: the controller must be running.</li>
+  <li>Check that <b>ROS_DOMAIN_ID</b> matches the controller (Settings &rarr;
+      Network, then restart). A <code>ROS_DOMAIN_ID</code> already set in the
+      environment, e.g. in <code>~/.bashrc</code>, wins over the setting.</li>
+  <li>Check the station in the top bar&rsquo;s <em>Robot</em> selector.</li>
+  <li>On Hardware, check the <b>ROS2</b> LED and Simulation &rarr;
+      Processes&hellip; for the driver and the hardware controller.</li>
+  <li>Within 2&nbsp;s of an E-STOP, Start is refused: wait and try again.</li>
 </ul>
 
-<h3>Simulator will not start</h3>
+<h3>Hardware Start is refused</h3>
 <ul>
-  <li>Run the First-Launch Wizard (Help &rarr; Run Setup Wizard) to
-      verify workspace paths.</li>
-  <li>Try switching the backend in Settings &rarr; Simulation (MuJoCo vs
+  <li>&ldquo;No driver command and no inner-loop MCU&rdquo;: set the
+      robot&rsquo;s driver on <b>Robot Config &rarr; Hardware</b>.</li>
+</ul>
+
+<h3>The simulator does not start</h3>
+<ul>
+  <li>Read <code>/tmp/fic_sim_*.log</code> and the <b>Logs</b> page.</li>
+  <li>Try the other backend in Settings &rarr; Simulation (MuJoCo or
       Newton).</li>
-  <li>Inspect the log viewer (Ctrl+L) for startup errors.</li>
+  <li>Check the workspace with the setup wizard (Help &rarr; Re-run Setup
+      Wizard&hellip; in the desktop window).</li>
 </ul>
 
-<h3>Gamepad not detected</h3>
+<h3>The gamepad is not detected</h3>
 <ul>
-  <li>Plug the controller in before starting the Studio.</li>
-  <li>Check <code>/dev/input/jsN</code> exists
-      (<code>ls /dev/input/js*</code>).</li>
-  <li>The <b>GAMEPAD</b> LED turns green when the pad is enumerated.</li>
+  <li>Check that <code>/dev/input/jsN</code> exists
+      (<code>ls /dev/input/js*</code>); the Studio looks for pads twice a
+      second.</li>
+  <li>&ldquo;Failed to open&rdquo; in Logs: your user cannot read
+      <code>/dev/input</code> (add it to the <code>input</code> group).</li>
+  <li>The <b>GAMEPAD</b> LED turns green when the pad is found.</li>
 </ul>
 
-<h3>Extension page is missing</h3>
+<h3>An extension page is missing</h3>
 <ul>
-  <li>Enable the extension in Settings &rarr; Extensions, then
-      <b>restart the Studio</b> (extensions load at startup).</li>
-  <li>Check the log viewer for import errors.</li>
+  <li>Switch it on in Settings &rarr; Extensions, then <b>restart the
+      Studio</b> (extensions load at start).</li>
+  <li>Look for import errors on the Logs page.</li>
 </ul>
 
 <h3>Tuning changes are not applied</h3>
 <ul>
-  <li>Press <b>Save</b> in the Tuning panel to write
-      <code>config.xml</code>.</li>
-  <li>The FIC controller watches <code>config.xml</code> and hot-reloads;
-      if it does not pick up the change, restart the controller.</li>
+  <li>Press <b>Save to XML</b> on the Tuning Panel: the Studio then tells
+      the controller to re-read <code>config.xml</code>. A change made to the
+      file by hand is read only after a profile change or a restart of the
+      controller.</li>
 </ul>
 
-<h3>Theme looks wrong after restart</h3>
+<h3>Dropping a file does nothing</h3>
 <ul>
-  <li>Open Settings &rarr; Appearance, pick the desired theme, and click
-      <b>SAVE SETTINGS</b>.</li>
+  <li>Drops work in the Studio window only, not in a remote browser.</li>
+  <li>MuJoCo Playground: STL and OBJ, and PLY, OFF, GLB and 3MF when
+      <code>trimesh</code> is installed; up to 250&nbsp;MB; a mesh over
+      200,000 triangles is simplified. Robot Config: up to 200&nbsp;MB.</li>
+</ul>
+
+<h3>The theme looks wrong after a restart</h3>
+<ul>
+  <li>Settings &rarr; Appearance (palette and brightness), then <b>Save
+      settings</b>. The Theme button (<b>T</b>) switches light and dark at
+      once.</li>
 </ul>
 """
 
@@ -499,21 +586,22 @@ _HTML_GLOSSARY = """
 <h2>Glossary</h2>
 <table>
   <tr><td><b>FIC</b></td>
-      <td>Fractal Impedance Control &mdash; the proprietary real-time
-          controller at the core of the framework.</td></tr>
+      <td>Fractal Impedance Control &mdash; the real-time controller at the
+          core of the framework (MIT licence).</td></tr>
   <tr><td><b>EE</b></td>
       <td>End-Effector &mdash; the robot&rsquo;s tool / flange point.</td></tr>
   <tr><td><b>DOF</b></td>
       <td>Degrees of Freedom.</td></tr>
   <tr><td><b>DDS</b></td>
-      <td>Data Distribution Service &mdash; the ROS 2 middleware layer
-          (CycloneDDS by default).</td></tr>
+      <td>Data Distribution Service &mdash; the ROS 2 middleware layer (the
+          ROS default, Fast DDS on Jazzy, unless <code>RMW_IMPLEMENTATION</code>
+          says otherwise).</td></tr>
   <tr><td><b>ROS 2</b></td>
       <td>Robot Operating System 2 &mdash; the inter-process communication
           layer used by the Studio.</td></tr>
   <tr><td><b>config.xml</b></td>
-      <td>The FIC controller&rsquo;s parameter file; edited in the Tuning
-          panel and hot-reloaded without a restart.</td></tr>
+      <td>The FIC controller&rsquo;s parameter file; edited on the Tuning
+          Panel, and re-read by the running controller on Save to XML.</td></tr>
   <tr><td><b>Admittance</b></td>
       <td>A compliance mode where the robot yields to applied forces /
           torques (modes 3, 4, 7, 8).</td></tr>
@@ -523,21 +611,23 @@ _HTML_GLOSSARY = """
   <tr><td><b>H-PMP</b></td>
       <td>The Cartesian controller nested in the joint HAP-FIC (mode 4's law on every joint), on
           by default in modes 5&ndash;8: on 5 and 6 the arm returns to the commanded goal after a
-          push, on 7 the goal stays where it was pushed, on 8 it gives way up to 5&nbsp;cm. On mode 8
-          (Cartesian HAP-FIC) it is the H-PMP of the Whole-Arm experiments. Turned off in the
-          control bar's Options row (the Cartesian torques then go directly to the joints).</td></tr>
+          push, on 7 the goal stays where it was pushed, on 8 it gives way up to 5&nbsp;cm. Turned
+          off with the H-PMP switch (<b>F</b>) on the Cart panel (the Cartesian torques then go
+          directly to the joints).</td></tr>
   <tr><td><b>Null-space</b></td>
       <td>The set of joint motions that do not move the EE; used by the
           Postural and Elbow overlays.</td></tr>
   <tr><td><b>Station</b></td>
-      <td>A numbered robot slot (1&ndash;4); each station maps to a
-          <code>robot{N}_*</code> topic namespace.</td></tr>
+      <td>A numbered robot slot (1&ndash;4), or the Master Studio; each
+          station maps to a <code>robot{N}_*</code> topic namespace.</td></tr>
   <tr><td><b>Extension</b></td>
       <td>An optional feature pack living in <code>Extensions/</code>;
           enabled in Settings &rarr; Extensions and loaded at startup.</td></tr>
-  <tr><td><b>MASTER / SLAVE</b></td>
-      <td>Teleop roles: MASTER sends force-feedback commands; SLAVE
-          receives and follows them.</td></tr>
+  <tr><td><b>Leader / Follower</b></td>
+      <td>Teleoperation roles: the leader is moved by the operator and
+          receives force feedback; the follower follows it.</td></tr>
+  <tr><td><b>Master</b></td>
+      <td>A Studio station that oversees the others (Multi-Robot).</td></tr>
   <tr><td><b>MuJoCo</b></td>
       <td>Physics simulator backend (CPU); alternative to Newton (GPU).</td></tr>
   <tr><td><b>Newton</b></td>
@@ -549,18 +639,22 @@ _HTML_GLOSSARY = """
 
 _HTML_ABOUT = """
 <h2>About FIC Control Studio</h2>
-<p><b>FIC Control Studio v5.9.0</b></p>
+<p><b>FIC Control Studio v5.10.0</b></p>
 <p>The operator GUI for the Fractal Impedance Control robot framework.</p>
 <ul>
   <li><b>Package:</b> <code>fic_studio</code></li>
   <li><b>Settings file:</b> <code>~/.robot_selector_gui_settings.yaml</code></li>
-  <li><b>Tech stack:</b> Python 3, PyQt5, ROS 2, MuJoCo / Newton</li>
+  <li><b>Tech stack:</b> Python 3, PyQt5 and QtWebEngine (the window is a web
+      page, <code>web_remote/ui</code>, also served to remote browsers), ROS 2
+      Jazzy, MuJoCo 3.15 / Newton 1.7</li>
+  <li><b>Licence:</b> MIT</li>
+  <li><b>Authors:</b> Adnan Takriti and Carlo Tiseo, University of Sussex</li>
+  <li><b>Source:</b> <code>https://github.com/TRL-Sussex/FIC_Interface</code></li>
 </ul>
-<p>Extensions, themes, and the UI architecture follow the v3.0.0 extension
-system: optional features live in <code>Extensions/&lt;name&gt;/</code> and
-are loaded via the extension host at startup.</p>
-<p>For documentation, source, and issue tracking, use
-<em>Help &rarr; Open Documentation</em>.</p>
+<p>Optional features live in <code>Extensions/&lt;name&gt;/</code> and are
+loaded at start.</p>
+<p>The full documentation: <b>Open the documentation</b> on this page, or
+Help &rarr; Open Documentation (web).</p>
 """
 
 
@@ -579,7 +673,8 @@ def _scripting_html() -> str:
     """
     rows = ['<h2>Scripting</h2>']
     rows.append(
-        '<p>The <b>Script Editor</b> extension (Ctrl+6) lets you write and run '
+        '<p>The <b>Script Editor</b> extension (sidebar &rarr; Programming, or '
+        'File &rarr; New Script) lets you write and run '
         'Python scripts that control the robot in real time.  Every script '
         'receives a <code>robot</code> object with grouped sub-namespaces '
         'plus flat alias functions for backward compatibility.</p>'
@@ -1237,7 +1332,10 @@ class HelpMixin:
         rows.append(
             '<p>Extensions are optional feature packs in '
             '<code>Extensions/</code>. Enable them in '
-            '<b>Settings &rarr; Extensions</b> and restart the Studio.</p>'
+            '<b>Settings &rarr; Extensions</b> and restart the Studio. Each one '
+            'gets a page in the sidebar under its own heading. Extensions with '
+            'their own web page show it; the others show their controls as a '
+            'list, with any plot or 3-D view kept to the desktop window.</p>'
         )
 
         if not entries:
@@ -1254,7 +1352,8 @@ class HelpMixin:
 
         rows.append(
             '<p><em>Built-in (not an extension):</em> '
-            '<b>Gamepad</b> &ndash; USB gamepad Cartesian teleop '
+            '<b>Gamepad</b> &ndash; USB gamepad teleoperation in joint and '
+            'Cartesian space, and body velocity for legged robots '
             '(<code>gamepad_mixin.py</code>).</p>'
         )
         return '\n'.join(rows)
@@ -1273,8 +1372,8 @@ class HelpMixin:
             ('Ctrl+S', 'Save'),
             ('Ctrl+Q', 'Exit'),
             ('Ctrl+0', 'Navigate to Dashboard'),
-            ('Ctrl+1', 'Navigate to Multi-Robot'),
-            ('Ctrl+2', 'Navigate to Tuning Panel'),
+            ('Ctrl+1', 'Navigate to Robot Control'),
+            ('Ctrl+3', 'Navigate to Tuning Panel'),
             ('Ctrl+T', 'Toggle toolbar'),
             ('Ctrl+\\', 'Toggle sidebar'),
             ('Ctrl+L', 'Open log viewer'),
@@ -1306,7 +1405,7 @@ class HelpMixin:
             'save_settings': ('Ctrl+S', 'Save settings'),
             'toggle_log': ('Ctrl+L', 'Toggle log viewer'),
             'panel_dashboard': ('Ctrl+0', 'Dashboard'),
-            'panel_control': ('Ctrl+1', 'Multi-Robot'),
+            'panel_control': ('Ctrl+1', 'Robot Control'),
             'panel_tuning': ('Ctrl+3', 'Tuning Panel'),
             'panel_sequence': ('Ctrl+4', 'Sequences'),
             'panel_settings': ('Ctrl+5', 'Settings'),
@@ -1334,18 +1433,42 @@ class HelpMixin:
                 )
             return '\n'.join(lines)
 
+        # (d) The Studio window's own keys (web_remote/ui/shell.js onKey): single keys, no Ctrl.
+        window_keys = [
+            ('Space', 'E-STOP (not while a button or a text field has the focus)'),
+            ('Esc', 'Cancel a pending confirm, close a menu, panel or dialog, '
+                    'or leave a text field; with nothing to close, E-STOP'),
+            ('J / C', 'Joint / Cartesian control (first mode)'),
+            ('1 &ndash; 4', 'Mode within Joint or Cartesian'),
+            ('F / P / E', 'H-PMP / Postural (Cart) or Planner (Joint) / Elbow'),
+            ('G', 'Gripper'),
+            ('Shift+H', 'Home'),
+            ('S', 'Start / Stop (press again to confirm)'),
+            ('T', 'Theme: light / dark'),
+            ('[ / ]', 'Previous / next page'),
+            ('Shift+&uarr; / &darr;', '1&deg; steps in the control bar&rsquo;s number fields'),
+        ]
+
         html = (
             '<h2>Keyboard Shortcuts</h2>'
-            '<h3>Menubar (non-rebindable)</h3>'
+            '<h3>Studio window</h3>'
+            '<p>Single keys, used when no text field has the focus.</p>'
+            '<table>'
+            + _rows(window_keys)
+            + '</table>'
+            '<p>The tables below are for the classic desktop window '
+            '(<code>fic_studio_pro</code> without <code>--web-ui</code>); '
+            'the Studio window ignores Ctrl combinations.</p>'
+            '<h3>Classic window: menu bar</h3>'
             '<table>'
             + _rows(menubar)
             + '</table>'
-            '<h3>Rebindable (Settings &rarr; Shortcuts)</h3>'
+            '<h3>Classic window: rebindable (Settings &rarr; Shortcuts)</h3>'
             '<p>Current bindings shown; change in Settings &rarr; Shortcuts.</p>'
             '<table>'
             + _rows(rebindable)
             + '</table>'
-            '<h3>Extension navigation</h3>'
+            '<h3>Classic window: extension pages</h3>'
             '<p>Note: Ctrl+3/4/5 conflict between rebindable and extension-nav '
             'slots; the last registered shortcut wins.</p>'
             '<table>'

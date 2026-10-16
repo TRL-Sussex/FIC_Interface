@@ -1,6 +1,7 @@
 // fic_hardware.h — FIC Hardware Node declaration
 #pragma once
 
+#include "fic/joint_target_slew.h"
 #include <cmath>
 
 #include <filesystem>
@@ -246,6 +247,8 @@ private:
     std::vector<double> joint_safety_upper_;
     bool joint_safety_enabled_ = true;
     double max_joint_velocity_ = 1.0;
+    // Joint target speed of the joint modes (fic/joint_target_slew.h), rad/s; 0: off.
+    fic::JointTargetSlew joint_slew_;
     double max_cart_velocity_ = 0.5;
     bool velocity_limits_enabled_ = true;
     double output_torque_limit_ = 150.0;   // fallback: clamp |tau| when no per-joint limit

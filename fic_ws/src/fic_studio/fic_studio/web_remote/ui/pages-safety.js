@@ -65,8 +65,9 @@ window.FIC.pages.safety = function buildSafety(root) {
     s.joints.rows.forEach((r, i) => jointBody.append(h('tr', { 'data-row': 'j.' + i },
       h('td', { text: r.label }), h('td', null, num('j.' + i + '.lower', '0.5', r.mech_lower, r.mech_upper)), h('td', null, num('j.' + i + '.upper', '0.5', r.mech_lower, r.mech_upper)),
       h('td', { class: 'faint', text: r.mech_lower != null ? fmt(r.mech_lower, 0) + ' to ' + fmt(r.mech_upper, 0) : '—' }), h('td', { class: 'live' }), h('td', { class: 'where' }))));
-    for (const [k, label, unit, max] of [['max_joint_vel', 'Maximum joint velocity', 'rad/s', s.bounds.joint_vel], ['max_cart_vel', 'Maximum Cartesian velocity', 'm/s', s.bounds.cart_vel]]) {
-      velBox.append(h('div', { class: 'kvcell' }, h('div', { class: 'k', text: label + ' · ' + unit }), num('v.' + k, '0.05', 0.01, max)));
+    for (const [k, label, unit, max, min] of [['max_joint_vel', 'Maximum joint velocity', 'rad/s', s.bounds.joint_vel, 0.01], ['max_cart_vel', 'Maximum Cartesian velocity', 'm/s', s.bounds.cart_vel, 0.01],
+        ['joint_target_speed', 'Joint target speed (joint impedance; 0 = off)', 'rad/s', s.bounds.joint_vel, 0]]) {
+      velBox.append(h('div', { class: 'kvcell' }, h('div', { class: 'k', text: label + ' · ' + unit }), num('v.' + k, '0.05', min, max)));
     }
     switches.append(toggle('monitor', 'Monitor positions against the limits (warn and log)'), toggle('enforce', 'Stop the robot on a violation'));
     shape = s.joints.rows.length + ':' + s.bounds.cart_abs;
@@ -91,7 +92,7 @@ window.FIC.pages.safety = function buildSafety(root) {
       setText(row.querySelector('.live'), r.value == null ? '—' : fmt(r.value, 1));
       row.querySelector('.where').replaceChildren(...where(r.state));
     });
-    for (const k of ['max_joint_vel', 'max_cart_vel']) setIfIdle(velBox.querySelector('[data-k="v.' + k + '"]'), at('v.' + k, s.velocity[k]));
+    for (const k of ['max_joint_vel', 'max_cart_vel', 'joint_target_speed']) setIfIdle(velBox.querySelector('[data-k="v.' + k + '"]'), at('v.' + k, s.velocity[k]));
     const set = (path, v) => { const b = root.querySelector('[data-k="' + path + '"]'); if (b) b.checked = !!at(path, v); };
     set('joints.enabled', s.joints.enabled); set('velocity.enabled', s.velocity.enabled); set('monitor', s.enabled); set('enforce', s.enforce);
     mark();
@@ -131,7 +132,7 @@ window.FIC.pages.safety = function buildSafety(root) {
     }
     if (Object.keys(joints).length) out.joints = joints;
     const vel = {};
-    for (const f of ['max_joint_vel', 'max_cart_vel']) {
+    for (const f of ['max_joint_vel', 'max_cart_vel', 'joint_target_speed']) {
       const p = 'v.' + f;
       if (draft.has(p) && draft.get(p) !== s.velocity[f]) { vel[f] = draft.get(p); lines.push((draft.get(p) > s.velocity[f] ? 'WIDER  ' : '       ') + f.replace(/_/g, ' ') + ': ' + fmt(s.velocity[f], 2) + ' -> ' + fmt(draft.get(p), 2)); }
     }

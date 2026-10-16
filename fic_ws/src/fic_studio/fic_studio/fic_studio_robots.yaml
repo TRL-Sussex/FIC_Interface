@@ -264,6 +264,9 @@ robots:
         sim_max_joint_vel: 3.0
         max_cart_vel: 0.5
         enabled: true
+        # Joint impedance (modes 1, 2) moves its target towards a far command at no more than this (rad/s;
+        # 0: off); sent with the velocity limits, edited on the Safety page.
+        joint_target_speed: 0.5
     kinematics_solver: pinocchio
   IIWA_14:
     display_name: KUKA iiwa 14

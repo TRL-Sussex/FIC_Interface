@@ -161,7 +161,8 @@ def clean(patch, current):
     if 'admittance_deadbands' in patch:
         d = patch['admittance_deadbands']
         out['admittance_deadbands'] = {k: _num_list([d.get(k)], 'Deadband ' + k, 1, 0, 1e4)[0]
-                                       for k in ('joint_tau', 'cart_force', 'cart_torque') if k in d}
+                                       for k in ('joint_tau', 'cart_force', 'cart_torque', 'cart_force_hardware')
+                                       if k in d}
     if 'safety_zones' in patch:
         out['safety_zones'] = _zones(patch['safety_zones'], n)
     if 'hardware_model' in patch:

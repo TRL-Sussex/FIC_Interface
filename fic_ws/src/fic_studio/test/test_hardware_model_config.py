@@ -48,3 +48,21 @@ def test_torque_sensor_position_is_accepted_and_checked():
     assert _hardware_model({'torque_sensor': 'output'}, 7) == {'torque_sensor': 'output'}
     with pytest.raises(Refused):
         _hardware_model({'torque_sensor': 'gearbox'}, 7)
+
+
+def test_the_arms_own_force_deadband_is_kept_when_deadbands_are_edited():
+    """admittance_deadbands.cart_force_hardware (the arm's Cartesian force deadband) survives an edit."""
+    out = clean({'admittance_deadbands': {'joint_tau': 2, 'cart_force': 4, 'cart_torque': 0.2,
+                                          'cart_force_hardware': 10}}, {'num_joints': 7})
+    assert out['admittance_deadbands'] == {'joint_tau': 2.0, 'cart_force': 4.0, 'cart_torque': 0.2,
+                                           'cart_force_hardware': 10.0}
+
+
+def test_the_kinova_arm_has_its_own_force_deadband():
+    """The Kinova's joint-torque force estimate needs 10 N on the arm; the simulator keeps 4 N."""
+    import pathlib
+    import yaml
+    cfg = yaml.safe_load(open(pathlib.Path(__file__).resolve().parents[4] / 'fic_library' / 'config'
+                              / 'robots_config.yaml'))
+    db = cfg['robots']['KinovaGen3_7DOF']['admittance_deadbands']
+    assert (db['cart_force'], db['cart_force_hardware']) == (4.0, 10.0)

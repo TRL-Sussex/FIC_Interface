@@ -194,6 +194,8 @@ def test_safety_edit_applies_publishes_and_logs(studio):
     {'velocity': {'max_joint_vel': 0}},
     {'velocity': {'max_joint_vel': 99}},
     {'velocity': {'max_cart_vel': -1}},
+    {'velocity': {'joint_target_speed': -0.1}},
+    {'velocity': {'joint_target_speed': 99}},
     {'joints': {'lower': [-1.0] * 7}},                                 # upper missing
     {'joints': {'lower': [-5.0] * 7, 'upper': [5.0] * 6}},             # wrong length
     {'joints': {'lower': [5.0] * 7, 'upper': [-5.0] * 7}},             # lower above upper
@@ -221,6 +223,15 @@ def test_safety_velocity_and_switches(studio):
     assert reply['ok'] and studio.safety_enabled is False and studio.safety_enforce is False
     assert studio.safety_limits['velocity']['max_joint_vel'] == 0.5
     assert reply['safety']['overall'] == 'off'
+
+
+def test_safety_joint_target_speed_sets_and_turns_off(studio):
+    reply = run(studio, 'safety_set', confirm=True, velocity={'joint_target_speed': 0.3})
+    assert reply['ok'] and studio.safety_limits['velocity']['joint_target_speed'] == 0.3
+    assert reply['safety']['velocity']['joint_target_speed'] == 0.3
+    assert 'joint target speed 0.30 rad/s' in studio.logs[-1][1]
+    reply = run(studio, 'safety_set', confirm=True, velocity={'joint_target_speed': 0})
+    assert reply['ok'] and 'joint target speed off' in studio.logs[-1][1]
 
 
 def test_safety_edit_is_blocked_for_a_simulation_only_account_on_hardware(studio):

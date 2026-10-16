@@ -129,7 +129,7 @@
   <tr><td><code>robot{N}_param_update</code></td><td>String</td><td>Parameter hot-reload trigger: <code>"robotN:param_type:param"</code>, sent on every SAVE TO XML. Any message makes both FIC nodes read <code>config.xml</code> again in the background; the controllers keep the old tuning until the new set is ready (the payload is only logged). See <a href="#tuning" onclick="showPage('tuning')">Tuning</a>.</td></tr>
   <tr><td><code>robot{N}_safety/cartesian_limits</code></td><td>Float64MultiArray</td><td><code>[x_min, x_max, enabled, y_min, y_max, enabled, z_min, z_max, enabled]</code> (metres).</td></tr>
   <tr><td><code>robot{N}_safety/joint_limits</code></td><td>Float64MultiArray</td><td><code>[j0_min, j0_max, j1_min, j1_max, &hellip;, enabled]</code> (radians).</td></tr>
-  <tr><td><code>robot{N}_safety/velocity_limits</code></td><td>Float64MultiArray</td><td><code>[max_joint_vel, max_cart_vel, enabled]</code>.</td></tr>
+  <tr><td><code>robot{N}_safety/velocity_limits</code></td><td>Float64MultiArray</td><td><code>[max_joint_vel, max_cart_vel, enabled]</code>, optionally a 4th value: the joint target speed of joint impedance (rad/s, 0: off).</td></tr>
 </table>
 <p>Safety limits are broadcast: the <a href="#safety" onclick="showPage('safety')">Safety panel</a> publishes the same workspace, joint, and velocity bounds to <em>every</em> active robot. The matching <code>fic_hardware</code> / <code>fic_simulation</code> process subscribes to <em>its own</em> <code>robot{N}_*</code> family based on its <code>station_id</code> ROS parameter, so two robots on one network never collide.</p>
 

@@ -166,6 +166,10 @@ class SafetyMixin:
                 msg = Float64MultiArray()
                 msg.data = [float(joint_vel), float(vel.get('max_cart_vel', 0.5)),
                             float(vel.get('enabled', True))]
+                # 4th value: the joint target speed of joint impedance (rad/s, 0: off), when the robot
+                # has one; without it the controller keeps its own (robots_config.yaml on the arm).
+                if vel.get('joint_target_speed') is not None:
+                    msg.data.append(float(vel['joint_target_speed']))
                 return msg
 
             for rid, pubs in getattr(self, 'safety_pubs', {}).items():

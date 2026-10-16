@@ -279,7 +279,9 @@ def dashboard_state(w, ctx):
             'end-effector pose': 'streaming' if pose is not None else 'no data',
             'tool wrench': 'streaming' if wrench is not None else 'no data',
             'deadbands': ('τ %s · F %s · M %s' % (db.get('joint_tau', '--'), db.get('cart_force', '--'),
-                                                  db.get('cart_torque', '--'))) if db else '--',
+                                                  db.get('cart_torque', '--'))
+                          + (' · arm F %s' % db['cart_force_hardware'] if 'cart_force_hardware' in db else ''))
+                         if db else '--',
         },
     }
 

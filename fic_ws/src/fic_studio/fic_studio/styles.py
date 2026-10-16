@@ -54,11 +54,12 @@ QMenuBar::item:selected { background-color: %(hover)s; }
 QMenuBar::item:pressed { background-color: %(press)s; }
 QMenu {
     background-color: %(panel)s;
+    color: %(ink)s;
     border: 1px solid %(rule_strong)s;
     border-radius: 5px;
     padding: 4px 0;
 }
-QMenu::item { padding: 7px 28px 7px 20px; }
+QMenu::item { padding: 7px 28px 7px 20px; color: %(ink)s; background: transparent; }
 QMenu::item:selected { background-color: %(hover)s; color: %(ink_strong)s; }
 QMenu::item:disabled { color: %(ink_faint)s; }
 QMenu::separator { height: 1px; background-color: %(rule)s; margin: 4px 12px; }

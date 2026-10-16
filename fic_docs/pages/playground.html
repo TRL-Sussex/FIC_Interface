@@ -36,14 +36,21 @@ remembered.</p>
 scene with the table and objects added (built with MuJoCo's model editor, <code>mujoco.MjSpec</code>), keeping every
 joint and actuator name, so the robot's tuning, gripper and hardware model apply as usual.</p>
 <h3>Your own objects: mesh files</h3>
-<p>Drop an <strong>STL</strong> or <strong>OBJ</strong> file on the Objects panel, or press <strong>Choose a
+<p>Drop a mesh file anywhere on the Playground page, or press <strong>Choose a
 file&hellip;</strong> (in the Studio window; a remote browser cannot add files). It is checked in MuJoCo, kept in
 <code>~/.fic_studio/playground/meshes/</code>, and added to the scene in grey at a free spot. Then edit it like any
 object: its name, position, colour, mass and <strong>units</strong>.</p>
 <ul>
-  <li><strong>Which files.</strong> STL (binary or text) and OBJ, the formats MuJoCo reads directly; an OBJ's
-    materials and textures are ignored. From CAD (STEP, IGES, SolidWorks parts), export the part as STL; convert
-    other mesh formats (DAE, GLB, PLY) to STL or OBJ, e.g. in Blender. Up to 30&nbsp;MB.</li>
+  <li><strong>Which files.</strong> STL (binary or text) and OBJ, the formats MuJoCo reads directly; and PLY,
+    OFF, GLB (binary glTF) and 3MF, which are turned into STL when dropped (with <code>trimesh</code>, installed
+    with the Newton packages; without it the page lists only STL and OBJ). Geometry only: materials, textures and
+    colours are ignored, and a file of several parts becomes one object. From CAD (STEP, IGES, SolidWorks parts),
+    export the part as STL; convert other formats (DAE, FBX, a glTF with separate <code>.bin</code>) to one of
+    these, e.g. in Blender.</li>
+  <li><strong>Size limits.</strong> A file of up to <strong>250&nbsp;MB</strong>. MuJoCo reads at most
+    <strong>200,000 triangles</strong> from an STL, so a finer mesh (a CAD export at high resolution) is
+    simplified to about 150,000 triangles as it is added, and stored as STL; the log says so. That takes a few
+    seconds for a 100&nbsp;MB file and keeps the shape (collisions use the convex hull anyway, below).</li>
   <li><strong>Units.</strong> A file more than 1 unit across is read as millimetres (what CAD programs export),
     otherwise as metres; change it with Edit (m, cm, mm, in) if the size shown is wrong. Objects are 5&nbsp;mm to
     0.6&nbsp;m across.</li>
