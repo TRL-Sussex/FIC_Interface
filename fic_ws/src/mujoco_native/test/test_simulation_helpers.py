@@ -174,3 +174,29 @@ def test_a_servo_starts_at_the_setpoint_its_scene_names():
     from mujoco_native.simulation_node import start_ctrl
     m = mujoco.MjModel.from_xml_string(_ARM_WITH_OBJECTS)
     assert list(start_ctrl(m)) == [0.0, 0.85]
+
+
+def test_a_reset_forgets_the_inner_loops_hold_pose():
+    """After a reset (sim_reset, the viewer's Backspace) the arm is held where the reset put it, never pulled back
+    to the pose it was held at before, and no torque from before the reset is repeated."""
+    import threading
+    from mujoco_native.simulation_node import NativeMujocoSimulation
+    node = types.SimpleNamespace(_cmd_lock=threading.Lock(), _cmd_table={"a": 1.0},
+                                 _data=types.SimpleNamespace(ctrl=np.zeros(2)), _start_ctrl=np.zeros(2),
+                                 _il_hold=[0.3, 0.4], _il_last=[1.0, 2.0])
+    NativeMujocoSimulation._clear_commands(node)
+    assert node._il_hold is None and node._il_last is None and not node._cmd_table
+
+
+def test_real_time_factor_log_can_change_severity():
+    """rclpy pins one severity per call site: logging the factor with info, then warn, from one line raised
+    'Logger severity cannot be changed between calls' and killed the simulator on a slow machine."""
+    import subprocess
+    import sys
+    # In its own process: under pytest rclpy's logging is set up so that the check never fires.
+    code = ("import rclpy.logging\nfrom mujoco_native.simulation_node import log_real_time_factor\n"
+            "lg = rclpy.logging.get_logger('rtf_test')\n"
+            "for rtf in (1.0, 0.9, 1.0, 0.5):\n    log_real_time_factor(lg, rtf, 10.0)\n")
+    r = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr[-400:]
+    assert (r.stdout + r.stderr).count('real-time factor') == 4, r.stdout + r.stderr   # none dropped

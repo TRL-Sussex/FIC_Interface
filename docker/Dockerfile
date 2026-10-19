@@ -150,8 +150,7 @@ USER fic
 COPY --chown=fic:fic --chmod=u=rwX,g=rwX,o=rX fic_library/ fic_library/
 COPY --chown=fic:fic --chmod=u=rwX,g=rwX,o=rX fic_ws/src/communication/ fic_ws/src/communication/
 COPY --chown=fic:fic --chmod=u=rwX,g=rwX,o=rX fic_ws/src/menagerie/     fic_ws/src/menagerie/
-COPY --chown=fic:fic --chmod=u=rwX,g=rwX,o=rX fic_ws/src/fic_simulation/ fic_ws/src/fic_simulation/
-COPY --chown=fic:fic --chmod=u=rwX,g=rwX,o=rX fic_ws/src/fic_hardware/  fic_ws/src/fic_hardware/
+COPY --chown=fic:fic --chmod=u=rwX,g=rwX,o=rX fic_ws/src/fic_control/  fic_ws/src/fic_control/
 
 ARG COLCON_ARGS="--symlink-install --event-handlers console_cohesion+ \
     --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF"
@@ -159,7 +158,7 @@ RUN umask 0002 \
     && source /opt/ros/${ROS_DISTRO}/setup.bash \
     && cd fic_ws \
     && colcon build ${COLCON_ARGS} \
-         --packages-select communication menagerie fic_simulation fic_hardware \
+         --packages-select communication menagerie fic_control \
     && rm -rf log
 
 # Everything else in the workspace (the Studio, the native simulator, contact

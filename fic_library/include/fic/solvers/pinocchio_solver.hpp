@@ -5,7 +5,7 @@
 // compilable on systems without pinocchio even if this header is included.
 //
 // The math here is a verbatim port of what previously lived inline in
-// fic_hardware.cpp / fic_simulation.cpp — behavior with pinocchio present is
+// fic_control.cpp / fic_control.cpp — behavior with pinocchio present is
 // intentionally identical.
 #pragma once
 
@@ -160,7 +160,7 @@ public:
 
         int i = 0;
         if (opts.joint_based) {
-            // fic_hardware flavor: error/Jacobian anchored at the frame's
+            // fic_control flavor: error/Jacobian anchored at the frame's
             // parent joint (oMi + computeJointJacobian).
             const auto JOINT_ID = model_.frames[frame_id].parentJoint;
             // The target is for the FRAME, but this branch drives the
@@ -198,7 +198,7 @@ public:
                 q = pinocchio::integrate(model_, q, v * opts.dt);
             }
         } else {
-            // fic_simulation flavor: error/Jacobian at the frame itself in the
+            // fic_control flavor: error/Jacobian at the frame itself in the
             // Local convention, with a per-iteration joint-velocity clamp.
             for (; i < opts.max_iterations; ++i) {
                 pinocchio::forwardKinematics(model_, local_data, q);

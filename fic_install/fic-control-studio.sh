@@ -11,6 +11,12 @@ WS_PATH="$FIC_ROOT/fic_ws"
 BUILD_GUI="$SCRIPT_DIR/build_gui.py"
 INSTALLER_GUI="$SCRIPT_DIR/installer_gui.py"
 
+# ~/.local/bin, which a desktop session only has on PATH if it existed at login:
+# tools installed there later (adb from adb-private.sh) are found all the same.
+if [ -d "$HOME/.local/bin" ]; then
+    case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
+fi
+
 # ── GUI helper (tkinter → zenity → echo fallback) ──
 gui_error() {
     if python3 -c "import tkinter" &>/dev/null && [ -f "$INSTALLER_GUI" ]; then
@@ -115,6 +121,27 @@ fi
 
 # ── Launch GUI ──
 cd "$WS_PATH"
+# One Studio per station. A window opened on a machine whose headless Studio
+# runs as the user service fic-studio (the MCU board; a robot PC started over
+# SSH) takes over from it: the service stops first, and an installed one (not
+# a transient systemd-run unit, which cannot be started again) comes back when
+# the window closes.
+if [ -z "${QT_QPA_PLATFORM:-}" ] && command -v systemctl >/dev/null 2>&1 \
+        && systemctl --user is-active --quiet fic-studio 2>/dev/null; then
+    unit_file="$(systemctl --user show fic-studio -p FragmentPath --value 2>/dev/null)"
+    echo "FIC Studio: stopping the headless Studio (fic-studio service) for this window."
+    systemctl --user stop fic-studio
+    case "$unit_file" in
+        ""|/run/*) ;;
+        *)
+            ros2 run fic_studio fic_studio_pro --web-ui "$@"
+            rc=$?
+            echo "FIC Studio: window closed; starting the headless Studio again."
+            systemctl --user start fic-studio
+            exit $rc
+            ;;
+    esac
+fi
 # The app opens the web UI in its own Qt window (QtWebEngine), never in a
 # browser. "$@" lets `--classic` (the "Classic interface" action) override it.
 exec ros2 run fic_studio fic_studio_pro --web-ui "$@"

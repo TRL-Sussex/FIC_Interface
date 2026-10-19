@@ -64,7 +64,7 @@ def choose_reference_pose(q_target, q_desired, expected=None,
     """Return the pose auto-calibration should compare against, or None.
 
     Prefers ``active`` -- the target the live control mode is genuinely
-    following, which fic_hardware publishes because only it knows whether
+    following, which fic_control publishes because only it knows whether
     that is the joint target or the IK solution. In Cartesian modes the
     controller tracks ``q_target_ik_``, so comparing against ``q_target``
     leaves auto-calibration permanently unsatisfied: measured on hardware

@@ -5,7 +5,7 @@
 > **Entry points:** `fic_studio_pro`, `fic_dev`
 > **Language:** Python 3 (PyQt5 + ROS 2 Jazzy/Humble)
 
-FIC Control Studio is the GUI for operating, tuning and programming robots controlled by the Fractal Impedance Control (FIC) library. It works with real hardware (`fic_hardware`) and with MuJoCo simulation (`fic_simulation`), from its own window or from a browser (the web interface).
+FIC Control Studio is the GUI for operating, tuning and programming robots controlled by the Fractal Impedance Control (FIC) library. It works with real hardware (`fic_control`) and with MuJoCo simulation (`fic_control`), from its own window or from a browser (the web interface).
 
 ---
 
@@ -40,8 +40,8 @@ fic_studio/
 ```
 fic_ws/src/
 ├── communication/          # Custom ROS msgs/srvs
-├── fic_hardware/           # Real robot control node
-├── fic_simulation/         # Simulation control node
+├── fic_control/           # Real robot control node
+├── fic_control/         # Simulation control node
 ├── fic_studio/             # ◄ THIS PACKAGE — GUI application
 ├── menagerie/              # Robot models (URDF + MuJoCo XML)
 ├── mujoco_native/          # MuJoCo simulator (CPU, the default)
@@ -64,8 +64,8 @@ FIC Control Studio (PyQt5)  ──  web interface (any browser)
         │
    FicStudioNode (ROS 2)
         │ topics
-   ┌────┴─────────────┬──────────────┐
-fic_hardware    fic_simulation   mujoco_native
+   ┌────┴─────────────┐
+fic_control      mujoco_native
 ```
 
 ## Pages
@@ -113,12 +113,12 @@ and the BAG and PLT buttons:
 
 | Process | Command |
 |---------|---------|
-| Controller (hardware) | `ros2 launch fic_hardware robot_control_launch.py robot_name:=… station_id:=…` |
+| Controller (hardware) | `ros2 launch fic_control robot_control_launch.py robot_name:=… station_id:=…` |
 | Robot driver | The robot's `driver_command` from `robots_config.yaml` |
-| Controller (simulation) | `ros2 launch fic_simulation fic_launch.py robot_name:=… num_joints:=… station_id:=…` |
+| Controller (simulation) | `ros2 launch fic_control sim_control_launch.py robot_name:=… num_joints:=… station_id:=…` |
 | Simulator | `ros2 launch mujoco_native simulation_launch.py robot_name:=… station_id:=…` (or `mujoco_newton`) |
 | Bag recording | `ros2 bag record` |
-| Plotter | `ros2 run fic_simulation plotter_node.py` |
+| Plotter | `ros2 run fic_control plotter_node.py` |
 
 They run in their own process groups. Stop sends SIGTERM, then SIGKILL. On
 exit (window close, interpreter exit, SIGTERM, SIGHUP, SIGQUIT) they are
@@ -188,8 +188,8 @@ then hands back to Qt (`entry_pro.py`).
 ## Important notes
 
 - **Do not publish to `robotN_selected_robot` during active control.** It
-  reloads the robot model in `fic_hardware` and `fic_simulation`, which can
+  reloads the robot model in `fic_control` and `fic_control`, which can
   crash a controller mid-motion (Jacobian size mismatch).
 - **`config.xml` is shared between the nodes.** Tuning saved in the Studio is
-  picked up by `fic_simulation` and `fic_hardware` when they re-read it
+  picked up by `fic_control` and `fic_control` when they re-read it
   (`robotN_param_update`).

@@ -6,7 +6,7 @@
 <p>Everything is scoped so that up to four independent robot stations can share one ROS 2 network:</p>
 <table>
   <tr><th>Convention</th><th>Meaning</th></tr>
-  <tr><td><code>robot{N}_*</code></td><td>Per-robot controller topics. <code>N</code> is the numeric robot / station id (1&ndash;4). The GUI creates a full publisher family per active robot; each <code>fic_simulation</code> / <code>fic_hardware</code> process reads its own family based on its <code>station_id</code> ROS parameter.</td></tr>
+  <tr><td><code>robot{N}_*</code></td><td>Per-robot controller topics. <code>N</code> is the numeric robot / station id (1&ndash;35). The GUI creates a full publisher family per active robot; each <code>fic_control</code> process reads its own family based on its <code>station_id</code> ROS parameter.</td></tr>
   <tr><td><code>robot{N}_simulation/*</code></td><td>Physics-backend topics. The MuJoCo launch file builds this prefix as <code>robot{sid}_simulation</code> from its <code>station_id</code> argument and passes it to the sim node's <code>topic_prefix</code> parameter.</td></tr>
   <tr><td><code>vr/*</code>, <code>vr{i}/*</code></td><td>Same physics-backend topics when the FIC controller is launched with <code>source_prefix:=vr</code> for VR headset mode &mdash; see <a href="#vr-zed-teleop" onclick="showPage('vr-zed-teleop')">VR / ZED Teleop</a>.</td></tr>
   <tr><td><code>fic_studio_{host}</code></td><td>The GUI node name. It embeds the machine's hostname so two Studios on one ROS domain don't collide.</td></tr>
@@ -74,7 +74,7 @@
   <!-- FIC controller -->
   <rect x="180" y="165" width="340" height="60" class="box box-green"/>
   <text x="350" y="185" class="label-bold">FIC controller &mdash; 1 kHz loop</text>
-  <text x="350" y="205" class="label-code">fic_simulation | fic_hardware (station_id N)</text>
+  <text x="350" y="205" class="label-code">fic_control (station_id N)</text>
 
   <!-- Controller to sim -->
   <line x1="270" y1="225" x2="270" y2="330" class="arrow arrow-orange"/>
@@ -106,17 +106,17 @@
 </svg>
 
 <h2>GUI &rarr; Controller (published by <code>fic_studio_{host}</code>)</h2>
-<p>Every robot the Studio talks to gets its own family of topics, prefixed by <code>robot{N}</code> where <code>N</code> is 1&ndash;4. Since v3.3.0 these are created on demand: when the operator clicks <strong>＋ Add Robot</strong> in <a href="#control-panel" onclick="showPage('control-panel')">Multi-Robot</a>, <code>node.add_robot(N)</code> creates the full set; the ✕ button on a card destroys them. <em>TL</em> marks TRANSIENT_LOCAL durability, so late-joining controllers still receive the last value.</p>
+<p>Every robot the Studio talks to gets its own family of topics, prefixed by <code>robot{N}</code> where <code>N</code> is 1&ndash;35. Since v3.3.0 these are created on demand: when the operator clicks <strong>＋ Add Robot</strong> in <a href="#control-panel" onclick="showPage('control-panel')">Multi-Robot</a>, <code>node.add_robot(N)</code> creates the full set; the ✕ button on a card destroys them. <em>TL</em> marks TRANSIENT_LOCAL durability, so late-joining controllers still receive the last value.</p>
 <table>
   <tr><th>Topic</th><th>Type</th><th>Description</th></tr>
-  <tr><td><code>robot{N}_mode_select</code></td><td>String</td><td>Mode by name (e.g.&nbsp;<code>"Joint Impedance"</code>, <code>"Cartesian Planner"</code>). Consumed by <code>fic_hardware</code>, which also accepts <code>"Stop Controller"</code> and <code>"Pause Controller"</code>.</td></tr>
-  <tr><td><code>robot{N}_control_mode</code></td><td>Int32</td><td>Numeric mode id (0&ndash;8; 0&nbsp;=&nbsp;stop/idle). Consumed by <code>fic_simulation</code>, which snaps targets to the current pose on every mode switch. See <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>.</td></tr>
+  <tr><td><code>robot{N}_mode_select</code></td><td>String</td><td>Mode by name (e.g.&nbsp;<code>"Joint Impedance"</code>, <code>"Cartesian Planner"</code>). Consumed by <code>fic_control</code>, which also accepts <code>"Stop Controller"</code> and <code>"Pause Controller"</code>.</td></tr>
+  <tr><td><code>robot{N}_control_mode</code></td><td>Int32</td><td>Numeric mode id (0&ndash;8; 0&nbsp;=&nbsp;stop/idle). Consumed by <code>fic_control</code> in simulation only (a simulation tool cannot drive a real arm), which snaps targets to the current pose when the mode changes. See <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>.</td></tr>
   <tr><td><code>robot{N}_selected_robot</code></td><td>String</td><td>Robot model name (e.g. <code>KinovaGen3_7DOF</code>); the controller reloads its kinematic model and config on change.</td></tr>
   <tr><td><code>robot{N}_active_profile</code></td><td>String (TL)</td><td>Active tuning profile name. On a different name than the current one, both FIC nodes read the tuning again with it in the background and switch the controllers to it when ready (a repeat of the current name is ignored).</td></tr>
   <tr><td><code>robot{N}_number_of_joints</code></td><td>Int32 (TL)</td><td>Joint count for this robot.</td></tr>
   <tr><td><code>robot{N}_desired_joint_angles</code></td><td>Float32MultiArray</td><td>Joint targets in radians. E-STOP locks each robot at its own last-known pose by publishing here (after the graceful mode-0 ramp).</td></tr>
   <tr><td><code>command_ee_position_change_robot{N}</code></td><td>Pose</td><td>Cartesian EE target (metres + quaternion). Safety-clamped on receipt.</td></tr>
-  <tr><td><code>robot{N}_target_joint_angles</code></td><td>JointState</td><td>Named joint targets, consumed by <code>fic_simulation</code> (used by sequences and scripted motion).</td></tr>
+  <tr><td><code>robot{N}_target_joint_angles</code></td><td>JointState</td><td>Named joint targets, consumed by <code>fic_control</code> in simulation only (used by sequences and scripted motion).</td></tr>
   <tr><td><code>robot{N}_gripper_width</code></td><td>Float32</td><td>Gripper aperture command (metres). Also drives the simulation gripper bridge.</td></tr>
   <tr><td><code>robot{N}_postural_enable</code></td><td>Bool (TL)</td><td>Null-space postural toggle (Cartesian modes 5&ndash;8).</td></tr>
   <tr><td><code>robot{N}_elbow_enable</code></td><td>Bool (TL)</td><td>Null-space elbow-hold toggle (Cartesian modes 5&ndash;8). Snapshots the current elbow position as the hold target.</td></tr>
@@ -131,20 +131,20 @@
   <tr><td><code>robot{N}_safety/joint_limits</code></td><td>Float64MultiArray</td><td><code>[j0_min, j0_max, j1_min, j1_max, &hellip;, enabled]</code> (radians).</td></tr>
   <tr><td><code>robot{N}_safety/velocity_limits</code></td><td>Float64MultiArray</td><td><code>[max_joint_vel, max_cart_vel, enabled]</code>, optionally a 4th value: the joint target speed of joint impedance (rad/s, 0: off).</td></tr>
 </table>
-<p>Safety limits are broadcast: the <a href="#safety" onclick="showPage('safety')">Safety panel</a> publishes the same workspace, joint, and velocity bounds to <em>every</em> active robot. The matching <code>fic_hardware</code> / <code>fic_simulation</code> process subscribes to <em>its own</em> <code>robot{N}_*</code> family based on its <code>station_id</code> ROS parameter, so two robots on one network never collide.</p>
+<p>Safety limits are broadcast: the <a href="#safety" onclick="showPage('safety')">Safety panel</a> publishes the same workspace, joint, and velocity bounds to <em>every</em> active robot. The matching <code>fic_control</code> process subscribes to <em>its own</em> <code>robot{N}_*</code> family based on its <code>station_id</code> ROS parameter, so two robots on one network never collide.</p>
 
 <h2>Controller &rarr; GUI</h2>
 <table>
   <tr><th>Topic</th><th>Type</th><th>Rate</th><th>Description</th></tr>
   <tr><td><code>robot{N}_trajectory_data</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Full FIC internal state (per-joint blocks in joint modes, 8-value strides in Cartesian modes; drives the Dashboard plots).</td></tr>
   <tr><td><code>robot{N}_ee_current_pose</code></td><td>Pose</td><td>1 kHz</td><td>Current end-effector pose from forward kinematics.</td></tr>
-  <tr><td><code>robot{N}_q_current</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Measured joint positions. Published by <code>fic_hardware</code> only; in simulation the GUI falls back to <code>trajectory_data</code>.</td></tr>
-  <tr><td><code>robot{N}_joint_velocities</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Finite-difference joint velocities (<code>fic_hardware</code> only).</td></tr>
-  <tr><td><code>robot{N}_force_torque</code></td><td>Wrench</td><td>1 kHz</td><td>Tool wrench (<code>fic_hardware</code>, SensorData QoS): from the driver API or estimated from joint torques.</td></tr>
-  <tr><td><code>robot{N}_joint_torques</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Measured joint torques (Nm) from the hardware driver, Butterworth-filtered (<code>fic_hardware</code> only).</td></tr>
-  <tr><td><code>robot{N}_admittance_offset</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Accumulated per-joint human push offset (radians), <code>fic::ficControl::humanOffset()</code> read straight off the joint-admittance controller. Published by <code>fic_hardware</code> and <code>fic_simulation</code>, and only while an admittance mode (3 or 4) is active &mdash; absent, not zero, in every other mode. See <a href="#contact-localization" onclick="showPage('contact-localization')">Contact Localization</a>.</td></tr>
+  <tr><td><code>robot{N}_q_current</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Measured joint positions. Published by <code>fic_control</code> only; in simulation the GUI falls back to <code>trajectory_data</code>.</td></tr>
+  <tr><td><code>robot{N}_joint_velocities</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Finite-difference joint velocities (<code>fic_control</code> only).</td></tr>
+  <tr><td><code>robot{N}_force_torque</code></td><td>Wrench</td><td>1 kHz</td><td>Tool wrench (<code>fic_control</code>, SensorData QoS): from the driver API or estimated from joint torques.</td></tr>
+  <tr><td><code>robot{N}_joint_torques</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Measured joint torques (Nm) from the hardware driver, Butterworth-filtered (<code>fic_control</code> only).</td></tr>
+  <tr><td><code>robot{N}_admittance_offset</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Accumulated per-joint human push offset (radians), <code>fic::ficControl::humanOffset()</code> read straight off the joint-admittance controller. Published by <code>fic_control</code>, and only while an admittance mode (3 or 4) is active &mdash; absent, not zero, in every other mode. See <a href="#contact-localization" onclick="showPage('contact-localization')">Contact Localization</a>.</td></tr>
   <tr><td><code>robot{N}_contact_estimate</code></td><td>communication/ContactEstimate</td><td>100 Hz</td><td>Estimated contact location on the arm from joint torque residuals (<code>fic_contact</code>, mode 1 only): link id, confidence, force, point, and calibration status.</td></tr>
-  <tr><td><code>robot{N}_jacobian</code></td><td>communication/Jacobian</td><td>joint-state rate</td><td>EE Jacobian (<code>fic_simulation</code>): <code>rows</code>, <code>cols</code>, flat <code>float64[] jacobian</code>.</td></tr>
+  <tr><td><code>robot{N}_jacobian</code></td><td>communication/Jacobian</td><td>joint-state rate</td><td>EE Jacobian (<code>fic_control</code>): <code>rows</code>, <code>cols</code>, flat <code>float64[] jacobian</code>.</td></tr>
   <tr><td><code>/robot{N}_fic_torque_commands</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Commanded joint torques after the output guard (non-finite&rarr;0, per-joint clamp) &mdash; for logging and inspection.</td></tr>
 </table>
 <p>The GUI also keeps two unprefixed fallback subscriptions, <code>joint_states</code> and <code>simulation_joint_states</code> (JointState), which route into the <em>first</em> active robot's state slot.</p>
@@ -156,11 +156,11 @@
   <tr><td><code>&hellip;/actuators_cmds</code></td><td>communication/ActuatorCmds</td><td>sub</td><td>Torque commands from the FIC controller (and the gripper bridge); actuator names <code>torq_j1&hellip;torq_jn</code>, merged per name across publishers. A torque not refreshed for 200&nbsp;ms is zeroed; a position actuator (the gripper) keeps its setpoint.</td></tr>
   <tr><td><code>&hellip;/joint_states</code></td><td>JointState</td><td>1 kHz</td><td>Simulated positions, velocities, efforts.</td></tr>
   <tr><td><code>&hellip;/gravity_torques</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>g(q) inside the sim, from <code>qfrc_bias</code> at zero velocity. The FIC controller <strong>adds this raw</strong> to its own output in the joint modes, so a wrong vector here is injected feedforward on every joint. Sanity check: a vertical-axis joint must read ~0 Nm in every pose.</td></tr>
-  <tr><td><code>&hellip;/contact_torques</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Joint torques the environment applies to each hinge (<code>qfrc_constraint + qfrc_applied</code>: contacts, joint limits, applied wrenches), without the controller's own command. <code>fic_simulation</code> estimates H-PMP's external wrench in Modes 7/8 from it (since v5.3.0). MuJoCo backend only.</td></tr>
+  <tr><td><code>&hellip;/contact_torques</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Joint torques the environment applies to each hinge (<code>qfrc_constraint + qfrc_applied</code>: contacts, joint limits, applied wrenches), without the controller's own command. <code>fic_control</code> estimates H-PMP's external wrench in Modes 7/8 from it (since v5.3.0). MuJoCo backend only.</td></tr>
   <tr><td><code>&hellip;/force_torque</code></td><td>Wrench</td><td>200 Hz</td><td>The arm's wrench estimate at the EE sensor site. <strong>Includes gravity</strong> &mdash; measured at 46.7 N with a Kinova standing still and untouched &mdash; so it is not a contact detector on its own.</td></tr>
   <tr><td><code>&hellip;/imu_data</code></td><td>Imu</td><td>500 Hz</td><td>From the MJCF's accelerometer / gyro / framequat sensors (defaults when the model has none).</td></tr>
   <tr><td><code>&hellip;/odom</code></td><td>Odometry</td><td>50 Hz</td><td>Floating-base odometry (zeros for a fixed base).</td></tr>
-  <tr><td><code>&hellip;/actuator_torques</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Final per-joint torques the controller sent (after velocity damping and clamping) &mdash; published by <code>fic_simulation</code>, not the sim.</td></tr>
+  <tr><td><code>&hellip;/actuator_torques</code></td><td>Float64MultiArray</td><td>1 kHz</td><td>Final per-joint torques the controller sent (after velocity damping and clamping) &mdash; published by <code>fic_control</code>, not the sim.</td></tr>
 </table>
 <p>One service: <code>robot{N}_simulation/sim_reset</code> (<code>communication/srv/SimulationReset</code>) resets the model to a requested base pose (floating base) and joint state; <code>header.frame_id</code> must be the model name.</p>
 

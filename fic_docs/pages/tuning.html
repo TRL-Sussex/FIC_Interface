@@ -491,7 +491,7 @@ See <a href="#config-xml" onclick="showPage('config-xml')">config.xml Reference<
 
   <rect x="550" y="40" width="130" height="48" class="box box-grey"/>
   <text x="615" y="58" class="label">pkg share copy</text>
-  <text x="615" y="74" class="label-code">fic_simulation/config</text>
+  <text x="615" y="74" class="label-code">fic_control/config</text>
 
   <line x1="140" y1="64" x2="180" y2="64" class="arrow"/>
   <line x1="310" y1="64" x2="350" y2="64" class="arrow"/>
@@ -530,8 +530,8 @@ See <a href="#config-xml" onclick="showPage('config-xml')">config.xml Reference<
 </svg>
 
 <p>The GUI writes the repository file <code>fic_library/config/config.xml</code>, but the controller reads the
-<em>installed</em> copy at <code>&lt;install&gt;/fic_simulation/share/fic_simulation/config/config.xml</code>
-(both the simulation node and the hardware node use the <code>fic_simulation</code> share path). With
+<em>installed</em> copy at <code>&lt;install&gt;/fic_control/share/fic_control/config/config.xml</code>
+(simulation and hardware alike). With
 <code>colcon build --symlink-install</code> the installed copy is a symlink back to the repository file, so a GUI
 save is immediately visible to the controller.</p>
 <p>Since v4.4.0 each node holds the whole tuning for the current robot and mode in memory (every joint,
@@ -563,8 +563,8 @@ nano ~/Ros2WS/FIC_Interface/fic_library/config/config.xml
 ros2 topic pub --once /robot1_param_update std_msgs/String "data: robot1:manual:0"
 
 # ...or restart the controller
-ros2 launch fic_simulation fic_launch.py robot_name:=Franka_FR3 num_joints:=7    # simulation
-ros2 launch fic_hardware robot_control_launch.py robot_name:=Franka_FR3 station_id:=1  # hardware</code></pre>
+ros2 launch fic_control sim_control_launch.py robot_name:=Franka_FR3 num_joints:=7    # simulation
+ros2 launch fic_control robot_control_launch.py robot_name:=Franka_FR3 station_id:=1  # hardware</code></pre>
 <p>You can also open the raw XML in-app with the <strong>VIEW XML</strong> button, which shows an editable
 view of <code>config.xml</code> for the selected robot.</p>
 

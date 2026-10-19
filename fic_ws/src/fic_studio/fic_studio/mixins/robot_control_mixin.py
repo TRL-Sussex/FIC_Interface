@@ -580,7 +580,7 @@ class RobotControlMixin:
         """Sync the mode-selector UI to match a programmatic mode change.
 
         Does NOT publish anything — the caller is responsible for having
-        already published the mode to fic_hardware.  Used by extensions that
+        already published the mode to fic_control.  Used by extensions that
         send their own mode_select messages (e.g. the teleop extension) so
         the UI reflects the active mode without triggering a second publish.
         """

@@ -136,6 +136,15 @@ def test_status_line_parsing():
     assert parse_status('') == ('', '', '')
 
 
+def test_status_line_parsing_pc_inner_loop():
+    """fic_control's lines for the PC inner loop (fic_inner_loop) and for no inner loop at all."""
+    path, state, rest = parse_status(
+        'inner loop fic_inner_loop v3 at 127.0.0.1:7360 | running | state 1000 Hz, age 0 ms | faults 0x0')
+    assert (path, state) == ('pc', 'running') and 'faults 0x0' in rest
+    path, state, rest = parse_status('no inner loop: nothing answered at 127.0.0.1:7360')
+    assert (path, state) == ('none', '') and 'nothing answered' in rest
+
+
 def test_controller_copy_takes_the_mcu_block_from_the_studio():
     old = {'R': {'mcu': {'adapter': 'kortex', 'torque_rate_limit': [2, 2]}}}
     out = controller_robots({'R': {'mcu': {'adapter': 'kortex', 'torque_rate_limit': [2, 2],
@@ -145,3 +154,58 @@ def test_controller_copy_takes_the_mcu_block_from_the_studio():
     assert controller_robots({'R': {}}, old)['R']['mcu']['adapter'] == 'kortex'
     # Adapter removed in the Studio: standard path only.
     assert controller_robots({'R': {'mcu': {}}}, old)['R']['mcu'] == {}
+
+
+def test_every_python_fic_link_sender_speaks_fic_link_h_version():
+    """The Studio's MCU probe, the inner-loop E-STOP and the simulator's lockstep link all send FIC-link
+    datagrams by hand: each must use fic_link.h's kVersion, or a firmware/inner loop of that version ignores
+    them (19 Oct 2026: the probe still said v2 to firmware 3, so the Studio found no MCU)."""
+    import os
+    import re
+    from fic_studio import inner_loop_estop, mcu_probe
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.abspath(os.path.join(here, '..', '..', '..', '..'))
+    header = open(os.path.join(root, 'fic_library', 'include', 'fic', 'fic_link.h')).read()
+    k = int(re.search(r'kVersion\s*=\s*(\d+)', header).group(1))
+    assert mcu_probe._VERSION == k
+    assert inner_loop_estop.VERSION == k
+    sim = open(os.path.join(root, 'fic_ws', 'src', 'mujoco_native', 'mujoco_native', 'inner_loop_link.py')).read()
+    assert int(re.search(r'^VERSION\s*=\s*(\d+)', sim, re.M).group(1)) == k
+
+
+def test_relay_is_found_where_the_studio_finds_the_repository(monkeypatch, tmp_path):
+    """The relay binary comes from the repository the Studio runs from (fic_studio.config, FIC_ROOT), not from
+    this file's location: in a plain (non-symlink) colcon install the module lives under install/, and the
+    Studio then never tried the board's Bridge (19 Oct 2026)."""
+    import importlib
+    import os
+    from fic_studio import config, mcu_probe
+    monkeypatch.setenv('FIC_ROOT', str(tmp_path))
+    try:
+        importlib.reload(config)
+        importlib.reload(mcu_probe)
+        assert mcu_probe.RELAY_BINARY == os.path.join(
+            str(tmp_path.resolve()), 'robot_library', 'fic_mcu', 'build', 'fic_mcu_relay')
+    finally:
+        monkeypatch.delenv('FIC_ROOT')
+        importlib.reload(config)
+        importlib.reload(mcu_probe)
+
+
+def test_robot_config_yaml_is_found_where_the_studio_finds_the_repository(monkeypatch, tmp_path):
+    """Robot Config reads fic_library/config/robots_config.yaml from the repository the Studio runs from
+    (fic_studio.config), not relative to its own file (wrong in a plain colcon install)."""
+    import importlib
+    import os
+    from fic_studio import config
+    from fic_studio.mixins import robot_config_mixin
+    monkeypatch.setenv('FIC_ROOT', str(tmp_path))
+    try:
+        importlib.reload(config)
+        importlib.reload(robot_config_mixin)
+        assert robot_config_mixin.RobotConfigMixin._rc_fic_config_yaml_path() == os.path.join(
+            str(tmp_path.resolve()), 'fic_library', 'config', 'robots_config.yaml')
+    finally:
+        monkeypatch.delenv('FIC_ROOT')
+        importlib.reload(config)
+        importlib.reload(robot_config_mixin)

@@ -8,7 +8,7 @@
 <h2>Phase 0 — Environment sanity (once per machine)</h2>
 <ol>
   <li><strong>ROS 2 sourced.</strong> In a fresh terminal, <code>ros2 --help</code> should succeed without activation. If not, your <code>~/.bashrc</code> isn't sourcing <code>/opt/ros/$ROS_DISTRO/setup.bash</code>. (The launcher script auto-detects and sources the newest distro under <code>/opt/ros/</code> itself, but your own terminals still need it for debugging.)</li>
-  <li><strong>Workspace built.</strong> <code>cd ~/FIC_Interface/fic_ws &amp;&amp; colcon build --symlink-install</code> finishes without errors. <code>--symlink-install</code> matters: the controller reads its tuning from the installed <code>share/fic_simulation/config/config.xml</code>, which is a symlink back to <code>fic_library/config/config.xml</code> only when you build this way — otherwise Tuning-panel saves need a rebuild to reach the controller.</li>
+  <li><strong>Workspace built.</strong> <code>cd ~/FIC_Interface/fic_ws &amp;&amp; colcon build --symlink-install</code> finishes without errors. <code>--symlink-install</code> matters: the controller reads its tuning from the installed <code>share/fic_control/config/config.xml</code>, which is a symlink back to <code>fic_library/config/config.xml</code> only when you build this way — otherwise Tuning-panel saves need a rebuild to reach the controller.</li>
   <li><strong>GUI launches.</strong> Run <code>bash ~/FIC_Interface/fic_install/fic-control-studio.sh</code> and confirm the main window appears. On the very first launch the setup wizard opens automatically (Welcome → Verify Workspace → Test Your Setup → Setup Complete); accept the defaults for now. See <a href="#installation" onclick="showPage('installation')">Installation</a>.</li>
   <li><strong>Status LEDs.</strong> The bottom status bar shows LEDs labelled <em>ROS2</em>, <em>FIC</em>, <em>SIM</em>, <em>BAGS</em> and <em>TELEOP</em>. ROS2 goes green as soon as the GUI's node is up; FIC and SIM stay idle until you launch those processes in Phase 1.</li>
 </ol>
@@ -20,7 +20,7 @@
   <li><strong>Select a test mode.</strong> Open the <a href="#control-panel" onclick="showPage('control-panel')">Control Panel</a> and click the <strong>Joint Planner</strong> mode tab (Mode 2, <em>Joint Impedance With Planner</em>). Clicking a mode tab publishes immediately — there is no separate "send mode" step. On engage the controller snaps its targets to the robot's current state, so the arm holds position instead of jumping.</li>
   <li><strong>Verify the robot holds against perturbation.</strong> In the MuJoCo viewer, double-click a link to select it, then hold <code>Ctrl</code> and right-drag to pull it (Ctrl + left-drag applies a rotation), and release. The arm should recover to its target under FIC control. If it collapses or drifts, the controller isn't actually running — see the debugging tip below.</li>
   <li><strong>Test a commanded motion.</strong> In the joint target fields, increase J4 by +10° and click <strong>▶ Send command</strong> (or tick <em>Live publish</em> to stream edits as you type). The arm should ramp smoothly to the new pose. No overshoot, no oscillation.</li>
-  <li><strong>Watch the planner output.</strong> Click <strong>▶ PLT</strong> in the toolbar to launch the live plotter (<code>ros2 run fic_simulation plotter_node.py</code>). It plots per-joint <em>current</em> vs dashed <em>target</em> curves from <code>robot1_trajectory_data</code>; they should converge within about a second. For raw values you can also watch the topic in the <a href="#topic-monitor" onclick="showPage('topic-monitor')">Topic Monitor</a>. If <em>current</em> never reaches <em>target</em>, check the planner's <em>Vel Desired</em> field in the <a href="#tuning" onclick="showPage('tuning')">Tuning panel</a>.</li>
+  <li><strong>Watch the planner output.</strong> Click <strong>▶ PLT</strong> in the toolbar to launch the live plotter (<code>ros2 run fic_control plotter_node.py</code>). It plots per-joint <em>current</em> vs dashed <em>target</em> curves from <code>robot1_trajectory_data</code>; they should converge within about a second. For raw values you can also watch the topic in the <a href="#topic-monitor" onclick="showPage('topic-monitor')">Topic Monitor</a>. If <em>current</em> never reaches <em>target</em>, check the planner's <em>Vel Desired</em> field in the <a href="#tuning" onclick="showPage('tuning')">Tuning panel</a>.</li>
 </ol>
 
 <svg viewBox="0 0 700 340" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="Simulation session — what to check at each hop">
@@ -56,7 +56,7 @@
 
   <rect x="270" y="50" width="170" height="80" class="box box-green"/>
   <text x="355" y="70" class="label-bold">FIC controller</text>
-  <text x="355" y="88" class="label-sm">fic_simulation node</text>
+  <text x="355" y="88" class="label-sm">fic_control node (simulation)</text>
   <text x="355" y="104" class="label-sm">1 kHz loop, reads config.xml</text>
 
   <rect x="510" y="50" width="160" height="80" class="box box-orange"/>

@@ -509,9 +509,9 @@ OUTLIER_MAX_DISCARDS = 3
 class ResidualEstimator:
     """Turns measured joint torque into a contact residual.
 
-    ``torque_sign`` defaults to 1.0 and should stay there. ``fic_hardware``
+    ``torque_sign`` defaults to 1.0 and should stay there. ``fic_control``
     already applies the robot config's ``torque_sign`` before publishing
-    (``fic_hardware.cpp:650``), so applying it again silently inverts every
+    (``fic_control.cpp:650``), so applying it again silently inverts every
     residual. The parameter exists only for replaying raw shared-memory data.
 
     ``min_threshold_nm`` floors every per-joint detection threshold. A

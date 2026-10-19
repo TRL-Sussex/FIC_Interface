@@ -55,7 +55,7 @@ class ExtensionHost(QObject):
     def set_mode(self, mode: str) -> None:
         """Set control mode on this extension's target robot AND sync the UI selector.
 
-        Publishes the mode string to fic_hardware once, then calls
+        Publishes the mode string to fic_control once, then calls
         update_mode_ui_only() so the studio's mode buttons reflect the change
         without triggering a second publish.
         """

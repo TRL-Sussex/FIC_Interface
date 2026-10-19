@@ -13,7 +13,7 @@ only, a new **major** version (X.0.0) for breaking or architectural changes. It 
 everywhere at once.
 Between releases nothing is bumped: changes are recorded under **Unreleased**, and a development
 build shows the last release and the commit it was built from (`5.11.0 · dev 85617ecb`). The
-FIC-link protocol keep their own version numbers.
+FIC-link protocol keeps its own version number.
 
 ### Releases
 
@@ -23,6 +23,55 @@ Studio is published here as one commit, with its entry below.
 ---
 
 ## [Unreleased]
+
+## [6.0.0] — 2026-10-19 — One joint inner loop everywhere; fic_control; 35 stations
+
+### Added
+- **The joint inner loop as its own layer, on every setup.** `fic_inner_loop` runs the joint laws, the
+  feedback filters, the output guard and a watchdog at 1 kHz between the controller and the robot driver's
+  shared memory; the controller (`fic_control`) drives the arm only through an inner loop and never writes a
+  torque itself. If the controller stops or stalls, the inner loop holds the arm (50 ms), then ramps it down
+  and tells the driver to leave torque mode. The drivers are unchanged.
+- **Simulation runs the same two layers.** `sim_control_launch.py` starts `fic_inner_loop --adapter sim` and the
+  controller with `target: simulation`; `mujoco_native` steps in lockstep with the inner loop (one SimStep /
+  SimTorque per physics step), which runs at the simulator's own step on simulated time. Newton is fed through
+  the controller (`plant: topics`). A simulated station and a real robot run side by side on one computer.
+- **E-STOP straight to the inner loops**: one FIC-link `Estop` datagram to every inner loop on this computer
+  (a simulation and the real robot alike), so the arm ramps down even if the controller is stuck. Processes are
+  stopped only once the arm is out of torque mode the way Stop leaves it, so it does not drop or jerk.
+- **Up to 35 robot stations on one network** (was 4). They stand in a line: a robot Studio's Multi-Robot page
+  shows itself and its neighbours (N-1, N+1) and pairs with them for teleoperation; a robot refuses to follow
+  one that is not its neighbour unless a Master paired them. A Master still sees the whole lab.
+- `mujoco_native` logs its real-time factor every 10 s (a warning below 0.95).
+
+### Changed
+- **`fic_control` replaces `fic_hardware` and `fic_simulation`** (breaking): one package holds the controller
+  node (executable `fic_control`, one node for both targets), `fic_inner_loop`, both launch files, the plotter
+  and the installed `config.xml` (`share/fic_control/config`). Commands change:
+  `ros2 launch fic_hardware robot_control_launch.py` → `ros2 launch fic_control robot_control_launch.py`;
+  `ros2 launch fic_simulation fic_launch.py` → `ros2 launch fic_control sim_control_launch.py`;
+  `ros2 run fic_simulation plotter_node.py` → `ros2 run fic_control plotter_node.py`. Node names are unchanged
+  (`fic_hardware_node_N`, `fic_simulation_node_N`). After updating, remove the old packages' build output
+  (`rm -rf fic_ws/build/fic_hardware fic_ws/build/fic_simulation fic_ws/install/fic_hardware fic_ws/install/fic_simulation`)
+  before building.
+- Without an inner loop the controller sends no torque and Start is refused. After a normal Stop the inner loop
+  does not report a fault when the driver exits; it waits for Start.
+- In simulation the controller also takes `robot{N}_control_mode` (`Int32`) and `robot{N}_target_joint_angles`
+  (`JointState`); `robot{N}_active_profile` is latched, so a config chosen before the controller starts applies.
+- Simulated inner loops listen on `127.0.0.1:7200+N` (Masters 6100+), below every ROS port; `fic_inner_loop --station N`.
+- Targets snap to the arm only when the control mode changes, not when the same mode is sent again.
+- **Mode 9 removed**: Cartesian IK joint impedance is mode 5 with postural control on.
+- **The web interface stays responsive on small computers.** The Studio's ROS callbacks run what has arrived and
+  return (they spun for 8 ms of every 10 ms); robot state is read at 50 Hz, newest sample only, instead of every
+  1 kHz message; the classic window behind the web interface no longer repaints itself. The dashboard's joint
+  update rate now shows the rate the Studio reads (about 50/s), not the controller's.
+- `mujoco_native` steps for less: the FIC-link checksum is computed in C and the F/T sensors are looked up once.
+- The simulator starts headless when the Studio has no display.
+- A windowed Studio opened on a machine whose headless Studio runs as the `fic-studio` service takes over from it,
+  and the service comes back when the window closes.
+- Installers: `ffmpeg`, and `adb` where the distribution can install it (else `fic_install/adb-private.sh` unpacks
+  it with its own libraries); the launcher puts `~/.local/bin` on PATH.
+
 
 ## [5.11.0] — 2026-10-19 — Whole-arm safety zones, a safer operator interface, FIC library fixes
 

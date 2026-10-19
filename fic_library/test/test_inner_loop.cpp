@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <initializer_list>
 
 #include <fic/fic_link.h>
 #include <fic/inner_loop.h>
@@ -133,6 +134,65 @@ static void testLinkRoundTrip() {
     CHECK(t.state == McuState::Hold && t.faults == kFaultOverrun && t.wrench[5] == 3.5f && t.q_raw[6] == 6);
 }
 
+// FIC-link v3: H-PMP's Jacobian and the joint-target speed in CMD; a v2 datagram refused.
+static void testLinkV3() {
+    std::printf("link v3\n");
+    uint8_t buf[kMaxDatagram];
+    CmdMsg m;
+    m.config_epoch = 1; m.param_epoch = 2; m.mode = InnerMode::Hapfic; m.n = 7;
+    m.flags = kCmdEnable | kCmdHasJacobian | kCmdHasGravJac;
+    m.joint_target_speed = 0.5f;
+    for (int k = 0; k < 6 * 7; ++k) m.jac[k] = 0.01f * k;
+    for (int k = 0; k < 49; ++k) m.dgdq[k] = -0.02f * k;
+    size_t len = encodeCmd(m, 5, buf, sizeof(buf));
+    CHECK(len > 0);
+    Reader r;
+    CmdMsg d;
+    CHECK(r.open(buf, len) && decodeCmd(r, d));
+    CHECK(d.flags == m.flags && d.joint_target_speed == 0.5f);
+    CHECK(d.jac[41] == m.jac[41] && d.dgdq[48] == m.dgdq[48]);
+    // Both blocks for 16 joints do not fit one datagram: encode refuses (the client then drops dg/dq).
+    m.n = 16;
+    CHECK(encodeCmd(m, 6, buf, sizeof(buf)) == 0);
+    m.flags &= static_cast<uint8_t>(~kCmdHasGravJac);
+    len = encodeCmd(m, 7, buf, sizeof(buf));
+    CHECK(len > 0);
+    // A v2 datagram is refused.
+    Header h;
+    std::memcpy(&h, buf, sizeof(h));
+    h.version = 2;
+    std::memcpy(buf, &h, sizeof(h));
+    CHECK(!r.open(buf, len));
+}
+
+// FIC-link: the simulator in lockstep with the inner loop (SimStep plant -> loop, SimTorque loop -> plant).
+static void testLinkSim() {
+    std::printf("link sim step\n");
+    CHECK(adapterFromName("sim") == Adapter::HostSim);
+    uint8_t buf[kMaxDatagram];
+    for (int nj : {7, 16}) {
+        SimStepMsg a;
+        a.t_us = 123456789ull; a.n = (uint16_t)nj;
+        for (int i = 0; i < nj; ++i) { a.q[i] = 0.1f * i; a.tau[i] = -2.0f * i; }
+        a.wrench[5] = 1.5f;
+        size_t len = encodeSimStep(a, 3, buf, sizeof(buf));
+        CHECK(len > 0);
+        Reader r;
+        SimStepMsg b;
+        CHECK(r.open(buf, len) && r.type() == MsgType::SimStep && decodeSimStep(r, b));
+        CHECK(b.t_us == a.t_us && b.n == nj && b.q[nj - 1] == a.q[nj - 1] && b.tau[nj - 1] == a.tau[nj - 1] &&
+              b.wrench[5] == 1.5f);
+        CHECK(!r.open(buf, len - 1));
+        SimTorqueMsg x;
+        x.step = 77; x.torque_mode = 1; x.n = (uint16_t)nj;
+        for (int i = 0; i < nj; ++i) x.tau[i] = 3.0f + i;
+        len = encodeSimTorque(x, 4, buf, sizeof(buf));
+        SimTorqueMsg y;
+        CHECK(len > 0 && r.open(buf, len) && r.type() == MsgType::SimTorque && decodeSimTorque(r, y));
+        CHECK(y.step == 77 && y.torque_mode == 1 && y.n == nj && y.tau[nj - 1] == x.tau[nj - 1]);
+    }
+}
+
 // Drives an InnerLoop through the full lifecycle against the plant.
 static void testLifecycle() {
     std::printf("inner loop lifecycle\n");
@@ -166,6 +226,7 @@ static void testLifecycle() {
     }
     CHECK(L.state() == McuState::Running);
     CHECK(out.torque_mode);
+    CHECK(!L.released() && L.wantsTorque(t));
     for (int i = 0; i < N; ++i) CHECK(std::isfinite(out.tau[i]) && std::fabs(out.tau[i]) <= 39.0f);
     double err = 0;
     for (int i = 0; i < N; ++i) err = std::fmax(err, std::fabs(qt[i] - pl.q[i]));
@@ -191,10 +252,14 @@ static void testLifecycle() {
     tickN(3000);
     CHECK(L.state() == McuState::Ready);
     CHECK(!out.torque_mode);
+    CHECK(L.released() && !L.wantsTorque(t));          // the adapter hands the arm back now
 
     // Linux back: fresh CMDs re-enter Running.
+    L.onCmd(makeCmd(pl, InnerMode::Impedance, kCmdEnable, 1, qt), 4999, t);
+    CHECK(L.wantsTorque(t));                           // after a release: reopen the arm session
     for (int k = 0; k < 20; ++k) { L.onCmd(makeCmd(pl, InnerMode::Impedance, kCmdEnable, 1, qt), 5000 + k, t); tickN(1); }
     CHECK(L.state() == McuState::Running);
+    CHECK(!L.released());                              // a new Running entry is not released
 
     // E-stop: ramp out and stay out until re-armed (Enable dropped).
     for (int k = 0; k < 3000; ++k) {
@@ -203,6 +268,7 @@ static void testLifecycle() {
     }
     CHECK(L.state() == McuState::Ready && !out.torque_mode);
     CHECK(L.faults() & kFaultEstop);
+    CHECK(L.released() && !L.wantsTorque(t));
     for (int k = 0; k < 10; ++k) { L.onCmd(makeCmd(pl, InnerMode::Impedance, kCmdEnable, 1, qt), 9000 + k, t); tickN(1); }
     CHECK(L.state() == McuState::Ready);               // latched: Enable alone is not enough
     L.onCmd(makeCmd(pl, InnerMode::Impedance, 0, 1, qt), 9100, t); tickN(1);
@@ -286,6 +352,108 @@ static void testAdmittanceHold() {
     }
 }
 
+// Configured, adapter up, params applied, Running in `mode` holding the plant where it is.
+static void toRunning(InnerLoop& L, Plant& pl, uint64_t& t, InnerMode mode) {
+    ArmCommand out;
+    L.configure(makeConfig());
+    L.adapterReady(true);
+    for (int j = 0; j < N; ++j) L.acceptParams(makeParams(1, j));
+    double qt[N];
+    for (int i = 0; i < N; ++i) qt[i] = pl.q[i];
+    for (int k = 0; k < 20; ++k) {
+        L.onCmd(makeCmd(pl, mode, kCmdEnable, 1, qt), k + 1, t);
+        t += 1000; L.tick(pl.fb(), t, out); pl.step(out, 0.001);
+    }
+}
+
+// Modes 1/2: the law's target moves at most joint_target_speed per tick; 0 = the commanded target at once;
+// a mode change re-seeds it at the measured joints.
+static void testTargetSpeed() {
+    std::printf("joint-target speed limit\n");
+    static InnerLoop L;
+    Plant pl;
+    uint64_t t = 0;
+    ArmCommand out;
+    toRunning(L, pl, t, InnerMode::Impedance);
+    const double q_start = pl.q[0];
+    double qt[N];
+    for (int i = 0; i < N; ++i) qt[i] = pl.q[i];
+    qt[0] = q_start + 1.0;                                     // a target 1 rad away
+    CmdMsg m = makeCmd(pl, InnerMode::Impedance, kCmdEnable, 1, qt);
+    m.joint_target_speed = 0.5f;                               // rad/s
+    for (int k = 0; k < 200; ++k) {                            // 0.2 s: 0.1 rad
+        m.q0[0] = (float)pl.q[0];
+        L.onCmd(m, 100 + k, t);
+        t += 1000; L.tick(pl.fb(), t, out); pl.step(out, 0.001);
+    }
+    const double moved = L.slewedTarget(0) - q_start;
+    std::printf("  target moved %.4f rad in 0.2 s at 0.5 rad/s\n", moved);
+    CHECK(moved > 0.09 && moved < 0.11);
+    m.mode = InnerMode::ImpedancePlanner;                      // mode change: re-seeded at the joint
+    L.onCmd(m, 400, t);
+    t += 1000; L.tick(pl.fb(), t, out); pl.step(out, 0.001);
+    StateMsg st;
+    L.fillState(st, 0);
+    CHECK(std::fabs(L.slewedTarget(0) - st.q[0]) < 0.0005 + 1e-6);   // seeded at the filtered joint, one step on
+    m.joint_target_speed = 0.0f;                               // off: the commanded target at once
+    L.onCmd(m, 401, t);
+    t += 1000; L.tick(pl.fb(), t, out);
+    CHECK(std::fabs(L.slewedTarget(0) - qt[0]) < 1e-6);
+}
+
+// H-PMP (Hapfic) with the Jacobian runs the split drive; a CMD without it falls back to the per-joint deadband.
+static void testHapficSplitFallback() {
+    std::printf("hpmp split drive and its fallback\n");
+    static InnerLoop L;
+    Plant pl;
+    uint64_t t = 0;
+    ArmCommand out;
+    toRunning(L, pl, t, InnerMode::Hapfic);
+    double qt[N];
+    for (int i = 0; i < N; ++i) qt[i] = pl.q[i];
+    CmdMsg m = makeCmd(pl, InnerMode::Hapfic, kCmdEnable | kCmdHasJacobian, 1, qt);
+    for (int k = 0; k < 6 * N; ++k) m.jac[k] = (k % (N + 1) == 0) ? 1.0f : 0.0f;
+    for (int k = 0; k < 50; ++k) {
+        L.onCmd(m, 100 + k, t);
+        t += 1000; L.tick(pl.fb(), t, out); pl.step(out, 0.001);
+    }
+    CHECK(L.usedSplit());
+    m.flags = static_cast<uint8_t>(m.flags & ~kCmdHasJacobian);
+    L.onCmd(m, 200, t);
+    t += 1000; L.tick(pl.fb(), t, out);
+    CHECK(!L.usedSplit());
+    for (int i = 0; i < N; ++i) CHECK(std::isfinite(out.tau[i]));
+    m.mode = InnerMode::Impedance;                             // another mode: no split
+    L.onCmd(m, 201, t);
+    t += 1000; L.tick(pl.fb(), t, out);
+    CHECK(!L.usedSplit());
+}
+
+// STATE carries the law's torque before the output guard (tau_law: what fic_simulation recorded as
+// fic_torque_commands, before the velocity damper and the clamp) next to tau_cmd.
+static void testTauLaw() {
+    std::printf("tau_law before the guard\n");
+    static InnerLoop L;
+    Plant pl;
+    uint64_t t = 0;
+    ArmCommand out;
+    toRunning(L, pl, t, InnerMode::Impedance);
+    double qt[N];
+    for (int i = 0; i < N; ++i) qt[i] = pl.q[i] + 0.1;
+    CmdMsg m = makeCmd(pl, InnerMode::Impedance, kCmdEnable, 1, qt);
+    for (int i = 0; i < N; ++i) m.kd[i] = 5.0f;            // a damper: tau_cmd differs from tau_law
+    for (int k = 0; k < 200; ++k) { L.onCmd(m, 600 + k, t); t += 1000; L.tick(pl.fb(), t, out); pl.step(out, 0.001); }
+    StateMsg s;
+    L.fillState(s, 0);
+    double diff = 0, law = 0;
+    for (int i = 0; i < N; ++i) { diff = std::fmax(diff, std::fabs(s.tau_law[i] - s.tau_cmd[i])); law += std::fabs(s.tau_law[i]); }
+    CHECK(law > 1.0 && diff > 1e-4);
+    uint8_t buf[kMaxDatagram];
+    size_t len = encodeState(s, 9, buf, sizeof(buf));
+    Reader r; StateMsg d;
+    CHECK(r.open(buf, len) && decodeState(r, d) && d.tau_law[3] == s.tau_law[3]);
+}
+
 static void testNodeDispatch() {
     std::printf("mcu node dispatch\n");
     static fic::mcu::McuNode node("test-fw", 3, adapterBit(Adapter::Loopback));
@@ -312,12 +480,168 @@ static void testNodeDispatch() {
     CHECK(node.configChanges() == 1 && node.badDatagrams() == 1);
 }
 
+// A direct Estop message (the Studio's E-STOP, not through fic_control): RAMP at once, latched like a CMD's
+// e-stop flag; a CMD without Enable re-arms. Adapter::Shm is the PC inner loop's adapter.
+static void testDirectEstop() {
+    std::printf("direct estop\n");
+    CHECK(adapterFromName("shm") == Adapter::Shm);
+    static fic::mcu::McuNode node("test-fw", 3, adapterBit(Adapter::Loopback) | adapterBit(Adapter::Shm));
+    uint8_t buf[kMaxDatagram], reply[kMaxDatagram];
+    Config c = makeConfig(7);
+    c.adapter = (uint32_t)Adapter::Shm;
+    size_t n = encodeFixed(MsgType::Config, c, 1, buf, sizeof(buf));
+    node.onDatagram(buf, n, 0, reply, sizeof(reply));
+    CHECK(node.hasConfig());
+    node.loop().adapterReady(true);
+    for (int j = 0; j < N; ++j) {
+        Params p = makeParams(1, j);
+        n = encodeFixed(MsgType::Params, p, 2 + j, buf, sizeof(buf));
+        node.onDatagram(buf, n, 0, reply, sizeof(reply));
+    }
+    Plant pl;
+    ArmCommand out;
+    uint64_t t = 0;
+    double qt[N];
+    for (int i = 0; i < N; ++i) qt[i] = pl.q[i];
+    for (int k = 0; k < 50; ++k) {
+        node.loop().onCmd(makeCmd(pl, InnerMode::Impedance, kCmdEnable, 1, qt), 100 + k, t);
+        t += 1000; node.tick(pl.fb(), t, out); pl.step(out, 0.001);
+    }
+    CHECK(node.loop().state() == McuState::Running);
+    EstopMsg e{1};
+    n = encodeFixed(MsgType::Estop, e, 200, buf, sizeof(buf));
+    CHECK(n > 0);
+    node.onDatagram(buf, n, t, reply, sizeof(reply));
+    t += 1000; node.tick(pl.fb(), t, out);
+    // RAMP, or already through it (at rest the torque is at gravity, so the ramp can end in that tick).
+    CHECK(node.loop().state() == McuState::Ramp ||
+          (node.loop().state() == McuState::Ready && node.loop().released()));
+    CHECK(node.loop().faults() & kFaultEstop);
+    for (int k = 0; k < 20; ++k) {                                                     // never back to Running
+        node.loop().onCmd(makeCmd(pl, InnerMode::Impedance, kCmdEnable, 1, qt), 210 + k, t);
+        t += 1000; node.tick(pl.fb(), t, out);
+        CHECK(node.loop().state() != McuState::Running);
+    }
+    node.loop().onCmd(makeCmd(pl, InnerMode::Impedance, kCmdEnable, 1, qt), 300, t);   // still latched
+    CHECK(node.loop().faults() & kFaultEstop);
+    // A direct E-STOP is not re-armed by a CMD without Enable (fic_control's own Stop sends those): only a
+    // new CONFIG (Start) clears it (review 19 Oct, I9).
+    node.loop().onCmd(makeCmd(pl, InnerMode::Impedance, 0, 1, qt), 301, t);
+    CHECK(node.loop().faults() & kFaultEstop);
+    c.config_epoch = 8;
+    n = encodeFixed(MsgType::Config, c, 302, buf, sizeof(buf));
+    node.onDatagram(buf, n, t, reply, sizeof(reply));
+    CHECK(!(node.loop().faults() & kFaultEstop));
+}
+
+// The operator's joint speed cap reaches the inner loop live, in every CMD (review 19 Oct, I5).
+static void testSpeedCapInCmd() {
+    std::printf("joint speed cap in CMD\n");
+    static InnerLoop L;
+    Plant pl;
+    uint64_t t = 0;
+    ArmCommand out;
+    toRunning(L, pl, t, InnerMode::ImpedancePlanner);
+    CHECK(L.jointSpeedLimit() == 0.0);
+    double qt[N];
+    for (int i = 0; i < N; ++i) qt[i] = pl.q[i];
+    CmdMsg m = makeCmd(pl, InnerMode::ImpedancePlanner, kCmdEnable, 1, qt);
+    m.joint_speed_limit = 0.4f;
+    L.onCmd(m, 500, t);
+    t += 1000; L.tick(pl.fb(), t, out);
+    CHECK(std::fabs(L.jointSpeedLimit() - 0.4) < 1e-6);
+    m.joint_speed_limit = 0.0f;                                // 0: no cap
+    L.onCmd(m, 501, t);
+    t += 1000; L.tick(pl.fb(), t, out);
+    CHECK(L.jointSpeedLimit() == 0.0);
+}
+
+// RAMP with velocity damping and sensor noise, as on the real Gen3: the ramp
+// must decay its own torque, not re-integrate the guard's -kd*v every tick
+// (that is a stiff, lagging spring: the arm shook and the ramp never ended).
+static void testRampWithDamping() {
+    std::printf("ramp with damping and sensor noise\n");
+    static InnerLoop L;
+    Plant pl;
+    ArmCommand out;
+    uint64_t t = 0;
+    uint32_t rng = 12345;
+    auto noise = [&] { rng = rng * 1664525u + 1013904223u; return ((rng >> 8) / 16777216.0 - 0.5) * 0.002; };
+    auto noisyFb = [&] { ArmFeedback f = pl.fb(); for (int i = 0; i < N; ++i) f.q[i] += (float)noise(); return f; };
+    auto tickN = [&](int k) { for (int j = 0; j < k; ++j) { t += 1000; L.tick(noisyFb(), t, out); pl.step(out, 0.001); } };
+
+    L.configure(makeConfig());
+    tickN(5);
+    L.adapterReady(true);
+    for (int j = 0; j < N; ++j) L.acceptParams(makeParams(1, j));
+    double qt[N];
+    for (int i = 0; i < N; ++i) qt[i] = pl.q[i];
+    for (int k = 0; k < 1000; ++k) {
+        CmdMsg m = makeCmd(pl, InnerMode::ImpedancePlanner, kCmdEnable, 1, qt);
+        for (int i = 0; i < N; ++i) m.kd[i] = 2.0f;
+        L.onCmd(m, k + 1, t);
+        tickN(1);
+    }
+    CHECK(L.state() == McuState::Running);
+    // Linux goes quiet: HOLD, then RAMP from 2 s.
+    tickN(2100);
+    CHECK(L.state() == McuState::Ramp || L.state() == McuState::Ready);
+    double worst = 0;
+    int ramp_ms = 0;
+    while (L.state() == McuState::Ramp && ramp_ms < 5000) {
+        tickN(1);
+        ++ramp_ms;
+        if (out.torque_mode)
+            for (int i = 0; i < N; ++i) worst = std::fmax(worst, std::fabs(out.tau[i] - pl.g(i, pl.q)));
+    }
+    std::printf("  ramp finished after %d ms; largest |tau - g| during it %.2f Nm\n", ramp_ms, worst);
+    CHECK(L.state() == McuState::Ready);
+    CHECK(ramp_ms < 3000);
+    CHECK(worst < 3.0);
+    CHECK(L.released());
+}
+
+// A CONFIG made for one step (the node's 2 ms) run at the simulator's (1 ms): the per-tick filter
+// coefficient keeps its cutoff in Hz, the step becomes the simulator's.
+static void testRetimeConfig() {
+    Config c{};
+    c.dt = 0.002f;
+    c.damping_alpha = (float)std::exp(-2.0 * M_PI * 20.0 * 0.002);
+    fic::mcu::retimeConfig(c, 0.001f);
+    CHECK(std::fabs(c.dt - 0.001f) < 1e-9f);
+    CHECK(std::fabs(c.damping_alpha - (float)std::exp(-2.0 * M_PI * 20.0 * 0.001)) < 1e-6f);
+    fic::mcu::retimeConfig(c, 0.001f);              // already at that step: unchanged
+    CHECK(std::fabs(c.damping_alpha - (float)std::exp(-2.0 * M_PI * 20.0 * 0.001)) < 1e-6f);
+}
+
+// The simulated inner loop's UDP port per station: below the MCU (7350), the PC inner loop (7360) and DDS
+// (7400 and up, 7400 + 250 * domain), for 35 robot stations, Masters (100-999) and stations 1001-1099.
+static void testSimPorts() {
+    const int table[][2] = {{1, 7201}, {2, 7202}, {35, 7235}, {99, 7299}, {100, 6100}, {545, 6545}, {999, 6999},
+                            {1001, 7101}, {1099, 7199}};
+    for (const auto& t : table) CHECK(fic::link::simInnerLoopPort(t[0]) == t[1]);
+    for (int n = 1; n <= 1099; ++n) {
+        const int p = fic::link::simInnerLoopPort(n);
+        CHECK(p > 1024 && p < 7350);
+    }
+}
+
 int main() {
+    testSimPorts();
+    testRetimeConfig();
     testLinkRoundTrip();
+    testLinkV3();
+    testLinkSim();
     testLifecycle();
+    testRampWithDamping();
     testJointLimitFault();
     testAdmittanceHold();
     testNodeDispatch();
+    testTargetSpeed();
+    testHapficSplitFallback();
+    testDirectEstop();
+    testSpeedCapInCmd();
+    testTauLaw();
     if (g_fail) { std::printf("%d check(s) FAILED\n", g_fail); return 1; }
     std::printf("all inner-loop tests passed\n");
     return 0;

@@ -4,7 +4,7 @@ STATUS: ``fic_contact.contact_node`` no longer calls
 ``parse_trajectory_blocks`` / ``admitting_joints`` below — it now
 subscribes directly to ``{rid}_admittance_offset``, the controller's own
 accumulated per-joint human-push offset (``fic::ficControl::humanOffset``,
-published by ``fic_hardware``/``fic_simulation`` only in modes 3/4), and
+published by ``fic_control``/``fic_control`` only in modes 3/4), and
 feeds that straight into ``admitting_link``. That topic did not exist
 when this module was written, and everything below explains why the
 ``{rid}_trajectory_data``-derived quantity it computes is a flawed stand-in
@@ -78,9 +78,9 @@ offset is better described as "does not forget a force it once saw"
 than "sees forces the residual cannot".
 
 BLOCKS 6/7 ARE DELIBERATELY NOT USED HERE FOR THE TORQUE OBSERVABLE.
-``fic_hardware.cpp`` calls the admittance controller with
+``fic_control.cpp`` calls the admittance controller with
 ``current_effort_ = -joint_torques_[i]`` (note the minus —
-``fic_hardware.cpp:1315``), so block 7 is ``-tau_meas``, not
+``fic_control.cpp:1315``), so block 7 is ``-tau_meas``, not
 ``tau_meas``. Block 6 is ``DesiredEffort = gravity_torques_[i] = g(q)``
 (the Kinova is not gravity-compensated). So ``block6 - block7 == g(q) -
 (-tau_meas) == g(q) + tau_meas`` — a SUM, not the ``g(q) - tau_meas``

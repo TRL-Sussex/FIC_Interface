@@ -13,7 +13,7 @@ owner of their lifecycle. Status is shown via LED indicators in the status bar.<
 <p>The toolbar uses a <strong>target selector</strong> plus a single <strong>Start/Stop</strong> button
 instead of one button per process. Pick a target (<code>Simulation</code>, <code>Hardware</code>, or
 <code>VR</code>), then press <strong>&#9654; Start</strong>. While a session is running the target
-segments, the station selector (<code>Robot 1&ndash;4</code>), and the robot dropdown are locked, and the
+segments, the station selector (<code>Robot 1&ndash;35</code>), and the robot dropdown are locked, and the
 button turns into a red <strong>&#9632; Stop</strong>.</p>
 <table>
   <tr><th>Target</th><th>What Start launches</th><th>Stop behaviour</th></tr>
@@ -78,7 +78,7 @@ red <strong>&#11035; E-STOP</strong> button is always on the right &mdash; see
   <text x="160" y="198" class="label-sm">+2 s</text>
   <rect x="35" y="212" width="180" height="42" class="box box-green"/>
   <text x="125" y="226" class="label">FIC sim controller</text>
-  <text x="125" y="242" class="label-code">fic_simulation fic_launch.py</text>
+  <text x="125" y="242" class="label-code">fic_control sim_control_launch.py</text>
 
   <rect x="265" y="100" width="180" height="42" class="box box-orange"/>
   <text x="355" y="114" class="label">Vendor driver</text>
@@ -87,7 +87,7 @@ red <strong>&#11035; E-STOP</strong> button is always on the right &mdash; see
   <text x="382" y="176" class="label-sm">+2 s</text>
   <rect x="265" y="212" width="180" height="42" class="box box-teal"/>
   <text x="355" y="226" class="label">FIC hardware controller</text>
-  <text x="355" y="242" class="label-code">fic_hardware robot_control_launch.py</text>
+  <text x="355" y="242" class="label-code">fic_control robot_control_launch.py</text>
 
   <rect x="495" y="100" width="170" height="42" class="box box-purple"/>
   <text x="580" y="114" class="label">VR relay</text>
@@ -152,7 +152,7 @@ it logs a warning and falls back to the CPU simulator. Alongside the simulator t
 <code>gripper</code> actuator (harmless on robots without one).</p>
 
 <h3>FIC Simulation Controller</h3>
-<pre><code>ros2 launch fic_simulation fic_launch.py robot_name:=Franka_FR3 num_joints:=7 \
+<pre><code>ros2 launch fic_control sim_control_launch.py robot_name:=Franka_FR3 num_joints:=7 \
     station_id:=1 source_prefix:=robot1_simulation</code></pre>
 <p><code>source_prefix</code> selects where the controller reads robot state from:
 <code>robot&lt;sid&gt;_simulation</code> for the simulator, or <code>vr</code> / <code>vr&lt;i&gt;</code> when
@@ -160,7 +160,15 @@ launched by the VR target, with <code>joint_name_prefix:=r&lt;i&gt;_</code> (the
 <code>r&lt;i&gt;_&hellip;</code>, one robot or many).</p>
 
 <h3>FIC Hardware Controller</h3>
-<pre><code>ros2 launch fic_hardware robot_control_launch.py robot_name:=Franka_FR3 station_id:=1</code></pre>
+<pre><code>ros2 launch fic_control robot_control_launch.py robot_name:=Franka_FR3 station_id:=1</code></pre>
+<p>The launch starts two processes. <code>fic_control</code> runs everything that needs the robot model
+(kinematics, gravity, the Cartesian and H-PMP task laws, postural and elbow, the safety zones).
+<code>fic_inner_loop</code> runs the joint inner loop at 1&nbsp;kHz between it and the robot driver: the joint
+laws, the feedback filters, the output guard (damping, clamps) and a watchdog. <code>fic_control</code> drives the
+arm only through an inner loop; it never writes a torque to the driver itself. If <code>fic_control</code> stops or
+stalls, the inner loop holds the arm for 50&nbsp;ms, then ramps the torque down to gravity over about 2&nbsp;s and
+tells the driver to leave torque mode. One <code>fic_inner_loop</code> per PC (UDP 127.0.0.1:7360; the driver's
+shared memory is one segment); <code>inner_loop:=false</code> leaves it out.</p>
 
 <h3>Robot Driver (API)</h3>
 <p>Configured per robot in <code>fic_library/config/robots_config.yaml</code> under
@@ -188,7 +196,7 @@ exit code, and resets the button so you can restart. Drivers are compiled from
 <a href="#experiments" onclick="showPage('experiments')">Experiments extension</a> (EXP button).</p>
 
 <h3>Plotter</h3>
-<pre><code>ros2 run fic_simulation plotter_node.py --ros-args -p station_id:=1 -p num_joints:=7</code></pre>
+<pre><code>ros2 run fic_control plotter_node.py --ros-args -p station_id:=1 -p num_joints:=7</code></pre>
 
 <h2>Log Files and Health Checks</h2>
 <p>The simulator, gripper bridge, and VR relay write their output to per-launch files in <code>/tmp</code>
@@ -245,9 +253,10 @@ sending the last torque command to the robot. Two independent defences cover eve
 <p><code>sys.excepthook</code> is still replaced, but it only reports. With a custom hook installed,
 PyQt5 routes exceptions from every Qt slot and timer through it and keeps running, so it fired for
 harmless UI bugs too. Until v4.3.0 the first such exception tore down the robot stack mid-run; a
-fatal exception still ends the interpreter, and <code>atexit</code> reaps the children. On its way
-out <code>fic_hardware</code> also clears the shared-memory <code>alive</code> flag, which makes the
-Kinova driver and the CSPM bridge leave torque mode rather than keep applying the last torque.</p></div>
+fatal exception still ends the interpreter, and <code>atexit</code> reaps the children. When
+<code>fic_control</code> goes, the inner loop (<code>fic_inner_loop</code>) ramps the torque down and sets the
+shared-memory stop flag, which makes the Kinova driver and the CSPM bridge leave torque mode rather than keep
+applying the last torque.</p></div>
 
 <h2>E-STOP and Stop All</h2>
 <p>The <a href="#estop" onclick="showPage('estop')">E-STOP</a> (<kbd>Space</kbd>) does <em>not</em> simply kill processes.

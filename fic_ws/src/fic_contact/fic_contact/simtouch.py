@@ -1,6 +1,6 @@
 """Interactive MuJoCo rig: push the arm with the mouse, in the real stack.
 
-Stands in for `fic_hardware`, so the whole chain runs with no robot:
+Stands in for `fic_control`, so the whole chain runs with no robot:
 this node publishes the same topics `contact_node` consumes, the twin
 mirrors it, and `following` acts on it. Ctrl + right-drag a link in the
 viewer to push it.
@@ -42,7 +42,7 @@ from std_msgs.msg import Float64MultiArray, Int32
 
 from fic_contact.deflection import KINOVA_STIFFNESS_NM_PER_RAD
 
-#: Hz. Matches fic_hardware's published state rate closely enough that
+#: Hz. Matches fic_control's published state rate closely enough that
 #: contact_node's 100 Hz tick always has fresh data.
 RATE_HZ = 200.0
 

@@ -1,7 +1,7 @@
 """Fit the robots_config.yaml `hardware_model` block from a recording (pure numpy, no ROS).
 
 The joint torque the controller measures, in the simulator's sign (the torque the joint applies:
-about +g(q) at rest; fic_hardware's joint_torques negated), less the arm model's inverse dynamics
+about +g(q) at rest; fic_control's joint_torques negated), less the arm model's inverse dynamics
 M(q) qdd + C(q, qd) qd + g(q), leaves what the model does not have. On a swept joint that is
 
     r = friction * sign(qd) + damping * qd + armature * qdd + offset

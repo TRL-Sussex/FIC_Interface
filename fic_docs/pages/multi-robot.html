@@ -11,15 +11,23 @@
   <tr><td><strong>Control</strong></td><td>The Simulation / Hardware / VR switch, Home, Reset and Send for the robot the control bar drives.</td></tr>
 </table>
 
-<h2>Stations: Robot 1&ndash;4 and Master</h2>
+<h2>Stations: Robot 1&ndash;35 and Master</h2>
 <p>The toolbar's <strong>Robot</strong> selector sets this Studio's station. It restarts the Studio to re-point its topics.</p>
 <table>
   <tr><th>Station</th><th>Topics</th><th>For</th></tr>
-  <tr><td><strong>Robot 1&hellip;4</strong></td><td><code>robot1_*</code>&hellip;<code>robot4_*</code></td><td>The PC wired to that robot. PC&nbsp;<em>N</em> is Robot&nbsp;<em>N</em>.</td></tr>
+  <tr><td><strong>Robot 1&hellip;35</strong></td><td><code>robot1_*</code>&hellip;<code>robot35_*</code></td><td>The PC wired to that robot. PC&nbsp;<em>N</em> is Robot&nbsp;<em>N</em>.</td></tr>
   <tr><td><strong>Master</strong></td><td><code>robotNNN_*</code> (100&ndash;999, from the PC name)</td><td>The control seat, e.g. a lab's control PC. It has no arm of its own: it watches and commands the fleet, Any number of PCs can be Master at once: each takes its own number, so their simulations never meet each other or a real arm.</td></tr>
 </table>
 <div class="admonition warning"><div class="adm-title">One Studio per station</div>
 <p>Two Studios on the same station both command the same robot. The Fleet section shows a red warning naming both machines when that happens. A PC that has never run the Studio starts as Robot&nbsp;1, so set the station before the first real run.</p></div>
+
+<h2>Neighbours</h2>
+<p>Robot stations stand in a line, like benches in a teaching lab: a robot Studio shows and pairs with its
+neighbours, the station on its left (<em>N</em>&minus;1) and on its right (<em>N</em>+1). Robot&nbsp;1 has only
+Robot&nbsp;2 beside it, and Robot&nbsp;35 only Robot&nbsp;34. The Fleet section and the teleoperation form list your
+own card and those neighbours (and any Masters); a robot refuses to follow a robot that is not its
+neighbour. A Master sees the whole lab and may pair any two stations. Up to 35 robot Studios share one network
+and one ROS domain this way.</p>
 
 <h2>Fleet</h2>
 <p>Every Studio announces itself about once a second. A Studio that has not been heard from for 3.5&nbsp;s drops off the page. Each card shows:</p>

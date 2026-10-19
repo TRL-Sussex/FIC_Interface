@@ -73,6 +73,13 @@ class FleetDirectory:
                        key=lambda c: (c.get('station', 0), c.get('host', '')))
         return [own] + peers
 
+    def visible(self):
+        """Return the Studios this one shows and pairs with (stations.sees): a robot Studio its own card, its
+        neighbours and Masters; a Master every one. studios() keeps the whole lab."""
+        from fic_studio.fleet.stations import sees
+        own = self._own_card().get('station')
+        return [c for c in self.studios() if sees(own, c.get('station'))]
+
     def station(self, n):
         """Return the card of the Studio on station ``n`` (this one first), or None."""
         for card in self.studios():

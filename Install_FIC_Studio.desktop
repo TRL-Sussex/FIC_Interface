@@ -435,6 +435,8 @@ APT_DEPS=(
     python3-matplotlib
     # The installer's own dialogs (installer_gui.py)
     python3-tk
+    # Android devices over USB: mirroring the display (adb: see below)
+    ffmpeg
 )
 
 # ROS2 packages (from rclcpp, message types)
@@ -570,6 +572,16 @@ if [ -n "$MISSING_OPTIONAL_APT" ]; then
         "$FIC_SUDO $FIC_APT install -y $MISSING_OPTIONAL_APT || echo 'Optional packages unavailable — the app will build without the built-in solver.'"
 fi
 
+# ── adb for Android devices over USB (best-effort, never fatal) ──
+# Not in APT_DEPS: on the Arduino board apt cannot install it (the board's adbd
+# pins other Android libraries), so it is unpacked on its own there.
+if ! command -v adb >/dev/null 2>&1; then
+    gui_progress \
+        "Installing adb" \
+        "Installing adb (Android devices over USB)..." \
+        "$FIC_SUDO $FIC_APT install -y adb || $FIC_SUDO bash '$INCLUDE_DIR/adb-private.sh' || echo 'adb unavailable: no Android devices over USB from this machine.'"
+fi
+
 # ── Update pinocchio when the installed build is older than the distro's ──
 # check_apt_missing only tests presence (dpkg -s), so an already-installed but
 # outdated pinocchio would never be refreshed by the blocks above.
@@ -602,7 +614,7 @@ fi
 # ── Check tinyxml2 is consistent with ROS ──
 # libtinyxml2-dev is installed with the other apt packages. It must be the ONLY
 # tinyxml2: a second copy (e.g. built from source into /usr) makes FIC link one
-# soname while ROS's urdfdom links another, and fic_hardware segfaults at start.
+# soname while ROS's urdfdom links another, and fic_control segfaults at start.
 # Library paths come from detect-system.sh (x86_64-linux-gnu, aarch64-linux-gnu, ...).
 TINYXML2_CMAKE=""
 for d in "$FIC_LIBDIR/cmake/tinyxml2" /usr/lib/cmake/tinyxml2; do

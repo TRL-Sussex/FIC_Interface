@@ -1,6 +1,6 @@
 // Safety zones for the whole arm: shapes the robot must stay inside (keep-in) or out of (keep-out), checked
-// along the arm from a chosen joint to the tool, not only at the tool point. Used by fic_simulation and
-// fic_hardware; set by robot{N}_safety/zones from the Studio's Safety page.
+// along the arm from a chosen joint to the tool, not only at the tool point. Used by fic_control and
+// fic_control; set by robot{N}_safety/zones from the Studio's Safety page.
 //
 //   shapes     a box (turned about z), a sphere, an upright cylinder and a prism: an outline drawn on the
 //              floor, raised between two heights

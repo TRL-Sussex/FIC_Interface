@@ -76,10 +76,13 @@ class PageRegistry:
         """True when ``name`` is the page currently on screen.
 
         The periodic refreshers ask this instead of comparing an index, so
-        navigation and throttling share one definition of "showing".
+        navigation and throttling share one definition of "showing". A page of
+        a window nobody can see (the classic window behind the web UI) is not
+        showing: its refreshers must not repaint it.
         """
         index = self._index.get(name)
-        return index is not None and self._stack.currentIndex() == index
+        return (index is not None and self._stack.currentIndex() == index
+                and self._stack.isVisible())
 
 
 def page_showing(self, name):

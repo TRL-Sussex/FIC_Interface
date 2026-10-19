@@ -493,7 +493,7 @@ class FleetMixin:
         self._lite_follow_remote_robots()
         if not hasattr(self, '_fleet_grid'):
             return
-        studios = self._fleet_dir.studios()
+        studios = self._fleet_dir.visible()        # itself, its neighbours, Masters
         seen = set()
         for i, card in enumerate(studios):
             key = card['studio_id']

@@ -15,6 +15,9 @@
 //              TORQUE on every actuator when the inner loop wants torque,
 //              POSITION when it lets go; Session.KeepAlive while idle
 //   stop():    POSITION on every actuator, SINGLE_LEVEL servoing, close.
+//   Actuators in POSITION mode during LOW_LEVEL servoing get a FIXED position
+//   (latched when torque is no longer wanted), never the latest measurement:
+//   chasing its own one-tick-old reading every 1 ms makes the arm shake.
 //
 // Portable: the network is behind KortexNet (the firmware implements it on the
 // W5500; a Linux test implements it on sockets).
@@ -64,6 +67,7 @@ public:
         phase_since_ = now_us;
         tcp_session_ = udp_session_ = 0;
         torque_applied_ = torque_wanted_ = false;
+        hold_valid_ = false;
         mode_step_ = -1;
         rx_len_ = 0;
         rpc_pending_ = false;
@@ -102,6 +106,14 @@ public:
                                phase_ == Phase::StopServoing;
         if (!streaming || !have_fb_) return;
         if (phase_ == Phase::Cyclic) torque_wanted_ = cmd.torque_mode;
+        // Position field: in torque the measured one (bumpless switch back);
+        // otherwise the pose latched when torque stopped being wanted.
+        const bool hold_pos = phase_ != Phase::Cyclic || !torque_wanted_;
+        if (!hold_pos) hold_valid_ = false;
+        else if (!hold_valid_) {
+            std::memcpy(hold_deg_, pos_deg_, sizeof(hold_deg_));
+            hold_valid_ = true;
+        }
         float tau[kMaxActuators];
         for (int i = 0; i < n_; ++i) {
             // While an actuator is (still) in TORQUE mode it must keep getting a
@@ -118,7 +130,7 @@ public:
             grip_vel = 2.2f * err < 100.0f ? 2.2f * err : 100.0f;
         }
         ++frame_id_;
-        const size_t pn = encodeCommand(pl_, sizeof(pl_), frame_id_, n_, pos_deg_, tau, grip_pct, grip_vel, 100.0f);
+        const size_t pn = encodeCommand(pl_, sizeof(pl_), frame_id_, n_, hold_pos ? hold_deg_ : pos_deg_, tau, grip_pct, grip_vel, 100.0f);
         const size_t fn = encodeRequest(fr_, sizeof(fr_), Refresh, udp_session_, uint16_t(frame_id_), 0, pl_, pn);
         if (fn) net_->udpSend(fr_, fn);
         (void)now_us;
@@ -150,6 +162,8 @@ private:
     // Cyclic state.
     bool have_fb_ = false;
     float pos_deg_[kMaxActuators] = {};
+    float hold_deg_[kMaxActuators] = {};   // POSITION set-point while torque is not wanted
+    bool hold_valid_ = false;
     float last_tau_[kMaxActuators] = {};
     bool fb_has_gripper_ = false;
     float fb_gripper_pct_ = 0;

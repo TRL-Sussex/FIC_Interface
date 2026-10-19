@@ -161,7 +161,7 @@
 <p>The offset of 16 is set by <code>hpmp_cart_planner_offset_</code> and ensures that H-PMP's Cartesian channels never overlap with joint controllers (0..6 for a 7-DOF robot), elbow (6..8 in the standard Cartesian modes), or postural (9..15). The FIC instance has 23 channels.</p>
 
 <div class="admonition note"><div class="adm-title">The elbow has its own channels under H-PMP</div>
-<p>In the standard Cartesian modes the elbow helper's FIC controllers use channels 6..8. Under H-PMP, Stage 2 runs joint channels <code>0..n_j-1</code>, which on a 7-DOF robot (Franka FR3, Kinova Gen3) include 6, so <code>initHpmpCartesian()</code> initialises the elbow at channels 20..22 (<code>hpmp_cart_planner_offset_ + 4</code>) and both nodes pass <code>fic_ctrl_.elbowOffset()</code> to <code>applyElbowControl</code>. Earlier versions shared channel 6 between joint 6 and elbow X and never initialised the elbow under H-PMP.</p></div>
+<p>In the standard Cartesian modes the elbow helper's FIC controllers use channels 6..8. Under H-PMP, Stage 2 runs joint channels <code>0..n_j-1</code>, which on a 7-DOF robot (Franka FR3, Kinova Gen3) include 6, so <code>initHpmpCartesian()</code> initialises the elbow at channels 20..22 (<code>hpmp_cart_planner_offset_ + 4</code>) and the node passes <code>fic_ctrl_.elbowOffset()</code> to <code>applyElbowControl</code>. Earlier versions shared channel 6 between joint 6 and elbow X and never initialised the elbow under H-PMP.</p></div>
 
 <h2>Initialization</h2>
 <p>When the H-PMP toggle changes, the enable callback sets <code>initControllerPLanner = false</code>, forcing a full controller re-initialization on the next control cycle; a message repeating the current value is ignored. Initialization is gated on <code>fic::hpmpActive(mode, hpmp_enabled_)</code> (Modes 5&ndash;8) and uses:</p>
@@ -172,7 +172,7 @@
 </table>
 <p>The H-PMP block is <code>&lt;mode id="100" name="H-PMP"&gt;</code> in <code>config.xml</code> (100 is not a control mode). A robot without one runs H-PMP on Mode 4's joints and Mode 6's Cartesian block, and the node logs which tuning H-PMP is on.</p>
 <p>Since v4.4.0 the parameters are not read at this point. The control loop asks for the tuning set <code>fic::tuningKeyFor</code> gives for the mode (<code>fic::TuningKey</code>): with H-PMP on in Modes 5&ndash;8 both layers are keyed to the H-PMP block, so toggling H-PMP changes the key and the set is read once in the background (<code>fic::loadTuningSet</code>), with the robot's <code>&lt;postural&gt;</code> block in the same read, and the loop sends no new command until it is in memory. Toggling back to a key already read reads it again. See <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a>.</p>
-<p>Initialization code path (identical structure in <code>fic_simulation.cpp</code> and <code>fic_hardware.cpp</code>):</p>
+<p>Initialization code path (<code>fic_control.cpp</code>, both targets):</p>
 <pre><code>// Tuning set for this mode (H-PMP on: both layers from the H-PMP block, mode 100),
 // read off the control thread; nothing runs until it is in memory
 const fic::TuningKey tuning_want = fic::tuningKeyFor(robot, n_j, mode, hpmp_enabled);
@@ -230,7 +230,7 @@ Eigen::Vector3d ori_torque = (q_s >= 0.0 ? 1.0 : -1.0) * tau_cq * (q_v / vnorm);
 <h2>Interaction with null-space helpers</h2>
 <table>
   <tr><th>Helper</th><th>Compatible?</th><th>Notes</th></tr>
-  <tr><td>Postural</td><td>Yes</td><td>Applied after the H-PMP call in the control loop, at channels 9..9+n_j-1 (no overlap with H-PMP's channels). The H-PMP init branch loads the robot's <code>&lt;postural&gt;</code> block and initialises these channels, in both <code>fic_simulation</code> and <code>fic_hardware</code>.</td></tr>
+  <tr><td>Postural</td><td>Yes</td><td>Applied after the H-PMP call in the control loop, at channels 9..9+n_j-1 (no overlap with H-PMP's channels). The H-PMP init branch loads the robot's <code>&lt;postural&gt;</code> block and initialises these channels.</td></tr>
   <tr><td>Elbow</td><td>Yes</td><td>Runs on its own channels 20..22 under H-PMP, initialised by the H-PMP init branch (see the channel layout above).</td></tr>
   <tr><td>Admittance Planner</td><td>N/A</td><td>Only applies to joint admittance modes (3 &amp; 4); the toggle is hidden in Cartesian modes. H-PMP has its own internal planner.</td></tr>
 </table>
@@ -335,9 +335,9 @@ path keeps the per-joint deadband.</p>
 <table>
   <tr><th>File</th><th>Content</th></tr>
   <tr><td><code>fic_library/include/fic/fic_control.h</code></td><td><code>cartesianHpmp()</code> — the core two-stage algorithm; <code>initHpmpCartesian()</code> — channel 16..19 init; <code>RC.hpmp()</code> — public API wrapper; <code>hpmp_cart_planner_offset_</code></td></tr>
-  <tr><td><code>fic_ws/src/fic_simulation/src/fic_simulation.cpp</code></td><td>H-PMP init branch (mode detection, param loading) and execution (replaces standard Cartesian call)</td></tr>
-  <tr><td><code>fic_ws/src/fic_hardware/src/fic_hardware.cpp</code></td><td>Same init+execution logic for real hardware</td></tr>
-  <tr><td><code>fic_ws/src/fic_simulation/include/fic_simulation/fic_simulation.h</code></td><td><code>hpmp_enabled_</code> flag, ROS subscriber, callback declaration</td></tr>
+  <tr><td><code>fic_ws/src/fic_control/src/fic_control.cpp</code></td><td>H-PMP init branch (mode detection, param loading) and the task-space stage, simulation and hardware; sends the Jacobian with each CMD</td></tr>
+  <tr><td><code>fic_library/include/fic/inner_loop.h</code>, <code>fic_joint_core.h</code></td><td>The split drive in the joint inner loop (<code>JointCore::splitDrive</code>), from the Jacobian in the CMD</td></tr>
+  <tr><td><code>fic_ws/src/fic_control/include/fic_control/fic_control.h</code></td><td><code>hpmp_enabled_</code> flag, ROS subscriber, callback declaration</td></tr>
   <tr><td><code>fic_ws/src/fic_studio/fic_studio/mixins/robot_control_mixin.py</code></td><td>GUI checkbox, visibility gating, ROS publish</td></tr>
   <tr><td><code>fic_ws/src/fic_studio/fic_studio/ros_node.py</code></td><td><code>publish_hpmp_enable()</code> — ROS publisher</td></tr>
   <tr><td><code>Extensions/script_editor/robot_api.py</code></td><td><code>ModeAPI.hpmp()</code> — script API wrapper</td></tr>

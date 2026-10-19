@@ -1,6 +1,6 @@
 """Is there an FIC inner-loop MCU that can drive this robot?
 
-The same test fic_hardware makes (fic_hardware/mcu_backend.hpp), from the
+The same test fic_control makes (fic_control/mcu_backend.hpp), from the
 Studio, so a hardware Start does not launch the robot's vendor driver when an
 MCU is going to drive the arm (both would command it). One FIC-link HELLO
 (fic_library/include/fic/fic_link.h) to the MCU; a robot without an ``mcu:``
@@ -14,7 +14,7 @@ Where the MCU is (``discover``), for every robot the same way:
     whose MCU carries the shield, cabled only to the arm. Linux then reaches
     the MCU through ``fic_mcu_relay`` on 127.0.0.1, started here on demand.
 
-The address found is what fic_hardware is given (``FIC_MCU_ADDRESS``), so the
+The address found is what fic_control is given (``FIC_MCU_ADDRESS``), so the
 Studio and the controller always talk to the same MCU.
 """
 import atexit
@@ -25,6 +25,7 @@ import signal
 import socket
 import struct
 import subprocess
+import sys
 import threading
 
 import yaml
@@ -35,10 +36,13 @@ BRIDGE_ADDRESS = '127.0.0.1'
 DEFAULT_ADDRESS = ENV_ADDRESS or ETHERNET_ADDRESS
 DEFAULT_PORT = 7350
 ROUTER_SOCKET = '/var/run/arduino-router.sock'
-_FIC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), *(['..'] * 4)))
+# The repository the Studio runs from (FIC_ROOT, or found from an install too): not this file's location.
+from fic_studio.config import FIC_INTERFACE_DIR as _FIC_DIR  # noqa: E402
+_FIC_ROOT = str(_FIC_DIR)
 RELAY_BINARY = os.path.join(_FIC_ROOT, 'robot_library', 'fic_mcu', 'build', 'fic_mcu_relay')
-# _VERSION: fic/fic_link.h kVersion (2 since FIC 5.11.0, when CONFIG gained the FIC law options).
-_MAGIC, _VERSION, _HELLO, _HELLO_ACK = 0x4C434946, 2, 1, 2
+# _VERSION: fic/fic_link.h kVersion (3 since the inner-loop split: the joint layer's CMD, SimStep/SimTorque,
+# Estop; test_mcu_discovery checks it against the header).
+_MAGIC, _VERSION, _HELLO, _HELLO_ACK = 0x4C434946, 3, 1, 2
 ADAPTERS = {'loopback': 1, 'kortex': 2, 'canfd': 3, 'hostsim': 4}
 
 
@@ -87,14 +91,28 @@ def probe(address=None, timeout=0.3, attempts=3, link_version=_VERSION):
     return None
 
 
+def _robots_config_path():
+    from fic_studio.config import WS_PATH
+    return os.path.join(os.path.dirname(WS_PATH), 'fic_library', 'config', 'robots_config.yaml')
+
+
+#: path -> (mtime_ns, size, parsed YAML): the status bar asks twice a second.
+_MCU_CACHE = {}
+
+
 def controller_mcu_settings(robot_name):
     """The robot's ``mcu:`` block from fic_library/config/robots_config.yaml —
-    the file fic_hardware reads (the Studio's own robot list does not carry it)."""
+    the file fic_control reads (the Studio's own robot list does not carry it).
+    The file is parsed again only when it changes."""
     try:
-        from fic_studio.config import WS_PATH
-        path = os.path.join(os.path.dirname(WS_PATH), 'fic_library', 'config', 'robots_config.yaml')
-        with open(path) as f:
-            return ((yaml.safe_load(f) or {}).get('robots', {}).get(robot_name) or {}).get('mcu') or {}
+        path = _robots_config_path()
+        st = os.stat(path)
+        cached = _MCU_CACHE.get(path)
+        if cached is None or cached[:2] != (st.st_mtime_ns, st.st_size):
+            with open(path) as f:
+                cached = (st.st_mtime_ns, st.st_size, yaml.safe_load(f) or {})
+            _MCU_CACHE[path] = cached
+        return ((cached[2].get('robots', {}).get(robot_name) or {}).get('mcu') or {})
     except (OSError, ImportError, yaml.YAMLError, AttributeError):
         return {}
 
@@ -117,7 +135,7 @@ class BridgeRelay:
 
     Started only when the board has an Arduino router (UNO Q / VENTUNO Q) and
     the relay is built; left running for the Studio's lifetime (it idles on a
-    socket until fic_hardware or a probe speaks). One that is already running
+    socket until fic_control or a probe speaks). One that is already running
     — another Studio's, a test's — is used as it is.
     """
 
@@ -236,3 +254,81 @@ def discover(robot_config, robot_name=None, bridge=None):
         return out
     out['detail'] = 'no MCU answered (%s)' % '; '.join(misses)
     return out
+
+
+# ── Kortex supervisor (the arm's high-level API, from Linux) ────────────────
+
+KORTEX_SUPERVISOR = os.path.join(_FIC_ROOT, 'robot_library', 'fic_mcu', 'scripts', 'kortex_supervisor.py')
+KORTEX_PY = os.path.expanduser('~/kortex_py')
+
+
+def arm_reachable(ip, port=10000, timeout=0.4):
+    """The arm's Kortex port answers from this machine (the one-switch layout)."""
+    try:
+        socket.create_connection((ip, port), timeout=timeout).close()
+        return True
+    except OSError:
+        return False
+
+
+class KortexSupervisorProc:
+    """``kortex_supervisor.py`` for one station: started once the arm answers.
+
+    Only for robots whose MCU adapter is 'kortex'; it needs Kinova's Python API
+    (~/kortex_py). It never commands torque: status, clear faults, home, e-stop.
+    """
+
+    def __init__(self, script=KORTEX_SUPERVISOR):
+        self.script = script
+        self.process = None
+        self.key = None                   # (station, ip) it was started for
+        self._lock = threading.Lock()
+
+    def possible(self):
+        return os.path.isfile(self.script) and os.path.isdir(os.path.join(KORTEX_PY, 'kortex_api'))
+
+    def running(self):
+        return self.process is not None and self.process.poll() is None
+
+    def ensure(self, station, ip):
+        """Running for (station, ip)? Start it if not. -> (ok, detail)"""
+        with self._lock:
+            if self.running() and self.key == (station, ip):
+                return True, 'running'
+            self._stop_locked()
+            if not self.possible():
+                return False, "Kinova's Python API not installed (~/kortex_py)"
+            env = os.environ.copy()
+            env['PYTHONPATH'] = KORTEX_PY + (os.pathsep + env['PYTHONPATH'] if env.get('PYTHONPATH') else '')
+            env['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
+            try:
+                self.process = subprocess.Popen(
+                    [sys.executable, self.script, '--ip', ip, '--station', str(station)],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env,
+                    preexec_fn=_relay_preexec)
+            except OSError as e:
+                return False, 'kortex_supervisor failed to start: %s' % e
+            self.key = (station, ip)
+            return True, 'started'
+
+    def _stop_locked(self):
+        if self.running():
+            try:
+                os.killpg(self.process.pid, signal.SIGTERM)
+                self.process.wait(timeout=3)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        self.process = None
+        self.key = None
+
+    def stop(self):
+        with self._lock:
+            self._stop_locked()
+
+
+_KORTEX = KortexSupervisorProc()
+atexit.register(_KORTEX.stop)
+
+
+def kortex_supervisor():
+    return _KORTEX

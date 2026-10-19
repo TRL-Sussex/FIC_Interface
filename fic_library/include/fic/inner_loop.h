@@ -9,7 +9,7 @@
 // Linux-side MCU simulator (fic_mcu_sim) wraps the very same class, so what is
 // tested on a PC is what runs on the board.
 //
-// What it reproduces from fic_hardware, per tick:
+// What it reproduces from fic_control, per tick:
 //   * feedback filtering: torque 2nd-order Butterworth (200 Hz), position
 //     2nd-order Butterworth (10 Hz, unwrapped for continuous joints), damping
 //     velocity = first-order lag on the raw finite difference;
@@ -23,7 +23,7 @@
 // What it adds (the reason it lives on the MCU):
 //   * HOLD after `hold_after_s` without a CMD — impedance to where the arm is;
 //   * RAMP after `ramp_after_s`, on e-stop, or on StopTorque — torque decays
-//     to gravity (0.995 per tick, like fic_hardware's ramp-down) and the
+//     to gravity (0.995 per tick, like fic_control's ramp-down) and the
 //     adapter then leaves torque mode, so the arm's own controller holds it.
 
 #include <cmath>
@@ -34,7 +34,7 @@
 #include "fic_joint_core.h"
 #include "fic_link.h"
 
-// Scalar type of the inner loop. double on Linux (fic_hardware, tests); the
+// Scalar type of the inner loop. double on Linux (fic_control, tests); the
 // MCU firmware builds with -DFIC_INNER_REAL=float: the Cortex-M33 has a
 // single-precision FPU only, and in double every operation is a library call
 // (measured on the VENTUNO Q: ~1.1 ms per 7-joint tick in double, over the
@@ -67,6 +67,16 @@ struct ArmFeedback {
     float gripper_current = 0.0f;
 };
 
+// A CONFIG made for one step run at another (a simulator's own): the step becomes `dt`, and the per-tick
+// damping filter coefficient keeps its cutoff in Hz (alpha = exp(-2 pi f dt)).
+inline void retimeConfig(fic::link::Config& c, float dt) {
+    if (dt <= 0.0f) return;
+    if (c.dt > 0.0f && c.damping_alpha > 0.0f && c.dt != dt)
+        c.damping_alpha = static_cast<float>(std::pow(static_cast<double>(c.damping_alpha),
+                                                      static_cast<double>(dt) / c.dt));
+    c.dt = dt;
+}
+
 // What the adapter must do this tick.
 struct ArmCommand {
     bool torque_mode = false;  // false: leave / stay out of torque mode (arm holds itself)
@@ -77,7 +87,7 @@ struct ArmCommand {
 class InnerLoop {
 public:
     static constexpr int kArmLinkLossTicks = 50;   // as the Kinova driver's error budget
-    static constexpr Real kRampDecay = Real(0.995);    // fic_hardware ramp-down
+    static constexpr Real kRampDecay = Real(0.995);    // fic_control ramp-down
     static constexpr Real kRampDoneNm = Real(0.05);
 
     // ------------------------------------------------------------------ setup
@@ -88,6 +98,8 @@ public:
         core_.reset();
         core_.dt = c.dt;
         core_.deadband_joint_tau = c.deadband_joint_tau;
+        core_.task_db_force = c.task_db_force;
+        core_.task_db_torque = c.task_db_torque;
         core_.restart_on_stall = c.restart_on_stall != 0;
         core_.planner_max_hz = c.planner_max_hz;
         core_.planner_speed_margin = c.planner_speed_margin;
@@ -99,6 +111,7 @@ public:
         state_ = McuState::Connecting;
         faults_ = 0;
         estop_latched_ = false;
+        estop_direct_ = false;
         primed_ = false;
         have_cmd_ = false;
         active_epoch_ = 0;
@@ -106,6 +119,7 @@ public:
         staged_mask_ = 0;
         params_applied_ = false;
         arm_bad_ticks_ = 0;
+        arm_left_ = false;
         ramp_done_ = false;
         for (int i = 0; i < kLinkMaxJoints; ++i) { tau_prev_[i] = 0; tau_out_[i] = 0; }
         configured_ = true;
@@ -145,14 +159,24 @@ public:
         cmd_seq_ = seq;
         last_cmd_us_ = now_us;
         have_cmd_ = true;
+        if (m.joint_speed_limit != Real(core_.joint_speed_limit))
+            core_.setJointSpeedLimit(m.joint_speed_limit);   // the operator's cap, live
         if (m.flags & fic::link::kCmdEstop) {
-            estop_latched_ = true;
-            faults_ |= fic::link::kFaultEstop;
-        } else if (estop_latched_ && !(m.flags & fic::link::kCmdEnable)) {
+            estop();
+        } else if (estop_latched_ && !estop_direct_ && !(m.flags & fic::link::kCmdEnable)) {
             // Re-arm: the operator cleared the e-stop and disabled torque.
             estop_latched_ = false;
             faults_ &= ~fic::link::kFaultEstop;
         }
+    }
+
+    // E-STOP: latched (RAMP from any torque state, never back to Running). From a CMD's flag, a later CMD
+    // without Enable re-arms it (the operator cleared it). From a direct Estop message (FIC Studio), only a new
+    // CONFIG (Start) does: fic_control's own Stop sends CMDs without Enable too.
+    void estop(bool direct = false) {
+        estop_latched_ = true;
+        estop_direct_ = estop_direct_ || direct;
+        faults_ |= fic::link::kFaultEstop;
     }
 
     // ------------------------------------------------------------------- tick
@@ -164,7 +188,13 @@ public:
 
         // --- arm feedback health
         if (!fb.valid) {
-            if (++arm_bad_ticks_ > kArmLinkLossTicks) enterFault(fic::link::kFaultArmLink);
+            // Out of torque (Ready: after a finished ramp, or before any torque) the arm leaving is what a Stop
+            // does (the Kinova driver exits once it is back in position mode): no fault, but no torque again
+            // until a new CONFIG. While torquing it is a lost arm: fault.
+            if (++arm_bad_ticks_ > kArmLinkLossTicks) {
+                if (state_ == McuState::Ready) arm_left_ = true;
+                else enterFault(fic::link::kFaultArmLink);
+            }
         } else {
             arm_bad_ticks_ = 0;
         }
@@ -182,7 +212,7 @@ public:
         const uint32_t full = (n_ >= 32) ? 0xFFFFFFFFu : ((1u << n_) - 1u);
         if (staged_mask_ == full && staged_epoch_ != active_epoch_) applyParams();
 
-        // --- joint-limit hard fault (fic_hardware: gravity only until reload)
+        // --- joint-limit hard fault (fic_control: gravity only until reload)
         if (!(faults_ & fic::link::kFaultJointLimit)) {
             for (int i = 0; i < n_; ++i) {
                 if (q_[i] < cfg_.fault_lower[i] || q_[i] > cfg_.fault_upper[i]) {
@@ -206,7 +236,13 @@ public:
                                    state_ == McuState::Ramp;
         if (torque_active) {
             if (estop_latched_ || stop_req || age_s > cfg_.ramp_after_s || !enable) {
-                if (state_ != McuState::Ramp) { state_ = McuState::Ramp; ramp_done_ = false; }
+                if (state_ != McuState::Ramp) {
+                    state_ = McuState::Ramp;
+                    ramp_done_ = false;
+                    // Decay from the torque the arm last got; the guard's damping
+                    // is added on top every tick, never folded back in here.
+                    for (int i = 0; i < n_; ++i) ramp_diff_[i] = tau_prev_[i] - gravityAt(i);
+                }
             } else if (state_ == McuState::Ramp) {
                 // A ramp runs to completion; the next Running entry starts clean.
             } else if (age_s > cfg_.hold_after_s) {
@@ -218,12 +254,13 @@ public:
                 state_ = McuState::Running;
             }
         } else if (state_ == McuState::Ready) {
-            if (enable && !estop_latched_ && !stop_req && age_s <= cfg_.hold_after_s &&
+            if (enable && !estop_latched_ && !arm_left_ && !stop_req && age_s <= cfg_.hold_after_s &&
                 params_applied_ && cmd_.param_epoch == active_epoch_) {
                 // Entering torque: re-seed planners / admittance at the current
-                // pose, exactly like a fic_hardware mode switch.
+                // pose, exactly like a fic_control mode switch.
                 reinitCore();
                 for (int i = 0; i < n_; ++i) tau_prev_[i] = gravityAt(i);
+                ramp_done_ = false;
                 state_ = McuState::Running;
             }
         }
@@ -246,11 +283,10 @@ public:
         case McuState::Ramp: {
             bool converged = true;
             for (int i = 0; i < n_; ++i) {
-                const Real g = gravityAt(i);
-                Real diff = (tau_prev_[i] - g) * kRampDecay;
-                if (std::fabs(diff) > kRampDoneNm) converged = false;
-                else diff = Real(0);
-                tau[i] = g + diff;
+                ramp_diff_[i] *= kRampDecay;
+                if (std::fabs(ramp_diff_[i]) > kRampDoneNm) converged = false;
+                else ramp_diff_[i] = Real(0);
+                tau[i] = gravityAt(i) + ramp_diff_[i];
             }
             if (converged) {
                 ramp_done_ = true;
@@ -263,6 +299,7 @@ public:
             return;                                   // Ready / Fault: arm holds itself
         }
 
+        for (int i = 0; i < n_; ++i) tau_law_[i] = tau[i];
         guardOutput(tau);
         out.torque_mode = true;
         for (int i = 0; i < n_; ++i) out.tau[i] = (float)tau[i];
@@ -280,12 +317,14 @@ public:
         s.state = state_;
         s.mode = have_cmd_ ? cmd_.mode : InnerMode::Gravity;
         s.n = (uint16_t)n_;
+        s.dt = cfg_.dt;
         for (int i = 0; i < n_; ++i) {
             s.q_raw[i] = (float)raw_q_prev_[i];
             s.tau_raw[i] = (float)tau_raw_[i];
             s.q[i] = (float)q_[i];
             s.tau_meas[i] = (float)tau_meas_[i];
             s.tau_cmd[i] = (float)tau_out_[i];
+            s.tau_law[i] = (float)tau_law_[i];
             s.g_used[i] = (float)gravityAt(i);
             s.adm_offset[i] = (float)core_.humanOffset(i);
             s.q_target_adm[i] = (float)diag_[i].q_target_adm;
@@ -296,8 +335,26 @@ public:
     }
 
     McuState state() const { return state_; }
+    // Torque is over for this session (a ramp ran to completion, or a fault):
+    // the adapter should hand the arm back to its own controller.
+    bool released() const { return ramp_done_ || state_ == McuState::Fault; }
+    // fic_control is commanding torque right now (fresh, enabled CMD, no e-stop):
+    // after a release, the adapter opens a new session with the arm.
+    bool wantsTorque(uint64_t now_us) const {
+        return have_cmd_ && (cmd_.flags & fic::link::kCmdEnable) && !(cmd_.flags & fic::link::kCmdStopTorque) &&
+               !estop_latched_ && Real(now_us - last_cmd_us_) * Real(1e-6) <= cfg_.hold_after_s;
+    }
     uint32_t faults() const { return faults_; }
     int joints() const { return n_; }
+    // The target the joint law saw last tick in modes 1/2 (after the joint-target speed limit).
+    Real slewedTarget(int i) const { return q_slew_[i]; }
+    // The joint planners' speed cap in force (rad/s, 0: none).
+    Real jointSpeedLimit() const { return core_.joint_speed_limit; }
+    // Gravity at the current pose (g0 + dg/dq (q - q0) from the latest CMD; 0 before any): what the arm needs
+    // when the inner loop no longer torques it but a driver stays in torque mode.
+    Real gravity(int i) const { return gravityAt(i); }
+    // The last tick ran H-PMP's split drive (Hapfic with the Jacobian).
+    bool usedSplit() const { return used_split_; }
     const Config& config() const { return cfg_; }
 
 private:
@@ -307,6 +364,8 @@ private:
     McuState state_ = McuState::Idle;
     uint32_t faults_ = 0;
     bool estop_latched_ = false;
+    bool estop_direct_ = false;     // the latch came from a direct Estop: only a CONFIG clears it
+    bool arm_left_ = false;         // the arm/driver went away out of torque: only a CONFIG torques again
     bool ramp_done_ = false;
     uint32_t tick_ = 0;
     int arm_bad_ticks_ = 0;
@@ -339,8 +398,16 @@ private:
     float gripper_pos_ = 0, gripper_current_ = 0;
 
     Real tau_prev_[kLinkMaxJoints] = {};
+    Real ramp_diff_[kLinkMaxJoints] = {};   // RAMP: offset from gravity, decays 0.995 per tick
     Real tau_out_[kLinkMaxJoints] = {};
+    Real tau_law_[kLinkMaxJoints] = {};     // the last torque before guardOutput
     fic::core::JointDiagT<Real> diag_[kLinkMaxJoints];
+
+    // Modes 1/2: the target the law sees, moving at most joint_target_speed per tick.
+    Real q_slew_[kLinkMaxJoints] = {};
+    bool slew_active_ = false;
+    InnerMode slew_mode_ = InnerMode::Gravity;
+    bool used_split_ = false;
 
     static Real wrapPi(Real x) { return fic::core::wrapToPi(x); }
 
@@ -411,17 +478,47 @@ private:
     void reinitCore() {
         bool ok = true;
         for (int i = 0; i < n_; ++i) ok &= core_.initJoint(i, active_[i], q_[i]);
+        core_.resetSplit();
+        slew_active_ = false;
         params_applied_ = ok && active_epoch_ != 0;
         if (!ok) faults_ |= fic::link::kFaultBadParams;
     }
 
     void runLaw(Real* tau) {
         const bool planner = cmd_.flags & fic::link::kCmdUsePlanner;
+        // Modes 1/2: the target the law sees moves at most joint_target_speed per tick (fic_control's
+        // JointTargetSlew), seeded at the measured joints on entry and on a mode change.
+        const bool slew = cmd_.joint_target_speed > 0.0f &&
+            (cmd_.mode == InnerMode::Impedance || cmd_.mode == InnerMode::ImpedancePlanner);
+        if (!slew) {
+            slew_active_ = false;
+            for (int i = 0; i < n_; ++i) q_slew_[i] = cmd_.q_target[i];
+        } else {
+            if (!slew_active_ || slew_mode_ != cmd_.mode) {
+                for (int i = 0; i < n_; ++i) q_slew_[i] = q_[i];
+                slew_active_ = true;
+                slew_mode_ = cmd_.mode;
+            }
+            const Real step = Real(cmd_.joint_target_speed) * Real(cfg_.dt > 0 ? cfg_.dt : 0.001f);
+            for (int i = 0; i < n_; ++i) {
+                const Real dq = jointDelta(i, Real(cmd_.q_target[i]), q_slew_[i]);
+                q_slew_[i] += fic::core::clampv(dq, -step, step);
+                if (cfg_.continuous[i]) q_slew_[i] = wrapPi(q_slew_[i]);
+            }
+        }
+        // H-PMP: the split drive from the Jacobian (without it each joint deadbands its own gap).
+        Real drive[kLinkMaxJoints];
+        used_split_ = cmd_.mode == InnerMode::Hapfic && (cmd_.flags & fic::link::kCmdHasJacobian);
+        if (used_split_) {
+            Real u[kLinkMaxJoints];
+            for (int i = 0; i < n_; ++i) u[i] = Real(cmd_.tau_des[i]) + gravityAt(i) + tau_meas_[i];
+            core_.splitDrive(cmd_.jac, u, n_, drive);
+        }
         for (int i = 0; i < n_; ++i) {
             fic::core::JointDiagT<Real>& d = diag_[i];
             d = fic::core::JointDiagT<Real>{};
             const Real g = gravityAt(i);
-            Real qt = cmd_.q_target[i];
+            Real qt = slew ? q_slew_[i] : Real(cmd_.q_target[i]);
             switch (cmd_.mode) {
             case InnerMode::Gravity:
                 tau[i] = g;
@@ -433,19 +530,22 @@ private:
                 tau[i] = core_.impedanceWithPlanner(i, qt, q_[i], d) + g;
                 break;
             // Modes 3/4 and hapfic: the admittance is driven by the interaction torque
-            // alone, so gravity is fed forward as in modes 1 and 2 (as fic_hardware).
-            case InnerMode::Admittance:          // fic_hardware mode 3
+            // alone, so gravity is fed forward as in modes 1 and 2 (as fic_control).
+            case InnerMode::Admittance:          // fic_control mode 3
                 tau[i] = core_.admittance(i, qt, q_[i], g, -tau_meas_[i], 1, planner, d) + g;
                 break;
-            case InnerMode::AdmittanceHaptic:    // fic_hardware mode 4
+            case InnerMode::AdmittanceHaptic:    // fic_control mode 4
                 tau[i] = core_.admittance(i, qt, q_[i], g, -tau_meas_[i], 2, planner, d) + g;
                 break;
-            case InnerMode::Hapfic:              // cartesianHapfic's joint layer
+            case InnerMode::Hapfic:              // H-PMP's joint layer (fic_control.h cartesianHpmp)
                 // Measured torque in the joint-admittance sign, as modes 3/4 and
-                // cartesianHapfic (-joint_torques_); +tau_meas_ was a positive feedback
+                // cartesianHpmp (-joint_torques_); +tau_meas_ was a positive feedback
                 // that drove the offsets to their bound.
-                tau[i] = core_.admittance(i, qt, q_[i], cmd_.tau_des[i] + g, -tau_meas_[i], 2, true, d,
-                                          Real(0.25) * core_.deadband_joint_tau) + g;   // HAP-FIC hysteresis
+                tau[i] = used_split_
+                    ? core_.admittance(i, qt, q_[i], cmd_.tau_des[i] + g, -tau_meas_[i], 2, true, d,
+                                       Real(0.25) * core_.deadband_joint_tau, drive[i]) + g
+                    : core_.admittance(i, qt, q_[i], cmd_.tau_des[i] + g, -tau_meas_[i], 2, true, d,
+                                       Real(0.25) * core_.deadband_joint_tau) + g;   // per-joint hysteresis
                 break;
             case InnerMode::Torque:
                 tau[i] = cmd_.tau_des[i] + g;
@@ -462,7 +562,7 @@ private:
         }
     }
 
-    // fic_hardware's output guard + the Kinova driver's rate limit.
+    // fic_control's output guard + the Kinova driver's rate limit.
     void guardOutput(Real* tau) {
         for (int i = 0; i < n_; ++i) {
             Real t = tau[i];

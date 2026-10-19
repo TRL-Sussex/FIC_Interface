@@ -169,7 +169,7 @@ def test_residual_recovers_an_applied_torque(model):
 
 
 def test_torque_sign_defaults_to_one(model):
-    """torque_sign must default to 1.0 — fic_hardware already applied it."""
+    """torque_sign must default to 1.0 — fic_control already applied it."""
     assert ResidualEstimator(model).torque_sign == 1.0
 
 

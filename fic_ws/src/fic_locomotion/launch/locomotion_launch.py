@@ -24,7 +24,7 @@ def _macos_dyld_env():
     rebuild the loader path from it and inject it explicitly. No-op on Linux
     (which uses LD_LIBRARY_PATH and already works).
 
-    Deliberately duplicated from fic_simulation/launch/fic_launch.py rather
+    Deliberately duplicated from fic_control/launch/sim_control_launch.py rather
     than shared: sourcing it across ROS packages would mean a package
     dependency for fifteen lines, and every launch file in this repo already
     carries its own copy. Self-guarding on sys.platform so a caller cannot

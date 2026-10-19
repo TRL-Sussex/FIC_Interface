@@ -88,9 +88,9 @@
   <tr><td>FIC node crashes on start</td><td>Start SIM <strong>before</strong> FIC. The FIC node needs MuJoCo's topics to be available.</td></tr>
   <tr><td>Jacobian size mismatch crash</td><td>Stop FIC/CTRL &rarr; change robot &rarr; restart. Never change robot while controller is running.</td></tr>
   <tr><td>Arm holds a rock-steady pose and ignores every target</td><td>A latched hard fault. A joint that left its <code>joint_limits_deg</code> range sets <code>hard_fault_</code> and the controller outputs gravity compensation only &mdash; which looks exactly like a healthy arm that refuses to move. It is cleared <em>only</em> by <code>loadRobotModel()</code>, i.e. by republishing the robot name on <code>robot{N}_selected_robot</code>. Look for <code>HARD FAULT</code> in the FIC log.</td></tr>
-  <tr><td>Several simulators fighting over one topic</td><td>Killing the <code>ros2 launch</code> parent can leave the simulator process (<code>install/mujoco_native/lib/mujoco_native/simulation</code>) or the controller running, and one accumulates per restart. Kill on <code>lib/mujoco_native/simulation</code> and <code>install/fic_simulation/lib</code>, SIGKILL, then <strong>verify exactly one of each</strong> before trusting anything you measure.</td></tr>
+  <tr><td>Several simulators fighting over one topic</td><td>Killing the <code>ros2 launch</code> parent can leave the simulator process (<code>install/mujoco_native/lib/mujoco_native/simulation</code>) or the controller running, and one accumulates per restart. Kill on <code>lib/mujoco_native/simulation</code> and <code>install/fic_control/lib</code>, SIGKILL, then <strong>verify exactly one of each</strong> before trusting anything you measure.</td></tr>
   <tr><td>Freshly started station falls over before you can use it</td><td>The arm starts at the model keyframe with nothing holding it and falls during the ~10&nbsp;s the controller spends initialising; on the Kinova joint&nbsp;3 reaches its &minus;150&deg; limit and hard-faults on the way down. Park it with the <code>robot{N}_simulation/sim_reset</code> service <em>while</em> you wait, and command the pose <strong>before</strong> teleporting onto it, so the controller is never closing a large error against an arm that was just moved.</td></tr>
-  <tr><td>The FIC loop rate drops while a target streams (the arm slows, lags or stops following)</td><td>Before v4.4.0, in every mode except Joint Impedance (mode&nbsp;1) each streamed joint target, and every <code>robot{N}_hpmp_enable</code> message even with an unchanged value, made the next 1&nbsp;ms tick re-read <code>config.xml</code> (about 29&nbsp;ms per read on the lab PC, more on slower PCs). In MuJoCo with targets at 100&nbsp;Hz the loop fell from 1000&nbsp;Hz to 74&nbsp;Hz (mode&nbsp;2) and 65&nbsp;Hz (mode&nbsp;3); <code>hpmp_enable</code> re-sent at 20&nbsp;Hz brought it to 405&nbsp;Hz. This is what stopped the arms after 5&nbsp;Oct. <strong>Fixed in v4.4.0</strong>: the nodes read the tuning once per robot and mode, in the background, and a target only re-seeds the controllers from memory (see <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a>). Rebuild <code>fic_simulation</code> and <code>fic_hardware</code>. <code>fic_simulation</code> logs the rate it reaches every 10&nbsp;s (<code>Control loop: &hellip; Hz</code>); it should read about 1000&nbsp;Hz.</td></tr>
+  <tr><td>The FIC loop rate drops while a target streams (the arm slows, lags or stops following)</td><td>Before v4.4.0, in every mode except Joint Impedance (mode&nbsp;1) each streamed joint target, and every <code>robot{N}_hpmp_enable</code> message even with an unchanged value, made the next 1&nbsp;ms tick re-read <code>config.xml</code> (about 29&nbsp;ms per read on the lab PC, more on slower PCs). In MuJoCo with targets at 100&nbsp;Hz the loop fell from 1000&nbsp;Hz to 74&nbsp;Hz (mode&nbsp;2) and 65&nbsp;Hz (mode&nbsp;3); <code>hpmp_enable</code> re-sent at 20&nbsp;Hz brought it to 405&nbsp;Hz. This is what stopped the arms after 5&nbsp;Oct. <strong>Fixed in v4.4.0</strong>: the nodes read the tuning once per robot and mode, in the background, and a target only re-seeds the controllers from memory (see <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a>). Rebuild <code>fic_control</code>. <code>fic_control</code> logs the rate it reaches every 10&nbsp;s (<code>Control loop: &hellip; Hz</code>); it should read about 1000&nbsp;Hz.</td></tr>
   <tr><td>Commands you publish have no effect at all</td><td>You published before the controller subscribed. Discovery here takes up to about 12&nbsp;s, and publishing into an undiscovered topic succeeds silently and delivers nothing. Wait on <code>get_subscription_count()</code> before sending anything that matters.</td></tr>
 </table>
 
@@ -106,7 +106,7 @@
 <div class="admonition warning"><div class="adm-title">Is the published gravity actually gravity?</div>
 <p>Pick a joint whose axis is vertical (on the Kinova Gen3, joint&nbsp;0). Gravity exerts no moment about a
 vertical axis in any pose, so that entry in <code>gravity_torques</code> must be ~0&nbsp;Nm whatever the arm
-is doing. If it is not, the vector is not gravity &mdash; and <code>fic_simulation</code> adds it raw to the
+is doing. If it is not, the vector is not gravity &mdash; and <code>fic_control</code> adds it raw to the
 control law's output in every joint mode, so a wrong one is injected feedforward on every joint, every cycle.
 See <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Simulation vs. Hardware</a>.</p></div>
 
@@ -122,7 +122,7 @@ is why.</p></div>
   <tr><th>Problem</th><th>Fix</th></tr>
   <tr><td>Robot not responding</td><td>Check: (1) driver connected (API LED green), (2) can ping robot IP, (3) torque control enabled on robot, (4) start API before FIC.</td></tr>
   <tr><td>Driver won't connect</td><td>Check network cable, robot IP, firewall. Try manual launch: <code>~/FIC_Interface/robot_library/franka/build/franka_joint_controller 192.168.1.100</code></td></tr>
-  <tr><td>Kinova faults when stopping FIC or API</td><td>Fixed in v3.8.1. If you see this on an older build, rebuild both <code>fic_hardware</code> and the Kinova driver against the latest <code>shared_params.h</code>. The driver now catches SIGTERM and transitions back to position mode before exiting. <code>fic_hardware</code> ramps torques down to gravity compensation over ~200&nbsp;ms instead of zeroing instantly.</td></tr>
+  <tr><td>Kinova faults when stopping FIC or API</td><td>Fixed in v3.8.1. If you see this on an older build, rebuild both <code>fic_control</code> and the Kinova driver against the latest <code>shared_params.h</code>. The driver now catches SIGTERM and transitions back to position mode before exiting. <code>fic_control</code> ramps torques down to gravity compensation over ~200&nbsp;ms instead of zeroing instantly.</td></tr>
   <tr><td>Kinova faults during normal operation</td><td>Check torque tuning &mdash; the per-joint rate limit is &plusmn;2&nbsp;Nm/ms (joints 0&ndash;3) and &plusmn;1&nbsp;Nm/ms (joints 4&ndash;6). If the controller output changes faster than this, the rate limiter clamps it. Lower K0 stiffness or increase planner damping_ratio to reduce torque transients.</td></tr>
   <tr><td>Jerky motion on hardware</td><td>Lower K0 stiffness, increase planner damping_ratio, check network latency between machines.</td></tr>
   <tr><td>Robot goes limp after E-STOP</td><td>Expected behaviour. Restart API + FIC to re-enable control. The hold command only lasts while the controller runs.</td></tr>
@@ -132,7 +132,7 @@ is why.</p></div>
 <h2>Tuning &amp; Auto-Tuning</h2>
 <table>
   <tr><th>Problem</th><th>Fix</th></tr>
-  <tr><td>Parameters don't take effect</td><td>Click SAVE after editing; the save publishes <code>robot{N}_param_update</code> and the FIC node logs <code>Parameter update (&hellip;); reloading tuning from config.xml</code>, then <code>Controllers Initialized &hellip; (tuning read from config.xml)</code> when it has switched. After editing the file by hand, publish <code>robot{N}_param_update</code> (any string) or restart the FIC node. Without <code>--symlink-install</code>, rebuild <code>fic_simulation</code> first.</td></tr>
+  <tr><td>Parameters don't take effect</td><td>Click SAVE after editing; the save publishes <code>robot{N}_param_update</code> and the FIC node logs <code>Parameter update (&hellip;); reloading tuning from config.xml</code>, then <code>Controllers Initialized &hellip; (tuning read from config.xml)</code> when it has switched. After editing the file by hand, publish <code>robot{N}_param_update</code> (any string) or restart the FIC node. Without <code>--symlink-install</code>, rebuild <code>fic_control</code> first.</td></tr>
   <tr><td>Auto-tuning stuck / no improvement</td><td>Increase <code>max_iterations</code> (default 12) or the <code>PSO particles</code> count. The optimiser is Neural&nbsp;Network&nbsp;+&nbsp;CEM (the legacy PSO / Bayesian / Hybrid names all map to it). Check that the test trajectory is appropriate for the mode being tuned.</td></tr>
   <tr><td>Oscillation during tuning</td><td>Lower initial K0. Enable save_during_tuning so improvements aren't lost on crash.</td></tr>
   <tr><td>New robot missing from dropdown</td><td>Add it in Robot Config (<strong>+ ADD</strong>), click <strong>DEPLOY TO CONTROLLER</strong>, rebuild (<code>colcon build --symlink-install</code>), source, restart.</td></tr>
@@ -179,13 +179,13 @@ source ~/FIC_Interface/fic_ws/install/setup.bash
 ros2 launch mujoco_native simulation_launch.py robot_name:=Franka_FR3
 
 # Terminal 3: FIC controller (simulation)
-ros2 launch fic_simulation fic_launch.py robot_name:=Franka_FR3 num_joints:=7
+ros2 launch fic_control sim_control_launch.py robot_name:=Franka_FR3 num_joints:=7
 
 # Terminal 4: FIC controller (hardware)
-ros2 launch fic_hardware robot_control_launch.py robot_name:=Franka_FR3
+ros2 launch fic_control robot_control_launch.py robot_name:=Franka_FR3
 
 # Terminal 5: Plotter
-ros2 run fic_simulation plotter_node.py
+ros2 run fic_control plotter_node.py
 
 # Terminal 6: Bag recording
 ros2 bag record -a -o ~/bags/debug_session

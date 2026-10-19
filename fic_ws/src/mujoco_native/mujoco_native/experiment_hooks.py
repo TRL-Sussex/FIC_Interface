@@ -103,8 +103,15 @@ def object_poses(data, objects, prefix=OBJECT_PREFIX):
 
 
 def site_wrench(model, data, force_sensor, torque_sensor):
-    fa = model.sensor(force_sensor).adr[0]
-    ta = model.sensor(torque_sensor).adr[0]
+    return site_wrench_at(data, *site_wrench_adr(model, force_sensor, torque_sensor))
+
+
+def site_wrench_adr(model, force_sensor, torque_sensor):
+    """The sensordata addresses of an F/T pair, to look up once (a name lookup per step is slow)."""
+    return int(model.sensor(force_sensor).adr[0]), int(model.sensor(torque_sensor).adr[0])
+
+
+def site_wrench_at(data, fa, ta):
     return np.concatenate([data.sensordata[fa:fa + 3], data.sensordata[ta:ta + 3]])
 
 

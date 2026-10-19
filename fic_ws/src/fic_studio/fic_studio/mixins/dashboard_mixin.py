@@ -591,7 +591,7 @@ class DashboardMixin:
         # wrench_for() returns the (Fx, Fy, Fz, Tx, Ty, Tz) tuple, not a
         # geometry_msgs/Wrench. Treating it as a message raised on the first
         # sample, and that uncaught exception tripped the crash hook, which
-        # killed fic_hardware and the driver mid-run.
+        # killed fic_control and the driver mid-run.
         fx, fy, fz, tx, ty, tz = w
         self._dash_wrench_table.set_values('force', [fx, fy, fz])
         self._dash_wrench_table.set_values('torque', [tx, ty, tz])

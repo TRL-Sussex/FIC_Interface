@@ -43,7 +43,7 @@ ARROW_LENGTH_M = 0.08
 def _select_pose(q_raw, q_filtered):
     """Return the joint vector to mirror, preferring the unfiltered one.
 
-    fic_hardware low-passes a WRAPPED angle, so a +-pi crossing leaves
+    fic_control low-passes a WRAPPED angle, so a +-pi crossing leaves
     `{rid}_q_current` sweeping the entire circle over ~35 ms (measured
     275 deg in 35 ms, ~7873 deg/s -- far past the arm's real limit). The
     raw topic keeps that wrap an instantaneous 2*pi step, which a hinge

@@ -54,8 +54,9 @@ window.FIC.pages.session = function buildSession(root) {
     setText($('#ss-parts'), (sess.parts_up || 0) + ' / ' + (sess.parts_total || 0));
     setText($('#ss-parts-n'), 'for this target');
     const il = s.inner_loop || {};
-    setText($('#ss-loop'), il.path === 'mcu' ? 'MCU' : 'Standard');
-    setText($('#ss-loop-n'), il.path === 'mcu' ? (il.state || '') + (il.where ? ' · ' + il.where : '') : 'controller on this PC');
+    setText($('#ss-loop'), ({ mcu: 'MCU', pc: 'PC inner loop', none: 'None', standard: 'Standard' })[il.path] || '—');
+    setText($('#ss-loop-n'), il.path === 'mcu' ? (il.state || '') + (il.where ? ' · ' + il.where : '')
+      : il.path === 'pc' ? (il.state || 'fic_inner_loop on this PC') : il.path === 'none' ? 'the arm is not driven' : 'controller on this PC');
     bigBtn.firstChild.textContent = running ? 'Stop session' : 'Start session';
     bigBtn.className = 'btn ' + (running ? 'btn-danger' : 'btn-primary');
     setText($('#sess-hint'), 'Same as Start / Stop in the top bar [S]');

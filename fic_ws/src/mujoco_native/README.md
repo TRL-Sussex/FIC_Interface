@@ -16,7 +16,7 @@ Under `robot{station_id}_simulation/`:
 |---|---|---|---|
 | `joint_states` | `sensor_msgs/JointState` | 1 kHz | every hinge joint (position, velocity, `qfrc_actuator`); a ball joint as `<joint>_roll/_pitch/_yaw` |
 | `gravity_torques` | `std_msgs/Float64MultiArray` | 1 kHz | g(q), one entry per hinge joint (`qfrc_bias` at zero velocity) |
-| `contact_torques` | `std_msgs/Float64MultiArray` | 1 kHz | joint torques of the environment on the arm, one entry per hinge (`qfrc_constraint + qfrc_applied`: contacts, joint limits, applied wrenches); `fic_simulation` estimates H-PMP's external wrench in modes 7/8 from it |
+| `contact_torques` | `std_msgs/Float64MultiArray` | 1 kHz | joint torques of the environment on the arm, one entry per hinge (`qfrc_constraint + qfrc_applied`: contacts, joint limits, applied wrenches); `fic_control` estimates H-PMP's external wrench in modes 7/8 from it |
 | `imu_data` | `sensor_msgs/Imu` | 500 Hz | the MJCF's accelerometer / gyro / framequat sensors (defaults if none) |
 | `force_torque` | `geometry_msgs/Wrench` | 200 Hz | `force_sensor` + `torque_sensor`, or any sensors whose names end in those (multi-robot scenes prefix them) |
 | `odom` | `nav_msgs/Odometry` | 50 Hz | base pose/twist of a floating base (zeros for a fixed base) |
@@ -77,7 +77,7 @@ The launch file exposes `robot_name`, `station_id`, `model_file`, `headless`,
 
 **Simulating like the real robot.** When the robot named by `robot_name` has an enabled
 `hardware_model` block in `robots_config.yaml` ($FIC_ROOT/fic_library/config, then
-../fic_library/config from the working directory, then fic_simulation's share), the launch file
+../fic_library/config from the working directory, then fic_control's share), the launch file
 passes it to the node, which sets the friction (`frictionloss`), damping and armature of the
 robot's joints, adds the torque-sensor noise to `joint_states`' effort and applies the torque
 command `command_delay_ms` late (`mujoco_native/hardware_model.py`). `FIC_HARDWARE_MODEL=off`
@@ -106,7 +106,7 @@ ros2 topic echo /robot1_simulation/gravity_torques
 Full stack — start the FIC controller and Studio, then press **SIM** + **FIC**:
 
 ```bash
-ros2 launch fic_simulation fic_launch.py robot_name:=KinovaGen3_7DOF \
+ros2 launch fic_control sim_control_launch.py robot_name:=KinovaGen3_7DOF \
     num_joints:=7 station_id:=1 source_prefix:=robot1_simulation
 ros2 run fic_studio fic_studio_pro
 ```

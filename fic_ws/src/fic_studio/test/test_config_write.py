@@ -11,7 +11,7 @@ import stat
 
 from fic_studio.xml_manager import XMLManager, find_config_path, write_atomic
 
-CMAKE = pathlib.Path(__file__).resolve().parents[2] / 'fic_simulation' / 'CMakeLists.txt'
+CMAKE = pathlib.Path(__file__).resolve().parents[2] / 'fic_control' / 'CMakeLists.txt'
 
 
 def test_write_atomic_replaces_the_file_keeps_its_mode_and_leaves_nothing_behind(tmp_path):

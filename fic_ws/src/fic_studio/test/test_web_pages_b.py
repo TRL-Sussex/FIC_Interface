@@ -497,6 +497,9 @@ class _Directory:
     def studios(self):
         return list(self.cards.values())
 
+    def visible(self):                  # what the page lists (stations.sees); here every card
+        return self.studios()
+
     def station(self, n):
         return self.cards.get(n)
 

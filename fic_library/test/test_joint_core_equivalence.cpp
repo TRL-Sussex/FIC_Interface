@@ -1,5 +1,5 @@
 // Equivalence: fic_joint_core.h (portable, runs on the MCU) vs the original
-// joint path in fic_control.h / FIC.cpp (runs in fic_hardware today).
+// joint path in fic_control.h / FIC.cpp (runs in fic_control today).
 //
 // Same parameters, same feedback, same targets, thousands of ticks, every
 // joint mode — the torques and diagnostics must be bit-identical. If this
@@ -68,7 +68,7 @@ static JointSet randomParams(std::mt19937& rng, int variant) {
     return js;
 }
 
-// mode 1..4 as fic_hardware; 5 = the hpmp joint layer (admittance mode 2,
+// mode 1..4 as fic_control; 5 = the hpmp joint layer (admittance mode 2,
 // desired effort from the Cartesian law, measured torque with + sign).
 static int runCase(int mode, int variant, unsigned seed, bool continuous_j3) {
     std::mt19937 rng(seed);

@@ -1036,18 +1036,11 @@ class RobotConfigMixin:
         self._rc_mcu_ramp.setDecimals(2)
         self._rc_mcu_ramp.setSuffix(' s')
         self._rc_mcu_ramp.setToolTip('No command for this long: ramp to gravity, then leave torque mode.')
-        self._rc_mcu_routing = QComboBox()
-        self._rc_mcu_routing.addItems(['haptic', 'direct'])
-        self._rc_mcu_routing.setMaximumWidth(160)
-        self._rc_mcu_routing.setToolTip(
-            'haptic: Cartesian modes send tau_des = J^T w to the MCU\'s joint admittance '
-            'haptic layer (as hpmp does). direct: as a feed-forward torque.')
         for label, widget in (('Adapter', self._rc_mcu_adapter),
                               ('Arm address', self._rc_mcu_arm_ip),
                               ('Setup command', self._rc_mcu_setup),
                               ('Hold after', self._rc_mcu_hold),
-                              ('Ramp out after', self._rc_mcu_ramp),
-                              ('Cartesian routing', self._rc_mcu_routing)):
+                              ('Ramp out after', self._rc_mcu_ramp)):
             cl.addLayout(self._rc_form_row(label, widget))
         row = QHBoxLayout()
         probe_btn = self._btn('Check now', 'BtnGreen')
@@ -1327,13 +1320,11 @@ class RobotConfigMixin:
         """
         Return the absolute path to fic_library/config/robots_config.yaml.
 
-        Computed relative to this source file's location so it works from any
-        working directory.
+        From the repository the Studio runs from (fic_studio.config: FIC_ROOT, or found from an install), so
+        it works from any working directory and from a plain colcon install.
         """
-        base = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', '..')
-        )
-        return os.path.join(base, 'fic_library', 'config', 'robots_config.yaml')
+        from fic_studio import config as _cfg
+        return os.path.join(_cfg.FIC_CONFIG_DIR, 'robots_config.yaml')
 
     def _rc_check_sync_state(self):
         """
@@ -1826,7 +1817,6 @@ class RobotConfigMixin:
         self._rc_mcu_setup.setText(mcu.get('setup_command', ''))
         self._rc_mcu_hold.setValue(float(mcu.get('hold_after_s', 0.05)))
         self._rc_mcu_ramp.setValue(float(mcu.get('ramp_after_s', 2.0)))
-        self._rc_mcu_routing.setCurrentText(mcu.get('cartesian_routing', 'haptic'))
         self._rc_mcu_result.setText('')
 
     def _rc_collect_mcu(self):
@@ -1838,8 +1828,9 @@ class RobotConfigMixin:
             'adapter': adapter,
             'hold_after_s': round(self._rc_mcu_hold.value(), 3),
             'ramp_after_s': round(self._rc_mcu_ramp.value(), 2),
-            'cartesian_routing': self._rc_mcu_routing.currentText(),
         })
+        # Cartesian modes always pass through the inner loop (FIC-link v3): an older file's option is dropped.
+        mcu.pop('cartesian_routing', None)
         for key, edit in (('arm_ip', self._rc_mcu_arm_ip), ('setup_command', self._rc_mcu_setup)):
             text = edit.text().strip()
             if text:
@@ -2504,10 +2495,7 @@ class RobotConfigMixin:
         """Open the raw robots_config.yaml viewer for the currently selected robot."""
         from fic_studio.mixins.config_viewer_dialog import ConfigViewerDialog
 
-        fic_interface_dir = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', '..')
-        )
-        yaml_path = os.path.join(fic_interface_dir, 'fic_library', 'config', 'robots_config.yaml')
+        yaml_path = self._rc_fic_config_yaml_path()
 
         # Prefer the robot on the config page; fall back to the toolbar's.
         if self._rc_current_id():

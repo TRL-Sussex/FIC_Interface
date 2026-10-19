@@ -25,7 +25,12 @@ $APT install -y \
     python3-pyqt5 python3-pyqt5.qtsvg python3-pyqt5.qtwebengine python3-yaml python3-scipy \
     python3-cryptography python3-pyqtgraph python3-opencv python3-matplotlib python3-tk \
     git cmake build-essential pkg-config \
-    lsb-release curl
+    lsb-release curl \
+    ffmpeg
+# adb + ffmpeg: Android devices over USB (installing an app, mirroring the display). adb is best-effort: where apt cannot install it (the Arduino board's
+# adbd pins other Android libraries) it is unpacked on its own by adb-private.sh.
+command -v adb >/dev/null 2>&1 || $APT install -y adb || bash "$(dirname "$0")/adb-private.sh" || \
+    echo "  -> adb unavailable: no Android devices over USB from this machine."
 echo "  -> System packages done."
 echo ""
 
@@ -69,7 +74,7 @@ echo ""
 # The distribution's tinyxml2 is what ROS itself uses (urdfdom, pinocchio's URDF
 # parser, ...). Installing another copy into /usr replaces the header, the
 # .so symlink and the CMake config, so FIC links the new soname while ROS keeps
-# the old one and BOTH end up loaded in one process: fic_hardware then segfaults
+# the old one and BOTH end up loaded in one process: fic_control then segfaults
 # on start-up (seen on a lab's four robots, 2026-09-23: tinyxml2 11 from source
 # over Ubuntu 24.04's 10). So use the packaged one whenever it is there, and
 # build from source only where it is missing — into /usr/local, never over it.
@@ -168,7 +173,7 @@ if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
 fi
 
 # ── Optional: the arm's vendor driver ──
-# fic_hardware does not talk to the arm itself: a vendor program does, and the two
+# fic_control does not talk to the arm itself: a vendor program does, and the two
 # share memory through fic_library's headers. A driver built against older headers
 # leaves the arm in low-level servoing with no commands ("Waiting for joint feedback
 # in shared memory"), so build it here alongside everything else it needs.

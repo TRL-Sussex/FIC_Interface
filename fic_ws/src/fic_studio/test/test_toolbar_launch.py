@@ -96,7 +96,7 @@ def test_viewer_button_is_visible_on_every_target():
     from a real robot session.
 
     Hiding it also had no safety value: the viewer works in simulation too,
-    because fic_simulation drives the same joint-admittance path and
+    because the simulation controller drives the same joint-admittance path and
     publishes ``{rid}_admittance_offset``.
     """
     s = _ToolbarRefreshStub()

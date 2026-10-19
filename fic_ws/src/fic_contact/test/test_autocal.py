@@ -128,7 +128,7 @@ def test_refuses_before_any_mode_is_known():
 def test_desired_angles_subscription_type_matches_the_publisher():
     """contact_node must subscribe to desired_joint_angles as Float32.
 
-    FIC Studio and fic_hardware both use Float32MultiArray on that
+    FIC Studio and fic_control both use Float32MultiArray on that
     topic. A Float64 subscription simply never matches the publisher --
     no error, no warning, `_q_desired` stays None and auto-calibration
     silently never fires. Cheap source check, because the failure mode
@@ -152,7 +152,7 @@ def test_target_pose_is_preferred_over_the_desired_command():
     issued, so on hardware it is silent and the cached value stays None --
     which is why auto-calibration never fired in the first robot session
     (0 firings across a whole run). `{rid}_q_target` is published every
-    cycle by fic_hardware and is the target the controller is genuinely
+    cycle by fic_control and is the target the controller is genuinely
     tracking, so it is the correct signal.
     """
     from fic_contact.autocal import choose_reference_pose
@@ -222,7 +222,7 @@ def test_active_target_is_preferred_over_the_joint_target():
     Measured on hardware in Cartesian Impedance: auto-calibration fired
     zero times and the node sat blocked on 'calibration stale', because
     it compared q_current against q_target while the controller was
-    tracking q_target_ik_. fic_hardware now publishes whichever target
+    tracking q_target_ik_. fic_control now publishes whichever target
     the live mode actually follows, and that is the one to use.
     """
     from fic_contact.autocal import choose_reference_pose

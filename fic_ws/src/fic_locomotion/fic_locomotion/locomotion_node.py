@@ -11,10 +11,10 @@ Note the topic deliberately avoided: `robot{N}_desired_joint_angles` truncates
 to seven joints in the C++ callback and would move only part of the robot.
 
 Where *measured* state comes from is selected by the `source_prefix`
-parameter, following the convention `fic_simulation.cpp:93` set for the C++
+parameter, following the convention `fic_control.cpp` set for the C++
 node. The default, `'simulation'`, resolves to exactly the topics this node
 used to hardcode. `'hardware'` resolves the joint vector to the
-`{rid}_q_current` `Float64MultiArray` that `fic_hardware` really publishes --
+`{rid}_q_current` `Float64MultiArray` that `fic_control` really publishes --
 and resolves the base state to nothing, because nothing in this repository
 estimates a floating base on hardware. In that configuration the node refuses
 to publish any target at all. See `docs/spot-locomotion-hardware.md`; that
@@ -47,7 +47,7 @@ JOINT_IMPEDANCE_MODE = 1
 DEFAULT_RATE_HZ = 200.0
 
 # Where measured state comes from. `source_prefix` follows the convention
-# `fic_simulation.cpp:93` established for the C++ node -- one parameter naming
+# `fic_control.cpp` established for the C++ node -- one parameter naming
 # the state source -- so the gait node is not structurally simulation-only.
 #
 #   'simulation' (default)  /{rid}_simulation/joint_states + .../odom
@@ -59,7 +59,7 @@ HARDWARE_SOURCE = 'hardware'
 # How the joint vector arrives.
 #   NAMED    sensor_msgs/JointState, matched by name (the simulator).
 #   ORDERED  std_msgs/Float64MultiArray, positional, in robots_config.yaml
-#            joint order (what `fic_hardware` publishes on {rid}_q_current;
+#            joint order (what `fic_control` publishes on {rid}_q_current;
 #            it publishes no JointState at all).
 NAMED_JOINTS = 'named'
 ORDERED_JOINTS = 'ordered'
@@ -89,7 +89,7 @@ def resolve_state_topics(rid: str, source_prefix: str,
     prefix = (source_prefix or DEFAULT_SOURCE_PREFIX).strip().strip('/')
     override = (base_state_topic or '').strip()
     if prefix == HARDWARE_SOURCE:
-        # No namespace: `fic_hardware` publishes `{rid}_q_current` relative to
+        # No namespace: `fic_control` publishes `{rid}_q_current` relative to
         # its own (default) node namespace, exactly as this node publishes
         # `{rid}_target_joint_angles`.
         return StateTopics('%s_q_current' % rid, ORDERED_JOINTS, override)
@@ -282,7 +282,7 @@ class LocomotionNode(Node):
 
     def _on_joint_array(self, msg: Float64MultiArray) -> None:
         """
-        Accept an ordered joint vector, as `fic_hardware` publishes it.
+        Accept an ordered joint vector, as `fic_control` publishes it.
 
         `{rid}_q_current` is a bare `Float64MultiArray` in `robots_config.yaml`
         joint order, with no names to match on -- so the length is the only

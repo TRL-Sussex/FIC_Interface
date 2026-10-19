@@ -38,7 +38,7 @@ The installer is safe to re-run and never uses `sudo`. It:
    straight into `~/miniforge3` from its official installer.
 3. Creates the **`fic_ros`** conda env with **ROS 2 Humble** + all deps
    (pinocchio, mujoco, PyQt5, compilers, colcon…).
-4. Builds the workspace (`communication`, `menagerie`, `fic_simulation`,
+4. Builds the workspace (`communication`, `menagerie`, `fic_control`,
    `fic_studio`, `mujoco_native`, …) — the whole workspace.
 5. Builds real **`.app` bundles** — *FIC Control Studio.app* and *FIC Dev
    Console.app* — in `~/Applications`, with the FIC icon rendered from the SVG,

@@ -20,6 +20,21 @@ set(FIC_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 add_executable(test_inner_loop test_inner_loop.cpp)
 target_include_directories(test_inner_loop PRIVATE ${FIC_INCLUDE})
 add_test(NAME inner_loop COMMAND test_inner_loop)
+add_executable(test_inner_loop_routing test_inner_loop_routing.cpp)
+target_include_directories(test_inner_loop_routing PRIVATE ${FIC_INCLUDE})
+add_test(NAME inner_loop_routing COMMAND test_inner_loop_routing)
+add_executable(test_state_diag test_state_diag.cpp)
+target_include_directories(test_state_diag PRIVATE ${FIC_INCLUDE})
+add_test(NAME state_diag COMMAND test_state_diag)
+# The topic plant's joint sample: all of the robot's joints or nothing.
+add_executable(test_plant_sample test_plant_sample.cpp)
+target_include_directories(test_plant_sample PRIVATE ${FIC_INCLUDE})
+add_test(NAME plant_sample COMMAND test_plant_sample)
+# The PC inner loop's adapter on a vendor driver's shared memory (POSIX shm, private names).
+add_executable(test_shm_adapter test_shm_adapter.cpp)
+target_include_directories(test_shm_adapter PRIVATE ${FIC_INCLUDE})
+target_link_libraries(test_shm_adapter PRIVATE rt)
+add_test(NAME shm_adapter COMMAND test_shm_adapter)
 
 # Equivalence against fic_control.h, and H-PMP's tuning, need Eigen + tinyxml2.
 find_package(Eigen3 QUIET NO_MODULE)
@@ -33,6 +48,18 @@ if(Eigen3_FOUND AND TINYXML2_INCLUDE AND TINYXML2_LIB)
   # FMAs differently in the two code paths.
   target_compile_options(test_joint_core_equivalence PRIVATE -ffp-contract=off)
   add_test(NAME joint_core_equivalence COMMAND test_joint_core_equivalence)
+  # H-PMP's split drive in JointCore (MCU) against fic_control.h's.
+  add_executable(test_split_drive_core test_split_drive_core.cpp)
+  target_include_directories(test_split_drive_core PRIVATE ${FIC_INCLUDE})
+  target_link_libraries(test_split_drive_core PRIVATE Eigen3::Eigen)
+  target_compile_options(test_split_drive_core PRIVATE -ffp-contract=off)
+  add_test(NAME split_drive_core COMMAND test_split_drive_core)
+  # H-PMP's joint layer as the inner loop runs it, against cartesianHpmp.
+  add_executable(test_hpmp_inner_equivalence test_hpmp_inner_equivalence.cpp)
+  target_include_directories(test_hpmp_inner_equivalence PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})
+  target_link_libraries(test_hpmp_inner_equivalence PRIVATE Eigen3::Eigen ${TINYXML2_LIB})
+  target_compile_options(test_hpmp_inner_equivalence PRIVATE -ffp-contract=off)
+  add_test(NAME hpmp_inner_equivalence COMMAND test_hpmp_inner_equivalence)
   # H-PMP's tuning: which blocks each mode reads (both nodes), its own block and the fallback.
   add_executable(test_hpmp_tuning test_hpmp_tuning.cpp)
   target_include_directories(test_hpmp_tuning PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})
@@ -95,7 +122,7 @@ else()
   message(WARNING "Eigen3/tinyxml2 not found: skipping test_joint_core_equivalence")
 endif()
 
-# End-to-end over UDP: McuLink (fic_hardware's end) against fic_mcu_sim (the
+# End-to-end over UDP: McuLink (fic_control's end) against fic_mcu_sim (the
 # MCU code on a simulated arm). ctest starts and stops the simulator. Only when
 # the MCU code is in this copy of the repository.
 set(FIC_MCU_SIM_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../../robot_library/fic_mcu/sim/fic_mcu_sim.cpp)
@@ -106,6 +133,24 @@ target_include_directories(fic_mcu_sim PRIVATE ${FIC_INCLUDE})
 add_executable(test_mcu_link_loop test_mcu_link_loop.cpp)
 target_include_directories(test_mcu_link_loop PRIVATE ${FIC_INCLUDE})
 target_link_libraries(test_mcu_link_loop PRIVATE Threads::Threads)
+# End to end: the PC inner loop (fic_inner_loop, from fic_control's sources) on a private shared-memory
+# segment, against a fake driver that keeps the Kinova driver's contract.
+set(FIC_INNER_LOOP_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../../fic_ws/src/fic_control/src/fic_inner_loop.cpp)
+if(EXISTS ${FIC_INNER_LOOP_SRC})
+  add_executable(fic_inner_loop ${FIC_INNER_LOOP_SRC})
+  target_include_directories(fic_inner_loop PRIVATE ${FIC_INCLUDE})
+  target_link_libraries(fic_inner_loop PRIVATE rt)
+endif()
+add_executable(test_inner_loop_process test_inner_loop_process.cpp)
+target_include_directories(test_inner_loop_process PRIVATE ${FIC_INCLUDE})
+target_link_libraries(test_inner_loop_process PRIVATE Threads::Threads rt)
+add_test(NAME inner_loop_process
+         COMMAND sh -c "seg=/fic_test_proc_$$; FIC_SHM_FEEDBACK_NAME=$seg $<TARGET_FILE:fic_inner_loop> --port 7353 >/dev/null & pid=$!; sleep 0.3; $<TARGET_FILE:test_inner_loop_process> 127.0.0.1:7353 $seg; r=$?; kill $pid; wait $pid; exit $r")
+add_executable(test_inner_loop_sim test_inner_loop_sim.cpp)
+target_include_directories(test_inner_loop_sim PRIVATE ${FIC_INCLUDE})
+target_link_libraries(test_inner_loop_sim PRIVATE Threads::Threads)
+add_test(NAME inner_loop_sim
+         COMMAND sh -c "$<TARGET_FILE:fic_inner_loop> --adapter sim --port 7354 --quiet >/dev/null & pid=$!; sleep 0.3; $<TARGET_FILE:test_inner_loop_sim> 7354; r=$?; kill $pid; wait $pid; exit $r")
 add_test(NAME mcu_link_end_to_end
          COMMAND sh -c "$<TARGET_FILE:fic_mcu_sim> --port 7351 >/dev/null & pid=$!; sleep 0.3; $<TARGET_FILE:test_mcu_link_loop> 127.0.0.1:7351; r=$?; kill $pid; exit $r")
 endif()

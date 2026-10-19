@@ -1,7 +1,7 @@
 // Joint target speed for the joint impedance modes (1, 2): the joint target the joint law sees moves towards the
 // commanded one at no more than `speed` rad/s on each joint, so a target far from the arm (Home, a slider,
 // a sequence step) is reached at that speed instead of the law's full effort at once. speed <= 0: off,
-// the commanded target as it is. Used by fic_hardware and fic_simulation; set by the 4th value of
+// the commanded target as it is. Used by fic_control and fic_control; set by the 4th value of
 // robot{N}_safety/velocity_limits and, on the arm, safety_zones.velocity.joint_target_speed.
 #pragma once
 

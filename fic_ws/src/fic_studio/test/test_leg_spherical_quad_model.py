@@ -70,7 +70,7 @@ def test_it_is_a_floating_base_with_twelve_motors(model):
 
 
 def test_hip_joints_are_named_as_the_locomotion_model_expects(model):
-    """fic_simulation.cpp:1522 binds actuator k to joint_names[k] positionally."""
+    """fic_control.cpp binds actuator k to joint_names[k] positionally."""
     expected = ['%s_%s' % (leg, axis) for leg in LEGS for axis in AXES]
     present = [mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, j)
                for j in range(model.njnt)]

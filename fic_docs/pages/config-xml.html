@@ -14,13 +14,13 @@ The robot-description file <code>robots_config.yaml</code> lives in the same dir
 
 <div class="admonition warning"><div class="adm-title">Which copy do the nodes read?</div>
 <p>The C++ nodes do <strong>not</strong> read <code>fic_library/config/config.xml</code> directly.
-Both <code>fic_simulation.cpp</code> and <code>fic_hardware.cpp</code> resolve the path via
+Both <code>fic_control.cpp</code> and <code>fic_control.cpp</code> resolve the path via
 the installed package share directory:</p>
-<pre><code>get_package_share_directory("fic_simulation") + "/config/config.xml"</code></pre>
-<p><code>fic_simulation</code>'s CMakeLists installs <code>fic_library/config/</code> into
-<code>share/fic_simulation/</code>. With <code>colcon build --symlink-install</code> the installed
+<pre><code>get_package_share_directory("fic_control") + "/config/config.xml"</code></pre>
+<p><code>fic_control</code>'s CMakeLists installs <code>fic_library/config/</code> into
+<code>share/fic_control/</code>. With <code>colcon build --symlink-install</code> the installed
 copy is a symlink back to the source file, so edits take effect on the next reload; with a plain
-<code>colcon build</code> you must rebuild <code>fic_simulation</code> for edits to be seen by the
+<code>colcon build</code> you must rebuild <code>fic_control</code> for edits to be seen by the
 controller. The Python GUI always edits the source file in <code>fic_library/config/</code>
 (resolved by <code>find_config_path()</code>).</p></div>
 
@@ -210,12 +210,12 @@ node's console output (<a href="#log-viewer" onclick="showPage('log-viewer')">Lo
   <!-- installed copy -->
   <rect x="280" y="145" width="180" height="60" class="box box-grey"/>
   <text x="370" y="165" class="label-bold">Installed copy</text>
-  <text x="370" y="185" class="label-code">share/fic_simulation/config/</text>
+  <text x="370" y="185" class="label-code">share/fic_control/config/</text>
 
   <!-- nodes -->
   <rect x="520" y="145" width="160" height="60" class="box box-green"/>
-  <text x="600" y="165" class="label-bold">fic_simulation /</text>
-  <text x="600" y="181" class="label-bold">fic_hardware</text>
+  <text x="600" y="165" class="label-bold">fic_control /</text>
+  <text x="600" y="181" class="label-bold">fic_control</text>
   <text x="600" y="196" class="label-code">fic_param_loader.hpp</text>
 
   <!-- arrows -->
@@ -248,7 +248,7 @@ is included.</p>
   <tr><td>Mode change, robot selection, joint-count change, H-PMP on/off where it changes the mode the parameters come from</td><td>The key changes, so a new set is read. Until it is in memory the control loop returns early and sends no new command; then the controllers start on it.</td></tr>
   <tr><td><code>robot&lt;N&gt;_param_update</code> (any payload)</td><td>The set is read again with the same key. The controllers keep running on the old set until the new one is ready, then switch to it on the next tick.</td></tr>
   <tr><td><code>robot&lt;N&gt;_active_profile</code> with a different name</td><td>As <code>param_update</code>, with the new profile.</td></tr>
-  <tr><td>A new joint or Cartesian target</td><td>No read. Where a joint target re-seeds the controllers (<code>robot&lt;N&gt;_target_joint_angles</code> in <code>fic_simulation</code> outside mode 1; <code>robot&lt;N&gt;_desired_joint_angles</code> in mode 2, or in the other modes except 1 while the admittance planner is on) they re-seed from the set already in memory, which takes microseconds. A Cartesian target does not re-seed them.</td></tr>
+  <tr><td>A new joint or Cartesian target</td><td>No read. Where a joint target re-seeds the controllers (<code>robot&lt;N&gt;_target_joint_angles</code> in <code>fic_control</code> outside mode 1; <code>robot&lt;N&gt;_desired_joint_angles</code> in mode 2, or in the other modes except 1 while the admittance planner is on) they re-seed from the set already in memory, which takes microseconds. A Cartesian target does not re-seed them.</td></tr>
   <tr><td>A <code>robot&lt;N&gt;_hpmp_enable</code> repeating the current value</td><td>Ignored.</td></tr>
 </table>
 <p>The read runs on a background thread (<code>std::async</code>), so the 1&nbsp;ms loop never
@@ -261,7 +261,7 @@ config.xml)</code>.</p>
 <div class="admonition note"><div class="adm-title">Before v4.4.0</div>
 <p>The nodes re-read the file inside the control loop whenever <code>initControllerPLanner</code>
 was cleared, and outside Joint Impedance (mode 1) a streamed joint target cleared it
-(on <code>robot&lt;N&gt;_target_joint_angles</code>, which only <code>fic_simulation</code> takes, in every
+(on <code>robot&lt;N&gt;_target_joint_angles</code>, which only the simulation target takes, in every
 such mode; on <code>robot&lt;N&gt;_desired_joint_angles</code>, in both nodes, in mode 2 and in the other modes
 while the admittance planner is on), as did
 every <code>hpmp_enable</code> message even with an unchanged value. In MuJoCo, with targets
@@ -374,7 +374,7 @@ block has no <code>&lt;controller&gt;</code> child, controller fields are read a
 of the block itself.</p>
 
 <h2>Runtime Profile Switching</h2>
-<p>Both <code>fic_hardware</code> and <code>fic_simulation</code> subscribe to a
+<p><code>fic_control</code> subscribe to a
 station-scoped String topic:</p>
 <pre><code>robot&lt;N&gt;_active_profile   (std_msgs/String)</code></pre>
 <p>where <code>&lt;N&gt;</code> is the station id (see <a href="#topics" onclick="showPage('topics')">Topics</a>).
@@ -385,9 +385,9 @@ ignored. When the profile actually changes, the node updates its internal
   <li>Both nodes then read the tuning again with the new profile, in the background, and switch
   the controllers to it when it is ready (see <em>When the Nodes Read the File</em>). The
   controllers run on the old profile until then.</li>
-  <li><strong>fic_simulation</strong> subscribes reliable and transient-local (as the GUI and the
-  experiment runner publish it), so a profile chosen before the node started is still received;
-  <strong>fic_hardware</strong> subscribes with a plain depth-10 QoS.</li>
+  <li><strong>fic_control</strong> subscribes reliable and transient-local (as the GUI and the
+  experiment runner publish it), on both targets, so a profile chosen before the node started is still
+  received.</li>
 </ul>
 <p>Both nodes log <code>Active tuning profile: &lt;name&gt;</code> on change. The GUI publishes to
 this topic whenever the user changes the Config dropdown in the Tuning panel or a
@@ -412,8 +412,8 @@ ros2 topic pub --once /robot1_param_update std_msgs/String "data: robot1:manual:
 ros2 topic pub --once /robot1_active_profile std_msgs/String "data: Gentle"
 ros2 topic pub --once /robot1_active_profile std_msgs/String "data: default"</code></pre>
 <p>Both nodes read the file again on either message. If your workspace was <em>not</em> built
-with <code>--symlink-install</code>, rebuild <code>fic_simulation</code> so the installed copy under
-<code>share/fic_simulation/config/</code> picks up your edits (see
+with <code>--symlink-install</code>, rebuild <code>fic_control</code> so the installed copy under
+<code>share/fic_control/config/</code> picks up your edits (see
 <a href="#build-tools" onclick="showPage('build-tools')">Build Tools</a>).</p>
 
 <div class="admonition warning"><div class="adm-title">Validation</div>

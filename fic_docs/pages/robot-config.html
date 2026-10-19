@@ -113,8 +113,8 @@
   <text x="385" y="132" class="label-sm">same Save</text>
   <line x1="445" y1="112" x2="545" y2="150" class="arrow"/>
   <rect x="265" y="255" width="180" height="60" class="box box-orange"/>
-  <text x="355" y="275" class="label-bold">fic_simulation /</text>
-  <text x="355" y="290" class="label-bold">fic_hardware</text>
+  <text x="355" y="275" class="label-bold">fic_control /</text>
+  <text x="355" y="290" class="label-bold">fic_control</text>
   <text x="355" y="305" class="label-sm">re-read YAML on robot load</text>
   <line x1="355" y1="220" x2="355" y2="255" class="arrow"/>
   <text x="418" y="237" class="label-sm">next loadRobotModel()</text>
@@ -135,7 +135,7 @@
   <tr><th>Field group</th><th>Takes effect</th></tr>
   <tr><td><code>gravity_compensated</code>, <code>wrench_gravity_compensated</code>, <code>wrench_from_api</code></td><td><strong>Immediately, on the stations running this robot.</strong> Save publishes a latched (<code>transient_local</code>) <code>std_msgs/Bool</code> on <code>{rid}_gravity_compensated</code>, <code>{rid}_wrench_gravity_compensated</code> and <code>{rid}_wrench_from_api</code> for every station whose selected robot is the one saved; both the simulation and hardware nodes switch on the spot. Saving another robot never flips a running robot's switches.</td></tr>
   <tr><td>Everything else in <code>robots_config.yaml</code> (joint names, limits, home pose, frames, paths, gripper, deadbands&hellip;)</td><td><strong>On the next robot load.</strong> The C++ nodes call <code>loadFromDefault()</code> inside <code>loadRobotModel()</code>, so re-selecting the robot in the toolbar (or restarting the node) picks up the new YAML &mdash; no rebuild required.</td></tr>
-  <tr><td>New robots added to <code>config.xml</code></td><td><strong>Immediately</strong> with <code>colcon build --symlink-install</code> (this workspace): the nodes read <code>config.xml</code> from <code>fic_simulation</code>'s install share directory, where it is a link to <code>fic_library/config/config.xml</code>. A copy install needs <code>colcon build --packages-select fic_simulation</code>.</td></tr>
+  <tr><td>New robots added to <code>config.xml</code></td><td><strong>Immediately</strong> with <code>colcon build --symlink-install</code> (this workspace): the nodes read <code>config.xml</code> from <code>fic_control</code>'s install share directory, where it is a link to <code>fic_library/config/config.xml</code>. A copy install needs <code>colcon build --packages-select fic_control</code>.</td></tr>
 </table>
 <p>Both YAMLs are written atomically, and a save merges rather than replaces: keys the page has no field for &mdash; <code>loop_closures</code>, <code>urdf_path_gripper</code>, a deadband's <code>joint_tau_per_joint</code> &mdash; survive at any depth in the Studio's copy, and values only the controllers' copy has (added there by hand) are kept in it. The controllers' copy is still built from a fixed list of keys, plus <code>robot_category</code>, <code>loop_closures</code>, <code>ee_orientation_only</code>, <code>view_joint_names</code>, <code>safety_zones</code> and <code>sim_backend</code>.</p>
 
@@ -257,7 +257,7 @@
     driver_command: ""</code></pre>
 <ol start="6">
   <li>Save also patches <code>config.xml</code> with default per-joint/Cartesian tuning for the new robot (the same batch step runs at Studio startup via <code>XMLManager.ensure_all_robots()</code>); tune afterwards in the <a href="#tuning" onclick="showPage('tuning')">Tuning Panel</a></li>
-  <li>No rebuild is needed: the Studio starts the simulator with <code>model_file:=</code> the robot's scene, and the controllers read the URDF and YAML from the source tree. Only a copy (non-symlink) install needs <code>colcon build --packages-select fic_simulation</code> for the new <code>config.xml</code> entry</li>
+  <li>No rebuild is needed: the Studio starts the simulator with <code>model_file:=</code> the robot's scene, and the controllers read the URDF and YAML from the source tree. Only a copy (non-symlink) install needs <code>colcon build --packages-select fic_control</code> for the new <code>config.xml</code> entry</li>
 </ol>
 <div class="admonition warning"><div class="adm-title">Do not hand-edit robots_config.yaml as your primary copy</div>
 <p><code>robots_config.yaml</code> is <strong>rewritten from <code>fic_studio_robots.yaml</code> on every Save</strong>. Values only it has are kept, but a robot added only to <code>robots_config.yaml</code> will not appear in the Studio (which reads its own YAML) and is dropped the next time anyone saves. Hand-edit it only in headless setups that never run the Studio &mdash; otherwise go through the page (<strong>Add a robot</strong>, <strong>+ Blank robot</strong> or <em>Import robots from YAML</em>).</p>
@@ -288,7 +288,7 @@
 <div class="admonition warning"><div class="adm-title">Why not use Pinocchio's limits?</div>
 <p>In theory, Pinocchio should assign a large sentinel to joints with unspecified URDF bounds. In practice (tested on ROS 2 Jazzy + Kinova Gen3 URDF), <code>model.lowerPositionLimit/upperPositionLimit</code> comes back as <code>0.0, 0.0</code> for such joints — indistinguishable from a bounded joint clamped to zero. Parsing the URDF XML directly is the only reliable signal.</p></div>
 <p>This also correctly distinguishes physical multi-turn joints (e.g. ±720° = ±4π ≈ 12.57 rad) from truly continuous ones — a pure span heuristic would misclassify them.</p>
-<p><code>fic_hardware</code> / <code>fic_simulation</code> call <code>deriveJointContinuityFromUrdf(urdf_path, joint_names)</code> right after <code>buildModel()</code>, compose clamp limits (Pinocchio's values for bounded joints, ±π placeholder for continuous), and install them into <code>ficControl</code> via <code>setJointContinuous()</code> / <code>setJointLimits()</code> — once per robot, before any mode switch — so <strong>Cartesian modes (which skip <code>initJointPlanner</code>) also see correct wrapping behaviour</strong>.</p>
+<p><code>fic_control</code> call <code>deriveJointContinuityFromUrdf(urdf_path, joint_names)</code> right after <code>buildModel()</code>, compose clamp limits (Pinocchio's values for bounded joints, ±π placeholder for continuous), and install them into <code>ficControl</code> via <code>setJointContinuous()</code> / <code>setJointLimits()</code> — once per robot, before any mode switch — so <strong>Cartesian modes (which skip <code>initJointPlanner</code>) also see correct wrapping behaviour</strong>.</p>
 <p>The URDF remains the authoritative source for <strong>planner target clamping</strong> (the FIC planner clamps
 commanded joint targets to URDF bounds). The <code>joint_limits_deg</code> field in
 <code>robots_config.yaml</code> serves a different role: it defines the robot&rsquo;s <strong>physical

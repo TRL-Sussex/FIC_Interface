@@ -94,3 +94,18 @@ def test_object_poses_name_the_obj_bodies():
     objs = object_bodies(m)
     assert [n for n, _ in objs] == ['obj_cube']
     assert object_poses(d, objs) == {'cube': [0.5, 0.0, 0.1, 1.0, 0.0, 0.0, 0.0]}
+
+
+_FT_XML = """<mujoco><worldbody><body name="b" pos="0 0 1"><freejoint/><geom size="0.1" mass="2"/>
+<site name="s"/></body></worldbody><sensor><force name="f" site="s"/><torque name="t" site="s"/></sensor></mujoco>"""
+
+
+def test_site_wrench_from_addresses_found_once():
+    """The F/T wrench is read every physics step: the sensors are looked up by name once
+    (site_wrench_adr), not per step (the lookup was most of site_wrench's cost)."""
+    from mujoco_native.experiment_hooks import site_wrench, site_wrench_adr, site_wrench_at
+    m = mujoco.MjModel.from_xml_string(_FT_XML)
+    d = mujoco.MjData(m)
+    mujoco.mj_step(m, d)
+    adr = site_wrench_adr(m, 'f', 't')
+    assert np.allclose(site_wrench_at(d, *adr), site_wrench(m, d, 'f', 't'))

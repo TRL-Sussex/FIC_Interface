@@ -3,7 +3,7 @@
 MuJoCo imports the URDF itself (bodies, joints, limits, inertias, meshes). On
 top of that this adds what FIC needs and a URDF cannot say:
 
-* one ``<motor>`` per arm joint named ``torq_j1..N`` -- fic_simulation
+* one ``<motor>`` per arm joint named ``torq_j1..N`` -- fic_control
   publishes commands to those names, in joint order;
 * a ``force_torque_site`` on the end-effector body with ``force_sensor`` and
   ``torque_sensor`` -- the simulator's wrench publisher looks for them;

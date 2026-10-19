@@ -1,4 +1,4 @@
-// End-to-end over real UDP: fic_hardware's McuLink (Linux end) against a
+// End-to-end over real UDP: fic_control's McuLink (Linux end) against a
 // running fic_mcu_sim (MCU end). Start the simulator first:
 //
 //   robot_library/fic_mcu/build/fic_mcu_sim --port 7351 &
@@ -49,6 +49,7 @@ int main(int argc, char** argv) {
     c.torque_cutoff_hz = 200; c.state_cutoff_hz = 10;
     c.damping_alpha = (float)std::exp(-2.0 * M_PI * 20.0 / 1000.0);
     c.restart_on_stall = 1; c.planner_max_hz = 8.75f; c.planner_speed_margin = 1.5708f; c.joint_speed_limit = 0;
+    c.task_db_force = 4.0f; c.task_db_torque = 0.2f;
     for (int i = 0; i < N; ++i) {
         c.lower[i] = -3; c.upper[i] = 3; c.fault_lower[i] = -3; c.fault_upper[i] = 3;
         c.torque_limit[i] = 39; c.torque_rate_limit[i] = 2; c.torque_sign[i] = 1;
@@ -95,6 +96,23 @@ int main(int argc, char** argv) {
                 err, link.stateRateHz(), st.jitter_us_max, st.cmd_age_ms);
     CHECK(err < 0.15);
     CHECK(link.stateRateHz() > 800);
+
+    // H-PMP over the wire (FIC-link v3): Hapfic with the Jacobian for 0.5 s, holding where the arm is.
+    for (int i = 0; i < N; ++i) qt[i] = st.q_raw[i];
+    next = Clock::now();
+    for (int k = 0; k < 500; ++k) {
+        CmdMsg m;
+        m.config_epoch = c.config_epoch; m.param_epoch = 1; m.n = N;
+        m.mode = InnerMode::Hapfic; m.flags = kCmdEnable | kCmdHasJacobian;
+        for (int i = 0; i < N; ++i) m.q_target[i] = (float)qt[i];
+        for (int r = 0; r < 6; ++r) for (int col = 0; col < N; ++col) m.jac[r * N + col] = (r == col) ? 0.6f : 0.05f;
+        link.sendCmd(m);
+        next += std::chrono::milliseconds(1);
+        std::this_thread::sleep_until(next);
+    }
+    CHECK(link.latestState(st, age) && age < 0.05);
+    std::printf("hpmp: state %d mode %d faults 0x%X\n", (int)st.state, (int)st.mode, st.faults);
+    CHECK(st.state == McuState::Running && st.mode == InnerMode::Hapfic && st.faults == 0);
 
     // Linux goes silent.
     st = waitState(link, 0.2);

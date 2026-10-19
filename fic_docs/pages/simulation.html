@@ -1,9 +1,9 @@
 <div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">›</span> Simulation</div>
-<h1>Simulation (MuJoCo + fic_simulation)</h1>
-<p class="subtitle">Physics-accurate simulation with the <code>fic_simulation</code> ROS 2 control node.</p>
+<h1>Simulation (MuJoCo + fic_control)</h1>
+<p class="subtitle">Physics-accurate simulation with the <code>fic_control</code> ROS 2 control node.</p>
 
 <h2>How It Works</h2>
-<p><code>fic_simulation</code> and the MuJoCo node are <strong>separate processes</strong> communicating over ROS 2 topics. MuJoCo handles physics stepping and 3D rendering; fic_simulation handles FIC control. All simulation topics are scoped by <strong>station id</strong>: the simulator node publishes under <code>robot{N}_simulation/</code> (its <code>topic_prefix</code> parameter, set by the launch file from <code>station_id</code>, 1&ndash;4), and the controller subscribes to the same prefix via its <code>source_prefix</code> parameter. This keeps multiple side-by-side stations from cross-talking — see <a href="#topics" onclick="showPage('topics')">Topics</a>. For behavioural differences from the hardware node, see <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Sim vs Hardware</a>.</p>
+<p><code>fic_control</code> and the MuJoCo node are <strong>separate processes</strong> communicating over ROS 2 topics. MuJoCo handles physics stepping and 3D rendering; fic_control handles FIC control. All simulation topics are scoped by <strong>station id</strong>: the simulator node publishes under <code>robot{N}_simulation/</code> (its <code>topic_prefix</code> parameter, set by the launch file from <code>station_id</code>, 1&ndash;4), and the controller subscribes to the same prefix via its <code>source_prefix</code> parameter. This keeps multiple side-by-side stations from cross-talking — see <a href="#topics" onclick="showPage('topics')">Topics</a>. For behavioural differences from the hardware node, see <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Sim vs Hardware</a>.</p>
 <svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg" style="max-width:700px; width:100%; margin:20px 0;" role="img" aria-label="mujoco / simulation">
 
   <style>
@@ -50,9 +50,9 @@
   <text x="145" y="80" class="label-sm" style="fill:#00897b">Physics engine</text>
   <text x="145" y="95" class="label-sm" style="fill:#00897b">+ 3D viewer</text>
 
-  <!-- fic_simulation box -->
+  <!-- fic_control box -->
   <rect x="440" y="30" width="230" height="140" class="box box-green"/>
-  <text x="555" y="60" class="label-bold" style="fill:#1b5e20">fic_simulation</text>
+  <text x="555" y="60" class="label-bold" style="fill:#1b5e20">fic_control</text>
   <text x="555" y="80" class="label-sm" style="fill:#388e3c">FIC controller</text>
   <text x="555" y="95" class="label-sm" style="fill:#388e3c">1 kHz control loop</text>
 
@@ -75,12 +75,12 @@
 <ol>
   <li>Select the robot from the toolbar dropdown.</li>
   <li>Set <strong>Target</strong> to <em>Simulation</em> and press <strong>&#9654; Start</strong>. This launches the simulator (MuJoCo on the CPU, package <code>mujoco_native</code>, by default; see <a href="#settings" onclick="showPage('settings')">Settings</a> → Simulation for the Newton backend below), with a gripper bridge helper alongside it to drive the scene's <code>gripper</code> actuator, if present, from <code>robot{N}_gripper_width</code>.</li>
-  <li>About 2&nbsp;s later the <code>fic_simulation</code> control node auto-starts with <code>source_prefix:=robot{N}_simulation</code>.</li>
+  <li>About 2&nbsp;s later the <code>fic_control</code> control node auto-starts with <code>source_prefix:=robot{N}_simulation</code>.</li>
   <li>The <strong>SIM</strong> and <strong>FIC</strong> status LEDs turn <strong>green</strong>. (There is a single Start/Stop button, not one per process — see <a href="#processes" onclick="showPage('processes')">Processes</a>.)</li>
 </ol>
 <p>Both processes are managed by the GUI — see <a href="#processes" onclick="showPage('processes')">Processes</a> for logs and manual start/stop.</p>
 
-<h2>Subscribed Topics (fic_simulation)</h2>
+<h2>Subscribed Topics (fic_control)</h2>
 <p><code>{N}</code> is the node's <code>station_id</code> parameter (default 1).</p>
 <table>
   <tr><th>Topic</th><th>Type</th><th>Description</th></tr>
@@ -100,7 +100,7 @@
   <tr><td><code>robot{N}_gravity_compensated</code> / <code>_wrench_gravity_compensated</code> / <code>_wrench_from_api</code></td><td>Bool (transient local)</td><td>Runtime overrides of the robot-config flags</td></tr>
 </table>
 
-<h2>Published Topics (fic_simulation)</h2>
+<h2>Published Topics (fic_control)</h2>
 <table>
   <tr><th>Topic</th><th>Type</th><th>Description</th></tr>
   <tr><td><code>/robot{N}_simulation/actuators_cmds</code></td><td>ActuatorCmds</td><td>Final torques to MuJoCo, actuator names <code>torq_j1</code>…<code>torq_jN</code> (after guards and optional velocity damping)</td></tr>
@@ -160,7 +160,7 @@ tau[i]  = clamp(fic_torque[i] − kd[i] × joint_velocity[i], ±torque_limit[i])
   <rect x="598" y="35" width="94" height="60" class="box box-teal"/>
   <text x="645" y="55" class="label-bold" style="fill:#004d40">Publish</text>
   <text x="645" y="74" class="label-code">actuators_cmds</text>
-  <text x="350" y="115" class="label-sm">fic_simulation torque pipeline — runs every 1 ms</text>
+  <text x="350" y="115" class="label-sm">fic_control torque pipeline — runs every 1 ms</text>
 </svg>
 
 <h2>Control Loop (1 kHz)</h2>
@@ -169,7 +169,7 @@ tau[i]  = clamp(fic_torque[i] − kd[i] × joint_velocity[i], ±torque_limit[i])
   <li>Snapshot state (under mutex) → release mutex before computing</li>
   <li>Detect mode change → reset init flag (also reset by the hpmp toggle, robot selection, and new joint targets)</li>
   <li>Compute EE velocity = Jacobian × q̇</li>
-  <li>Initialise controllers when the init flag is down — loads <code>(robot, mode, profile)</code> parameters from the installed <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a> (<code>&lt;fic_simulation share&gt;/config/config.xml</code>, installed from <code>fic_library/config/config.xml</code>). With hpmp active on modes 6/7/8, its joint and Cartesian parameters load from the H-PMP block (<code>&lt;mode id="100"&gt;</code>; modes 4 and 6 on a robot without one)</li>
+  <li>Initialise controllers when the init flag is down — loads <code>(robot, mode, profile)</code> parameters from the installed <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a> (<code>&lt;fic_control share&gt;/config/config.xml</code>, installed from <code>fic_library/config/config.xml</code>). With hpmp active on modes 6/7/8, its joint and Cartesian parameters load from the H-PMP block (<code>&lt;mode id="100"&gt;</code>; modes 4 and 6 on a robot without one)</li>
   <li>Compute FIC torques per joint/axis; modes 1&ndash;4 and hpmp add MuJoCo's gravity torque <code>g(q)</code> on top (the FIC law has no gravity term), and in modes 3/4 it is also the commanded effort the interaction torque is measured against</li>
   <li>Apply null-space helpers (postural / elbow) on Cartesian modes if enabled</li>
   <li>Hard-fault check — if any joint exceeds the config's physical position limits, latch a fault and output gravity compensation only until a new robot is loaded</li>
@@ -237,7 +237,7 @@ tau[i]  = clamp(fic_torque[i] − kd[i] × joint_velocity[i], ±torque_limit[i])
 <div class="admonition note"><div class="adm-title">A dead controller leaves the arm limp</div><p>A torque command the controller stops refreshing for 0.2&nbsp;s is zeroed, so if the FIC controller dies the simulated arm falls under gravity instead of pushing on with its last torque. Position-type actuators (the Robotiq <code>gripper</code>) keep their last setpoint, because the gripper bridge publishes only when the width changes. Several publishers can share <code>actuators_cmds</code> (the controller and the gripper bridge, or one controller per robot of a multi-robot scene); commands are merged per actuator name.</p></div>
 
 <h2>Safety Enforcement in Simulation</h2>
-<p>Since the June 2026 safety remediation, <code>fic_simulation</code> enforces the <a href="#safety" onclick="showPage('safety')">Safety panel</a> limits itself, not just in the GUI:</p>
+<p>Since the June 2026 safety remediation, <code>fic_control</code> enforces the <a href="#safety" onclick="showPage('safety')">Safety panel</a> limits itself, not just in the GUI:</p>
 <ul>
   <li><strong>Target clamping</strong> — Cartesian targets are clamped to the enabled zone; joint targets are clamped to joint limits and <em>rejected</em> if forward kinematics would place the EE outside the Cartesian zone.</li>
   <li><strong>Virtual wall</strong> — in joint modes, an EE past an enabled Cartesian boundary gets a restoring force (2000 N/m) mapped through <code>Jᵀ</code>, bounding the robot at the limit.</li>

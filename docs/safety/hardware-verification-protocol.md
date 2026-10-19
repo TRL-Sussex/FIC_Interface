@@ -37,7 +37,7 @@ hit the physical E-STOP and stop the session.
 |---|---|
 | Robot | __________ (model, serial) |
 | Driver / firmware | __________ |
-| Controller | `fic_hardware` (version: __________) |
+| Controller | `fic_control` (version: __________) |
 | Station / robot id | `robot{N}` = __________ |
 | Operators | __________ (software) / __________ (physical E-STOP) |
 | Date / time | __________ |
@@ -46,7 +46,7 @@ Build the hardware controller from this branch before testing:
 
 ```bash
 cd fic_ws
-colcon build --packages-select fic_hardware
+colcon build --packages-select fic_control
 source install/setup.bash
 ```
 
@@ -133,7 +133,7 @@ real violation.
 
 ## 3. Controller shutdown
 
-**What it does:** `fic_hardware` clears the shared-memory `alive` flag when it
+**What it does:** `fic_control` clears the shared-memory `alive` flag when it
 shuts down, and the driver leaves torque mode when the flag drops.
 
 | # | Step | Expected | Observed | Pass? |

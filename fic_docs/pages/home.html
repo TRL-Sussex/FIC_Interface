@@ -9,11 +9,24 @@
   <a href="#quickstart" class="card" onclick="showPage('quickstart')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M5 19l3-3'/><path d='M13.5 3.5c3.6 0 7 3.4 7 7-2.4 5-6.2 8-11.6 9.4l-4.8-4.8C6.5 9.7 9.5 5.9 13.5 3.5z'/><circle cx='14.5' cy='9.5' r='2'/></svg><div class="card-title">Quick Start</div><div class="card-desc">Simulation in 5 minutes. Hardware in 10.</div></a>
   <a href="#dev-console" class="card" onclick="showPage('dev-console')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M15.5 3.5a5 5 0 0 0-5.9 6.4L3 16.5 7.5 21l6.6-6.6a5 5 0 0 0 6.4-5.9l-3.2 3.2-2.8-.7-.7-2.8z'/></svg><div class="card-title">Dev Console</div><div class="card-desc">Lightweight hardware GUI for a robot workstation — control, tuning, and teleoperation.</div></a>
   <a href="#control-modes" class="card" onclick="showPage('control-modes')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M4 6h16M4 12h16M4 18h16'/><circle cx='9' cy='6' r='2'/><circle cx='15' cy='12' r='2'/><circle cx='7' cy='18' r='2'/></svg><div class="card-title">Control Modes</div><div class="card-desc">All 8 modes — impedance, planner, admittance, haptic — plus Postural, Elbow, H-PMP, and Admittance Planner overlays.</div></a>
-  <a href="#simulation" class="card" onclick="showPage('simulation')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M9.5 3v6.2L4.6 18a2 2 0 0 0 1.7 3h11.4a2 2 0 0 0 1.7-3l-4.9-8.8V3'/><path d='M8 3h8M7.8 14h8.4'/></svg><div class="card-title">Simulation</div><div class="card-desc">MuJoCo physics, fic_simulation node, ROS 2 topic interface.</div></a>
+  <a href="#simulation" class="card" onclick="showPage('simulation')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M9.5 3v6.2L4.6 18a2 2 0 0 0 1.7 3h11.4a2 2 0 0 0 1.7-3l-4.9-8.8V3'/><path d='M8 3h8M7.8 14h8.4'/></svg><div class="card-title">Simulation</div><div class="card-desc">MuJoCo physics, fic_control node (simulation), ROS 2 topic interface.</div></a>
   <a href="#control-panel" class="card" onclick="showPage('control-panel')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><rect x='4' y='8' width='16' height='12' rx='2'/><path d='M12 4v4M2 13h2M20 13h2'/><path d='M9 13h.01M15 13h.01'/></svg><div class="card-title">Hardware Control</div><div class="card-desc">Real robot control via shared memory, vendor drivers, safety system.</div></a>
   <a href="#safety" class="card" onclick="showPage('safety')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M12 3l8 3v6c0 4.6-3.2 8.2-8 9.6-4.8-1.4-8-5-8-9.6V6z'/><path d='m8.8 12 2.2 2.2 4.2-4.4'/></svg><div class="card-title">Safety</div><div class="card-desc">Joint + Cartesian safety zones with live feedback, graceful E-STOP ramp, output torque guard.</div></a>
   <a href="#api-reference" class="card" onclick="showPage('api-reference')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><rect x='2.5' y='6' width='19' height='12' rx='2'/><path d='M6 9.5h.01M9.5 9.5h.01M13 9.5h.01M16.5 9.5h.01M8 13.5h8'/></svg><div class="card-title">Script API</div><div class="card-desc">Complete Python Script Control API for the built-in script editor.</div></a>
   <a href="#extensions" class="card" onclick="showPage('extensions')"><svg class="card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d='M12 3v5M12 16v5M3 12h5M16 12h5'/><path d='M12 8.5 15.5 12 12 15.5 8.5 12z'/></svg><div class="card-title">Writing Extensions</div><div class="card-desc">Author your own toggleable Studio pages — manifest, host API, Hello-World walkthrough.</div></a>
+</div>
+
+<div class="admonition tip" style="margin-top:24px">
+  <div class="adm-title">What's new in v6.0.0</div>
+  <ul style="margin:6px 0 4px 0">
+    <li><strong>One joint inner loop everywhere</strong> &mdash; <code>fic_inner_loop</code> runs the joint laws and a
+      watchdog between the controller and the robot, on the real robot and in simulation (MuJoCo in lockstep); E-STOP
+      reaches it directly. See <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Simulation vs. Hardware</a>.</li>
+    <li><strong><code>fic_control</code></strong> replaces <code>fic_hardware</code> and <code>fic_simulation</code>
+      (breaking): <code>ros2 launch fic_control robot_control_launch.py</code> / <code>sim_control_launch.py</code>.</li>
+    <li><strong>Up to 35 robot stations</strong> in a line, each pairing with its neighbours on the
+      <a href="#multi-robot" onclick="showPage('multi-robot')">Multi-Robot</a> page; a faster web interface on small computers.</li>
+  </ul>
 </div>
 
 <div class="admonition tip" style="margin-top:24px">
@@ -203,11 +216,11 @@
   <line x1="350" y1="240" x2="560" y2="270" class="arrow"/>
 
   <rect x="55" y="270" width="170" height="55" class="box box-green"/>
-  <text x="140" y="290" class="label-bold" style="fill:#1b5e20">fic_simulation</text>
+  <text x="140" y="290" class="label-bold" style="fill:#1b5e20">fic_control</text>
   <text x="140" y="308" class="label-sm" style="fill:#388e3c">ROS 2 topics</text>
 
   <rect x="265" y="270" width="170" height="55" class="box box-orange"/>
-  <text x="350" y="290" class="label-bold" style="fill:#e65100">fic_hardware</text>
+  <text x="350" y="290" class="label-bold" style="fill:#e65100">fic_control</text>
   <text x="350" y="308" class="label-sm" style="fill:#f57c00">POSIX shared memory</text>
 
   <rect x="475" y="270" width="170" height="55" class="box box-teal"/>
@@ -268,7 +281,7 @@ source install/setup.bash
 
 ros2 run fic_studio fic_studio_pro   # FIC Control Studio (full GUI)
 ros2 run fic_studio fic_dev          # FIC Dev Console (lightweight hardware GUI)</code></pre>
-<p>The one-click installer also registers desktop launcher entries for both apps. The controller (<code>fic_simulation</code> / <code>fic_hardware</code>) runs its loop at 1&nbsp;kHz; start and stop it from the toolbar or the <a href="#processes" onclick="showPage('processes')">Processes</a> page.</p>
+<p>The one-click installer also registers desktop launcher entries for both apps. The controller (<code>fic_control</code>) runs its loop at 1&nbsp;kHz; start and stop it from the toolbar or the <a href="#processes" onclick="showPage('processes')">Processes</a> page.</p>
 
 <h2>Documentation Map</h2>
 <table>
@@ -299,8 +312,7 @@ ros2 run fic_studio fic_dev          # FIC Dev Console (lightweight hardware GUI
 ├── fic_ws/                         # ROS 2 workspace
 │   └── src/
 │       ├── communication/          # Custom ROS messages & services
-│       ├── fic_hardware/           # Hardware control node (shared memory)
-│       ├── fic_simulation/         # Simulation control node (ROS topics)
+│       ├── fic_control/           # Controller node + joint inner loop (simulation and hardware)
 │       ├── fic_studio/             # PyQt5 GUI application
 │       ├── menagerie/              # Robot models (URDF + MuJoCo XML)
 │       ├── mujoco_native/          # MuJoCo simulator node (CPU, the default)

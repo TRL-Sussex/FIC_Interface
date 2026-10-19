@@ -7,7 +7,7 @@ multiplies the controller's tracking error by its stiffness. Same
 physical quantity, different sensor.
 
 **Where the two channels are independent, and where they are not.**
-Not independent in model error: `fic_hardware` computes its gravity
+Not independent in model error: `fic_control` computes its gravity
 feedforward as `solver_->gravity(q_current_)`, from the same URDF the
 estimator inverts, so an under-modelled tool makes the arm sag and that
 sag shows up as tracking error. Both channels therefore observe
@@ -55,7 +55,7 @@ LINEAR_RANGE_RAD = 0.30
 def tau_ext_from_deflection(q_target, q_current, stiffness):
     """Return the external joint torque implied by the tracking error.
 
-    ``fic_hardware`` calls ``impedance(i, ..., q_target_[i],
+    ``fic_control`` calls ``impedance(i, ..., q_target_[i],
     q_current_[i])``, so the controller error is
     ``q_target - q_current`` and the restoring effort it applies is
     ``K * error``. At quasi-static equilibrium that effort balances the

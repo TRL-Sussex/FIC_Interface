@@ -76,9 +76,9 @@ at the bottom.</p>
   <tr><td><strong>Robot</strong> dropdown</td><td>Select the active robot. The list is loaded from <code>fic_studio_robots.yaml</code> (Franka FR3, Kinova Gen3, etc.); switching adjusts the visible joint fields to the robot's DOF and loads its safety limits.</td></tr>
   <tr><td><strong>Mode</strong> dropdown + <strong>Send</strong></td><td>Choose one of <a href="#control-modes" onclick="showPage('control-modes')">control modes</a> 1&ndash;8 and send it to the controller (published on <code>robot{N}_mode_select</code> and <code>robot{N}_control_mode</code>)</td></tr>
   <tr><td><strong>&#9654; API</strong></td><td>Start/stop the vendor robot driver. Runs the <code>driver_command</code> from the robot's configuration (e.g. libfranka or Kortex torque-control example)</td></tr>
-  <tr><td><strong>&#9654; FIC</strong></td><td>Start/stop the hardware FIC controller: <code>ros2 launch fic_hardware robot_control_launch.py robot_name:=&lt;robot&gt; station_id:=&lt;N&gt;</code></td></tr>
+  <tr><td><strong>&#9654; FIC</strong></td><td>Start/stop the hardware FIC controller: <code>ros2 launch fic_control robot_control_launch.py robot_name:=&lt;robot&gt; station_id:=&lt;N&gt;</code></td></tr>
   <tr><td><strong>&#9654; BAG</strong></td><td>Start/stop ROS 2 bag recording of <em>all</em> topics (<code>ros2 bag record -a</code>) into <code>experiments/bags/YYYY_MM_DD_session_NNN</code></td></tr>
-  <tr><td><strong>&#9654; PLT</strong></td><td>Start/stop the real-time plotter (<code>ros2 run fic_simulation plotter_node.py</code> with the current station id and joint count)</td></tr>
+  <tr><td><strong>&#9654; PLT</strong></td><td>Start/stop the real-time plotter (<code>ros2 run fic_control plotter_node.py</code> with the current station id and joint count)</td></tr>
   <tr><td><strong>&#9654; VR</strong></td><td>Start/stop the VR relay (<code>VRAPK/tools/vr_relay_node.py</code>) in auto-detect mode; scene configuration arrives from the headset on <code>/vr/scene_config</code>. See <a href="#vr-zed-teleop" onclick="showPage('vr-zed-teleop')">VR / ZED Teleop</a>.</td></tr>
   <tr><td><strong>E-STOP</strong></td><td>Emergency stop &mdash; kills all spawned processes and holds current position (see <a href="#estop" onclick="showPage('estop')">E-STOP</a>)</td></tr>
 </table>
@@ -136,7 +136,7 @@ with a &#9654; icon.</p>
 
   <rect class="box box-blue" x="180" y="120" width="140" height="46"/>
   <text class="label-bold" x="250" y="136">Controller launch</text>
-  <text class="label-code" x="250" y="152">ros2 launch fic_hardware</text>
+  <text class="label-code" x="250" y="152">ros2 launch fic_control</text>
 
   <line class="arrow" x1="75" y1="84" x2="90" y2="120"/>
   <line class="arrow" x1="175" y1="84" x2="240" y2="120"/>

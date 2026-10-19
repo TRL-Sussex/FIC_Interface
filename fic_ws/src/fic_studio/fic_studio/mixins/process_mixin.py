@@ -247,6 +247,18 @@ _BTN_ACCENT = {
 }
 
 
+def sim_headless(env=None):
+    """Does the simulator have to run without its viewer? Yes when this Studio has no display: offscreen
+    (the headless Studio of the MCU board or a robot PC), or no X/Wayland display on Linux. The viewer would
+    otherwise die at start (GLFW: DISPLAY missing) and take the simulation with it."""
+    env = os.environ if env is None else env
+    if env.get('QT_QPA_PLATFORM', '') in ('offscreen', 'minimal'):
+        return True
+    if sys.platform == 'darwin':
+        return False
+    return not (env.get('DISPLAY') or env.get('WAYLAND_DISPLAY'))
+
+
 def _apply_btn_style(btn: QPushButton, running: bool, category: str, text: str):
     """Apply the shared slim toolbar-button style from theme tokens.
 
@@ -369,13 +381,16 @@ class ProcessMixin:
             sid = self.node.station_id
             # `exec ros2 ...` lets bash replace itself, so PR_SET_PDEATHSIG
             # delivers SIGTERM to ros2 launch directly if the GUI dies.
-            cmd = f"source {ws_path}/install/setup.bash && exec ros2 launch fic_hardware robot_control_launch.py robot_name:={robot_name} station_id:={sid}"
+            cmd = f"source {ws_path}/install/setup.bash && exec ros2 launch fic_control robot_control_launch.py robot_name:={robot_name} station_id:={sid}"
             env = os.environ.copy()
             mcu = getattr(self, '_mcu_info', None) or {}
             if mcu.get('address'):
                 # The MCU the Studio found (Ethernet or this board's Bridge):
-                # fic_hardware must probe the same one.
+                # fic_control must probe the same one.
                 env['FIC_MCU_ADDRESS'] = mcu['address']
+            if mcu.get('use'):
+                # The MCU is this robot's inner loop: no PC fic_inner_loop beside it.
+                cmd += " inner_loop:=false"
             self.controller_process = subprocess.Popen(
                 ["bash", "-c", cmd],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -562,7 +577,7 @@ class ProcessMixin:
                 f"source {ws_path}/install/setup.bash && "
                 f"exec ros2 launch {launch_pkg} simulation_launch.py robot_name:={robot_name} station_id:={getattr(self.node, 'station_id', 1)}"
                 f"{model_arg}"
-            )
+            ) + (" headless:=true" if sim_headless() else "")
             # Capture subprocess output to a per-launch log so silent failures
             # (e.g. Newton crashing on mesh-heavy MJCFs) are diagnosable instead
             # of just leaving the user with a button that toggles to running but
@@ -576,6 +591,7 @@ class ProcessMixin:
                 preexec_fn=_child_preexec, cwd=ws_path, env=self._sim_env()
             )
             self.simulation_running = True
+            self._sim_backend_pkg = launch_pkg
             _apply_btn_style(self.simulation_toggle_btn, True, 'sim', '■ SIM')
             self.log_message(
                 "INFO",
@@ -810,10 +826,13 @@ class ProcessMixin:
                 self.log_message("INFO", "The VR relay already runs this station's FIC controller", "Process")
                 return
             source_prefix = "vr" if target == "vr" else f"robot{sid}_simulation"
-            cmd = f"source {ws_path}/install/setup.bash && exec ros2 launch fic_simulation fic_launch.py robot_name:={robot_name} num_joints:={num_joints} station_id:={sid} source_prefix:={source_prefix}"
+            cmd = f"source {ws_path}/install/setup.bash && exec ros2 launch fic_control sim_control_launch.py robot_name:={robot_name} num_joints:={num_joints} station_id:={sid} source_prefix:={source_prefix}"
             if target == "vr":
                 # The headset's scene composer names every robot's joints r{i}_, one robot or many.
                 cmd += " joint_name_prefix:=r0_"
+            elif getattr(self, '_sim_backend_pkg', None) == 'mujoco_newton':
+                # Newton does not step the inner loop: the node feeds it from Newton's joint_states.
+                cmd += " plant:=topics"
             self.fic_process = subprocess.Popen(
                 ["bash", "-c", cmd],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -1124,7 +1143,7 @@ class ProcessMixin:
             # The headset's scene composer names every robot's joints r{i}_, one robot or many.
             fic_cmd = (
                 f"source {ws_path}/install/setup.bash && "
-                f"exec ros2 launch fic_simulation fic_launch.py "
+                f"exec ros2 launch fic_control sim_control_launch.py "
                 f"robot_name:={robot_name} num_joints:={num_joints} "
                 f"station_id:={sid} source_prefix:={source_prefix} joint_name_prefix:=r{i}_"
             )
@@ -1459,7 +1478,7 @@ class ProcessMixin:
             robot = self.robot_dropdown.currentText() if hasattr(self, 'robot_dropdown') else ''
             nj = getattr(self, 'robots', {}).get(robot, 7) or 7
             cmd = (f"source {ws_path}/install/setup.bash && "
-                   f"exec ros2 run fic_simulation plotter_node.py --ros-args "
+                   f"exec ros2 run fic_control plotter_node.py --ros-args "
                    f"-p station_id:={sid} -p num_joints:={nj}")
             self.plotter_process = subprocess.Popen(
                 ["bash", "-c", cmd],
@@ -1508,7 +1527,7 @@ class ProcessMixin:
         robot_name = self.robot_dropdown.currentText()
         # Inner-loop MCU: if one answers and can drive this robot, it IS the
         # driver — launching the vendor driver too would put two masters on the
-        # arm. fic_hardware gets "Start" once it is up (see _mcu_send_start).
+        # arm. fic_control gets "Start" once it is up (see _mcu_send_start).
         config = self.get_robot_config(robot_name) if hasattr(self, 'get_robot_config') else {}
         info = mcu_discover(config, robot_name=robot_name)
         info['robot'] = robot_name
@@ -1557,23 +1576,23 @@ class ProcessMixin:
                           f"{e}\n\nCommand was:\n{driver_cmd}", 'Process')
 
     def _mcu_send_start(self, attempt=0):
-        """Tell fic_hardware to start on the MCU: it runs the robot's
+        """Tell fic_control to start on the MCU: it runs the robot's
         mcu.setup_command, then hands the arm to the MCU."""
         if not getattr(self, '_mcu_driver', False) or not getattr(self, 'controller_running', False):
             return
         pub = getattr(self.node, 'mode_select_publisher', None)
         if pub is None or pub.get_subscription_count() == 0:
-            if attempt < 20:                           # fic_hardware still coming up
+            if attempt < 20:                           # fic_control still coming up
                 QTimer.singleShot(500, lambda: self._mcu_send_start(attempt + 1))
             else:
-                self.log_message("ERROR", "MCU start: fic_hardware never subscribed to mode_select", "Process")
+                self.log_message("ERROR", "MCU start: fic_control never subscribed to mode_select", "Process")
             return
         pub.publish(String(data="Start"))
-        self.log_message("INFO", "MCU start: sent Start to fic_hardware", "Process")
+        self.log_message("INFO", "MCU start: sent Start to fic_control", "Process")
 
     def _stop_driver(self):
         if getattr(self, '_mcu_driver', False):
-            # Nothing to kill: stopping fic_hardware (the controller) tells the
+            # Nothing to kill: stopping fic_control (the controller) tells the
             # MCU to ramp out of torque mode; the arm keeps its position.
             self._mcu_driver = False
             self.driver_running = False

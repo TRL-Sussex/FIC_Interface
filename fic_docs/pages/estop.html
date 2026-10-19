@@ -35,11 +35,16 @@ The old behaviour killed the controller process outright, which could leave the 
 torque frozen on the robot. The current sequence (<code>_emergency_stop</code> in
 <code>main_window_pro.py</code>) is:</p>
 <ol>
+  <li><strong>Straight to the inner loop</strong> &mdash; one FIC-link <code>Estop</code> datagram to
+      every <code>fic_inner_loop</code> on this PC, the real robot's and every simulated station's, whichever Studio
+      started them. So with a
+      simulation and the real robot on one computer, either Studio's E-STOP stops both. It latches there and ramps
+      the arm down on its own, even if <code>fic_control</code> is stuck; only Start (a new CONFIG) clears it.</li>
   <li><strong>Extension fan-out</strong> &mdash; every loaded extension's <code>on_emergency_stop()</code>
       hook is called, so sequences, scripts, teach mode, and teleop halt their own activity (see table below).</li>
   <li><strong>Graceful stop command</strong> &mdash; <code>broadcast_stop()</code> publishes
       <code>"Stop Controller"</code> on every active robot's <code>robot{N}_mode_select</code> topic.
-      The hardware controller (<code>fic_hardware</code>) switches to mode 0 and ramps its output
+      The hardware controller (<code>fic_control</code>) switches to mode 0 and ramps its output
       torques down exponentially inside the 1&nbsp;kHz loop (decay factor 0.995 per cycle,
       &asymp;200&nbsp;ms time constant) toward the idle baseline &mdash; gravity compensation for robots
       whose driver does not compensate gravity internally, zero for those that do. When every joint's
@@ -48,15 +53,21 @@ torque frozen on the robot. The current sequence (<code>_emergency_stop</code> i
   <li><strong>Position lock</strong> &mdash; each robot's last-known joint angles are published to its
       <code>robot{N}_desired_joint_angles</code> topic, a redundant hold while nodes are still alive.
       On a multi-robot station every active robot is locked at its <em>own</em> last pose.</li>
-  <li><strong>Ramp window</strong> &mdash; the GUI waits 250&nbsp;ms (<code>_ESTOP_RAMP_MS</code>) so the
-      ramp can actually run before teardown.</li>
+  <li><strong>Out of torque mode before teardown</strong> &mdash; nothing is killed until the arm has left
+      torque mode the way <strong>Stop</strong> leaves it: every inner loop the E-STOP reached reports its ramp
+      finished (it raises the driver's stop flag), and this Studio's vendor driver leaves torque mode by itself
+      (the Kinova driver re-engages position mode and single-level servoing, then exits). A driver killed while
+      still in torque mode stops without the ramp, so the arm would jerk or drop. The wait is at least
+      250&nbsp;ms (<code>_ESTOP_RAMP_MS</code>) and at most 5&nbsp;s (<code>_ESTOP_RELEASE_TIMEOUT_S</code>; the
+      ramp from 20&nbsp;N&middot;m takes about 1.2&nbsp;s); past that it logs which is still in torque mode and
+      stops the processes anyway.</li>
   <li><strong>Process teardown</strong> &mdash; every Studio-launched process is stopped
       (SIGTERM to the whole process group, SIGKILL after a short timeout):
     <ul>
-      <li>FIC hardware controller (<code>ros2 launch fic_hardware robot_control_launch.py</code>)</li>
+      <li>FIC hardware controller (<code>ros2 launch fic_control robot_control_launch.py</code>)</li>
       <li>Robot driver (per-robot <code>driver_command</code>, e.g. the libfranka
           <code>cartesian_impedance_control</code> binary)</li>
-      <li>FIC simulation controller (<code>ros2 launch fic_simulation fic_launch.py</code>)</li>
+      <li>FIC simulation controller (<code>ros2 launch fic_control sim_control_launch.py</code>)</li>
       <li>MuJoCo / Newton simulation</li>
       <li>ROS bag recording (stopped with SIGINT so the bag is finalized)</li>
       <li>Plotter</li>
@@ -124,7 +135,7 @@ torque frozen on the robot. The current sequence (<code>_emergency_stop</code> i
   <rect x="130" y="162" width="440" height="58" class="box box-green"/>
   <text x="350" y="177" class="label-bold">2. Graceful stop &mdash; broadcast_stop()</text>
   <text x="350" y="193" class="label-code">"Stop Controller" &rarr; robot{N}_mode_select</text>
-  <text x="350" y="208" class="label-sm">fic_hardware mode 0: torque decay &times;0.995/ms (&asymp;200 ms), then driver exits torque mode</text>
+  <text x="350" y="208" class="label-sm">fic_control mode 0: torque decay &times;0.995/ms (&asymp;200 ms), then driver exits torque mode</text>
   <line x1="350" y1="220" x2="350" y2="236" class="arrow"/>
 
   <!-- Step 3: hold pose -->
@@ -135,7 +146,7 @@ torque frozen on the robot. The current sequence (<code>_emergency_stop</code> i
 
   <!-- Step 4: wait -->
   <rect x="240" y="300" width="220" height="34" class="box box-grey"/>
-  <text x="350" y="317" class="label">4. Ramp window &mdash; wait 250 ms</text>
+  <text x="350" y="317" class="label">4. Wait: inner loops ramped out, driver back in position mode</text>
   <line x1="350" y1="334" x2="350" y2="350" class="arrow"/>
 
   <!-- Step 5: teardown -->

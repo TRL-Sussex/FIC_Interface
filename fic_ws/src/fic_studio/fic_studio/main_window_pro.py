@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QComboBox, QFrame, QStackedWidget, QSplitter, QDockWidget, QAction,
     QToolBar, QStatusBar, QMenu, QActionGroup, QSizePolicy, QMessageBox,
-    QFileDialog, QListView, QCheckBox,
+    QFileDialog, QListView, QCheckBox, QToolButton,
 )
 
 # Local imports
@@ -60,6 +60,16 @@ from fic_studio.extensions.settings_panel import ExtensionsSettingsPanel
 def _tb_filled(t, accent):
     """Return the outline toolbar-button QSS in ``accent``."""
     return theme.button_qss(t, 'accent', accent)
+
+
+#: Toolbar QSS per (use, theme name): the status timer asks for it every 500 ms.
+_TB_QSS = {}
+
+
+def _set_qss(widget, qss):
+    """Set ``qss`` only when it differs: a restyle re-polishes the widget, which is not cheap."""
+    if widget.styleSheet() != qss:
+        widget.setStyleSheet(qss)
 
 
 class ProfessionalRobotGUI(
@@ -1137,6 +1147,24 @@ class ProfessionalRobotGUI(
         )
         conn_layout.addWidget(self.il_label)
         conn_layout.addWidget(QLabel("  "))
+        # The arm's own Kortex API from Linux (one-switch layout only): state,
+        # faults, camera; menu: clear faults, home, Kortex e-stop.
+        self.kx_led = StatusLED()
+        conn_layout.addWidget(self.kx_led)
+        self.kx_btn = QToolButton()
+        self.kx_btn.setText("ARM · –")
+        self.kx_btn.setAutoRaise(True)
+        self.kx_btn.setPopupMode(QToolButton.InstantPopup)
+        kx_menu = QMenu(self.kx_btn)
+        self._kx_actions = [
+            kx_menu.addAction("Clear faults", lambda: self._kx_menu("clear_faults")),
+            kx_menu.addAction("Home the arm…", lambda: self._kx_menu("home")),
+        ]
+        kx_menu.addSeparator()
+        self._kx_actions.append(kx_menu.addAction("Kortex e-stop", lambda: self._kx_menu("estop")))
+        self.kx_btn.setMenu(kx_menu)
+        conn_layout.addWidget(self.kx_btn)
+        conn_layout.addWidget(QLabel("  "))
         self.teleop_led = StatusLED()
         conn_layout.addWidget(self.teleop_led)
         conn_layout.addWidget(QLabel("TELEOP"))
@@ -1186,18 +1214,22 @@ class ProfessionalRobotGUI(
     # and property-based selectors from the global stylesheet.
     def _tb_styles(self):
         """Build toolbar button styles from the active theme tokens."""
+        key = ('styles', theme.current_name())
+        if key in _TB_QSS:
+            return _TB_QSS[key]
         t = theme.current()
 
         def _idle(_accent):
             return theme.button_qss(t, 'secondary')
 
         run = _tb_filled(t, t['accent_red'])
-        return {
+        _TB_QSS[key] = {
             'hw': _idle(t['accent_teal']), 'hw_run': run,
             'sim': _idle(t['accent_blue']), 'sim_run': run,
             'vr': _idle(t['accent_green']), 'vr_run': run,
             'util': theme.button_qss(t, 'secondary'), 'util_run': run,
         }
+        return _TB_QSS[key]
 
     def _restyle_toolbar(self):
         """Re-apply theme-derived styles to the toolbar buttons."""
@@ -1248,17 +1280,19 @@ class ProfessionalRobotGUI(
 
     def _tb_target_styles(self):
         """Return (on, off) QSS for the target segments from the active theme."""
-        t = theme.current()
-        on = _tb_filled(t, t['accent_blue'])
-        off = theme.button_qss(t, 'quiet')
-        return on, off
+        key = ('target', theme.current_name())
+        if key not in _TB_QSS:
+            t = theme.current()
+            _TB_QSS[key] = (_tb_filled(t, t['accent_blue']), theme.button_qss(t, 'quiet'))
+        return _TB_QSS[key]
 
     def _tb_startstop_styles(self):
         """Return (start, stop) QSS for the Start/Stop button from the active theme."""
-        t = theme.current()
-        start = _tb_filled(t, t['accent_blue'])
-        stop = _tb_filled(t, t['accent_red'])
-        return start, stop
+        key = ('startstop', theme.current_name())
+        if key not in _TB_QSS:
+            t = theme.current()
+            _TB_QSS[key] = (_tb_filled(t, t['accent_blue']), _tb_filled(t, t['accent_red']))
+        return _TB_QSS[key]
 
     def _refresh_toolbar_launch(self):
         """Sync the launch cluster to control_target + running state."""
@@ -1266,15 +1300,11 @@ class ProfessionalRobotGUI(
         target = self.control_target
         on, off = self._tb_target_styles()
         for key, b in self._tb_target_btns.items():
-            b.setStyleSheet(on if key == target else off)
+            _set_qss(b, on if key == target else off)
             b.setEnabled(not running)
         start, stop = self._tb_startstop_styles()
-        if running:
-            self._tb_start_btn.setText("■ Stop")
-            self._tb_start_btn.setStyleSheet(stop)
-        else:
-            self._tb_start_btn.setText("▶ Start")
-            self._tb_start_btn.setStyleSheet(start)
+        self._tb_start_btn.setText("■ Stop" if running else "▶ Start")
+        _set_qss(self._tb_start_btn, stop if running else start)
         if hasattr(self, "_tb_robot_id"):
             self._tb_robot_id.setEnabled(not running)
         self.robot_dropdown.setEnabled(not running)
@@ -1284,7 +1314,7 @@ class ProfessionalRobotGUI(
         # defaults to 'simulation' (robot_control_mixin.py), so on a fresh
         # launch the button was invisible — indistinguishable from "the
         # feature isn't installed". The viewer also genuinely works in
-        # simulation: fic_simulation drives the same joint-admittance path
+        # simulation: fic_control drives the same joint-admittance path
         # and publishes {rid}_admittance_offset, so there is nothing to
         # protect the user from here.
         if hasattr(self, 'tb_viewer_btn'):
@@ -1561,6 +1591,20 @@ class ProfessionalRobotGUI(
 
     def _emergency_stop(self):
         self.log_message("ERROR", "E-STOP ACTIVATED! HALTING ALL SYSTEMS AND PROCESSES.", "Safety")
+        # A second stop path straight to the arm (Kortex ApplyEmergencyStop),
+        # when the Kortex supervisor runs (one-switch layout). First, so nothing
+        # below can delay it; without the supervisor this does nothing.
+        if hasattr(self, 'kortex_command'):
+            try:
+                sent, _ = self.kortex_command('estop')
+                if sent:
+                    self.log_message("ERROR", "Kortex e-stop sent to the arm.", "Safety")
+            except Exception as exc:                      # never block the E-stop
+                self.log_message("WARN", "Kortex e-stop not sent: %s" % exc, "Safety")
+        # Straight to the joint inner loop (fic_inner_loop on this PC, the MCU board): it ramps the arm
+        # down on its own, even if fic_control is stuck. One UDP datagram each; never blocks.
+        if hasattr(self, 'estop_inner_loops'):
+            self.estop_inner_loops()
         # latched until Reset (who fired it: set by the web, fleet and gamepad paths)
         if hasattr(self, '_estop_latch_set'):
             self._estop_latch_set(getattr(self, '_estop_source', '') or 'Studio window')
@@ -1607,18 +1651,41 @@ class ProfessionalRobotGUI(
             pub.publish(msg)
 
     def _estop_ramp_wait(self):
-        """Yield briefly so the graceful ramp can run on the controller before
-        its process is killed. Duration via ``_ESTOP_RAMP_MS`` (default 250 ms;
-        set to 0 in tests)."""
+        """Before anything is killed, let the arm leave torque mode the way Stop does, so it neither jerks nor
+        drops: every inner loop the E-STOP reached finishes its ramp (out of torque, the stop flag raised), then
+        this Studio's vendor driver leaves torque mode by itself (the Kinova driver re-engages position mode and
+        servoing, then exits). Killed while still in torque mode, a driver stops without the ramp. At least
+        ``_ESTOP_RAMP_MS`` (250 ms; 0 skips the wait, for tests), at most ``_ESTOP_RELEASE_TIMEOUT_S`` (5 s; the
+        ramp from 20 N m takes about 1.2 s, the driver's switch a few hundred ms)."""
         ms = getattr(self, '_ESTOP_RAMP_MS', 250)
         if ms <= 0:
             return
         import time
         from PyQt5.QtWidgets import QApplication
-        deadline = time.monotonic() + ms / 1000.0
+        from fic_studio import inner_loop_estop
+        t0 = time.monotonic()
+        deadline = t0 + getattr(self, '_ESTOP_RELEASE_TIMEOUT_S', 5.0)
+        targets = list(getattr(self, '_estop_targets', None) or [])
+        driver = None if getattr(self, '_mcu_driver', False) else getattr(self, 'driver_process', None)
+        busy, answered = list(targets), False
         while time.monotonic() < deadline:
+            states = {t: inner_loop_estop.probe_state(t, 0.05) for t in busy}
+            answered = answered or any(v is not None for v in states.values())
+            busy = [t for t, v in states.items() if v in inner_loop_estop.TORQUING]
+            driver_up = driver is not None and driver.poll() is None
+            if not busy and time.monotonic() - t0 >= ms / 1000.0:
+                if not driver_up:
+                    return
+                if not answered:
+                    break        # no inner loop raises the stop flag, so the driver will not leave on its own
             QApplication.processEvents()
             time.sleep(0.01)
+        still = list(busy)
+        if driver is not None and driver.poll() is None:
+            still.append('the vendor driver')
+        if still:
+            self.log_message("ERROR", "E-STOP: still in torque mode after %.1f s (%s); stopping the processes "
+                             "anyway" % (time.monotonic() - t0, ", ".join(still)), "Safety")
 
     def _estop_kill_processes(self):
         """Hard teardown backstop: stop every process this Studio started, then SIGKILL whatever is

@@ -212,7 +212,7 @@ def main(argv=None):
     joints = [int(x) - 1 for x in a.joints.split(',') if x.strip()] or list(range(n))
     amp = np.radians(a.amplitude_deg)
     if a.env == 'hardware':
-        filter_hz = 200.0                       # fic_hardware.h kTorqueCutoffHz
+        filter_hz = 200.0                       # fic_control.h kTorqueCutoffHz
     else:
         filter_hz = float((cfg.get('hardware_model') or {}).get('torque_filter_hz') or 10.0)
     peak = amp * 2 * np.pi / min(PERIODS_S)

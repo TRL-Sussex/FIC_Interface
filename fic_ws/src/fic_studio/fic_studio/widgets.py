@@ -17,6 +17,7 @@ class StatusLED(QFrame):
         super().__init__(parent)
         self.setFixedSize(10, 10)
         self._status = 'idle'
+        self._styled = None
         self._update_style()
 
     def set_status(self, status: str):
@@ -24,6 +25,16 @@ class StatusLED(QFrame):
         self._update_style()
 
     def _update_style(self):
+        # Status bars set their LEDs every half second: restyle only on a change
+        # (of status or theme), setStyleSheet is not cheap.
+        from fic_studio import theme
+        key = (self._status, theme.current_name())
+        if key == self._styled:
+            return
+        self._styled = key
+        self._apply_style()
+
+    def _apply_style(self):
         # Semantic status colours from Warmth theme tokens.
         from fic_studio import theme
         t = theme.current()

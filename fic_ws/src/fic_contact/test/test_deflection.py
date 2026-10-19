@@ -5,7 +5,7 @@ channel reads the torque sensors and subtracts a gravity model; this one
 reads the position encoders and multiplies by the controller stiffness.
 Same physical quantity, different sensor.
 
-What it is NOT: immune to gravity model error. fic_hardware computes its
+What it is NOT: immune to gravity model error. fic_control computes its
 gravity feedforward from the same URDF (`solver_->gravity(q_current_)`),
 so an under-modelled tool makes the arm sag and that sag appears as
 deflection. Both channels see `contact + gravity error`; what differs is
@@ -29,7 +29,7 @@ _K = np.array([200.0, 260.0, 200.0, 200.0, 50.0, 50.0, 50.0])
 def test_recovers_the_torque_that_caused_the_deflection():
     """The sign convention, pinned against the controller's own.
 
-    fic_hardware calls `impedance(i, ..., q_target_[i], q_current_[i])`,
+    fic_control calls `impedance(i, ..., q_target_[i], q_current_[i])`,
     so the controller error is `q_target - q_current` and its restoring
     effort is `K * error`. At quasi-static equilibrium that effort
     balances the external torque, so

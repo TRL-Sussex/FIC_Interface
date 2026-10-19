@@ -92,14 +92,14 @@ print('vertnum', m.mesh_vertnum[d], 'normalnum', m.mesh_normalnum[d])
   <tbody>
     <tr><td><code>num_joints</code>, <code>joint_names</code></td><td>Joint order is load-bearing and must match the URDF. The estimator maps by <strong>name</strong>, never by position &mdash; but a mismatch still means it cannot find the joint at all.</td></tr>
     <tr><td><code>urdf_path</code>, <code>mujoco_xml_path</code></td><td>Both must point at files that exist. <code>IIWA_14</code> declares a <code>.urdf</code> that is not on disk.</td></tr>
-    <tr><td><code>torque_sign</code></td><td><strong>Applied by <code>fic_hardware</code> before publishing.</strong> Never apply it a second time in Python &mdash; that silently inverts every residual.</td></tr>
+    <tr><td><code>torque_sign</code></td><td><strong>Applied by <code>fic_control</code> before publishing.</strong> Never apply it a second time in Python &mdash; that silently inverts every residual.</td></tr>
     <tr><td><code>gravity_compensated</code></td><td>If the driver already removes gravity (as libfranka's <code>tau_ext_hat_filtered</code> does), <code>g(q)</code> must <em>not</em> be subtracted again. Get this wrong and a full gravity vector appears as phantom contact.</td></tr>
     <tr><td><code>joint_torque_limits.max</code></td><td>Used for safety clamping and to interpret per-link thresholds. Kinova's are <code>[39, 39, 39, 39, 9, 9, 9]</code> N&middot;m &mdash; note the distal joints are far weaker.</td></tr>
   </tbody>
 </table>
 
 <h2>Gate 3 &mdash; The driver must publish measured torque</h2>
-<p>The vendor driver writes into the shared-memory segment; <code>fic_hardware</code> reads it, applies <code>torque_sign</code>, filters it, and republishes on <code>{rid}_joint_torques</code>. Confirm the driver is writing a <em>measurement</em>:</p>
+<p>The vendor driver writes into the shared-memory segment; <code>fic_control</code> reads it, applies <code>torque_sign</code>, filters it, and republishes on <code>{rid}_joint_torques</code>. Confirm the driver is writing a <em>measurement</em>:</p>
 <pre><code># With the arm running and stationary, then again while you push a link:
 ros2 topic hz   /robot1_joint_torques
 ros2 topic echo /robot1_joint_torques --once</code></pre>

@@ -101,6 +101,13 @@ def _configure(context, *_, **__):
         "-p", f"topic_prefix:={topic_prefix}",
         "-p", f"headless:={'true' if headless else 'false'}",
     ]
+    # Lockstep with this station's joint inner loop (fic_inner_loop --adapter sim, started by the fic_control
+    # launch): auto = 127.0.0.1:sim_inner_loop_port(station); 0 = off. With no inner loop answering the simulator runs as
+    # before (actuators_cmds), never waiting.
+    il_port = LaunchConfiguration("inner_loop_port").perform(context).strip().lower()
+    from mujoco_native.inner_loop_link import sim_inner_loop_port
+    il_port = sim_inner_loop_port(sid) if il_port in ("", "auto") else int(il_port)
+    cmd += ["-p", f"inner_loop_port:={il_port}"]
     # Physics step and state rate: empty -> the node's defaults (the MJCF's
     # own timestep; joint_states + gravity_torques at 1 kHz).
     for arg in ("sim_dt", "publish_rate_hz"):
@@ -161,13 +168,16 @@ def _macos_dyld_env() -> dict:
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
+            "inner_loop_port", default_value="auto",
+            description="UDP port of the station's joint inner loop for lockstep (auto: inner_loop_link.sim_inner_loop_port(station); 0: off)"),
+        DeclareLaunchArgument(
             "robot_name",
             default_value="KinovaGen3_7DOF",
             description=f"One of {list(_ROBOT_XML.keys())}"),
         DeclareLaunchArgument(
             "station_id",
             default_value="1",
-            description="Station ID (1-4): scopes simulation topics"),
+            description="Station ID (1-35, Masters 100-999): scopes simulation topics"),
         DeclareLaunchArgument(
             "headless",
             default_value="false",

@@ -8,8 +8,8 @@
 </div>
 
 <h2>Why it happens</h2>
-<p><code>fic_hardware</code> computes its gravity feedforward from the URDF, once per control tick:</p>
-<pre><code>gravity_torques_ = solver_-&gt;gravity(q_current_);   // fic_hardware.cpp</code></pre>
+<p><code>fic_control</code> computes its gravity feedforward from the URDF, once per control tick:</p>
+<pre><code>gravity_torques_ = solver_-&gt;gravity(q_current_);   // fic_control.cpp</code></pre>
 <p>That is the <em>only</em> producer of <code>gravity_torques_</code> on hardware. Impedance adds it straight to the output torque; admittance passes it in as <code>desired_effort</code>. Either way, whatever the URDF fails to describe is weight the controller never holds up.</p>
 <p>Vendor URDFs routinely stop at the tool flange. The shipped Kinova Gen3 URDF ends at <code>ee_link</code> with <code>mass="0"</code> and contains no Robotiq gripper at all &mdash; 1.339&nbsp;kg of real hardware that the model simply does not know about.</p>
 
@@ -108,6 +108,6 @@ EOF</code></pre>
   <tr><td>Joint admittance (3, 4)</td><td>Joints stop drifting once their bias falls below <code>joint_tau</code>. Re-tune damping <em>after</em> this, not before &mdash; damping raised to mask the bias will now feel far too heavy.</td></tr>
   <tr><td>Contact estimation</td><td><code>fic_contact</code> already corrects this independently via <code>link_inertials_from_mjcf</code>, so it is unaffected.</td></tr>
 </table>
-<p>A rebuilt <code>fic_hardware</code> is required (the loader is a header), and the controller reads the URDF when the robot model is loaded, so restart the hardware stack.</p>
+<p>A rebuilt <code>fic_control</code> is required (the loader is a header), and the controller reads the URDF when the robot model is loaded, so restart the hardware stack.</p>
 
-<div class="doc-footer">Loader: <code>fic_library/include/fic/robot_config_loader.hpp</code> &middot; Gravity: <code>fic_ws/src/fic_hardware/src/fic_hardware.cpp</code> &middot; Payload extraction: <code>fic_ws/src/fic_contact/fic_contact/residual.py</code></div>
+<div class="doc-footer">Loader: <code>fic_library/include/fic/robot_config_loader.hpp</code> &middot; Gravity: <code>fic_ws/src/fic_control/src/fic_control.cpp</code> &middot; Payload extraction: <code>fic_ws/src/fic_contact/fic_contact/residual.py</code></div>

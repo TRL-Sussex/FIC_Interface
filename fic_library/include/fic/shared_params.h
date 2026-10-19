@@ -12,6 +12,7 @@
 #include <limits>
 #include <iostream>
 #include <algorithm>
+#include <cstdlib>
 
 // Shared memory object names
 #define SHARED_FEEDBACK_NAME        "/robot_feedback_memory"
@@ -22,7 +23,7 @@
 // --------------------------------------
 // Compile-time cap on how many joints the shared-memory structs reserve. The
 // runtime n_joints field below says how many of those slots are active.
-// Bumping this requires all processes that map the segments (fic_hardware +
+// Bumping this requires all processes that map the segments (fic_control +
 // every vendor driver bridge) to be rebuilt against the new header.
 //
 // 16 comfortably covers every arm we support today (7-DOF Franka / Kinova /
@@ -44,7 +45,7 @@ struct SharedFeedback {
   // without dereferencing past its actual size.
   std::atomic<uint32_t> magic{kShmMagic};
   std::atomic<uint32_t> version{kShmLayoutVersion};
-  std::atomic<uint32_t> n_joints{0};          // active joint count (written by fic_hardware)
+  std::atomic<uint32_t> n_joints{0};          // active joint count (written by fic_control)
   std::atomic<uint32_t> alive{0};             // 1 while writer is running
 
   std::atomic<float> torque[kMaxJoints];            // measured joint torques
@@ -54,7 +55,7 @@ struct SharedFeedback {
 
   std::atomic<float> commanded_gripper_width;       // desired width in meters
 
-  // fic_hardware sets this to 1 after torque ramp-down completes, telling the
+  // fic_control sets this to 1 after torque ramp-down completes, telling the
   // driver to exit torque mode and switch back to position/single-level servoing.
   std::atomic<uint32_t> stop_torque_mode{0};
 };
@@ -149,13 +150,20 @@ inline int open_or_create(const char* name, bool& created, size_t bytes) {
   return fd;
 }
 
+// The feedback segment's name: SHARED_FEEDBACK_NAME, or FIC_SHM_FEEDBACK_NAME when set (tests use a private
+// name so they never touch a robot's segment).
+inline const char* feedbackSegmentName() {
+  const char* e = std::getenv("FIC_SHM_FEEDBACK_NAME");
+  return (e && e[0] == '/') ? e : SHARED_FEEDBACK_NAME;
+}
+
 // --------------------------------------
 // Initialization of shared memory
 // --------------------------------------
 inline void initSharedMemory() {
   // --- Feedback ---
-  int fd1 = open_or_create(SHARED_FEEDBACK_NAME, g_feedback_creator, sizeof(SharedFeedback));
-  if (fd1 < 0) { std::cerr << "Failed to open/create " << SHARED_FEEDBACK_NAME << "\n"; return; }
+  int fd1 = open_or_create(feedbackSegmentName(), g_feedback_creator, sizeof(SharedFeedback));
+  if (fd1 < 0) { std::cerr << "Failed to open/create " << feedbackSegmentName() << "\n"; return; }
 
   void* p1 = mmap(nullptr, sizeof(SharedFeedback), PROT_READ | PROT_WRITE, MAP_SHARED, fd1, 0);
   close(fd1);
@@ -266,7 +274,7 @@ inline void cleanupSharedMemory() {
     shared_feedback = nullptr;
 
     if (g_feedback_creator) {
-      shm_unlink(SHARED_FEEDBACK_NAME);
+      shm_unlink(feedbackSegmentName());
     }
   }
 
@@ -284,5 +292,40 @@ inline void cleanupSharedMemory() {
     }
   }
 }
+
+namespace fic {
+// Attach to the feedback segment WITHOUT resetting it (the PC inner loop sits between a vendor driver and
+// fic_control: initSharedMemory() would wipe the driver's fields). Creates it, with a fresh header and NaN
+// commands, only if it does not exist yet; the driver's initSharedMemory() then resets it as usual.
+// inode (optional): the segment's inode, to notice a driver recreating it. nullptr on failure.
+inline SharedFeedback* attachFeedbackSegment(ino_t* inode) {
+  bool created = false;
+  int fd = open_or_create(feedbackSegmentName(), created, sizeof(SharedFeedback));
+  if (fd < 0) return nullptr;
+  struct stat st{};
+  if (inode) *inode = (fstat(fd, &st) == 0) ? st.st_ino : 0;
+  void* p = mmap(nullptr, sizeof(SharedFeedback), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  close(fd);
+  if (p == MAP_FAILED) return nullptr;
+  SharedFeedback* s = static_cast<SharedFeedback*>(p);
+  if (created) {
+    new (s) SharedFeedback{};
+    for (uint32_t i = 0; i < kMaxJoints; ++i)
+      s->commanded_torque[i].store(std::numeric_limits<float>::quiet_NaN(), std::memory_order_relaxed);
+    std::atomic_thread_fence(std::memory_order_release);
+  }
+  return s;
+}
+
+// The inode the feedback segment's name points to now (0: none).
+inline ino_t feedbackSegmentInode() {
+  int fd = shm_open(feedbackSegmentName(), O_RDWR, 0666);
+  if (fd < 0) return 0;
+  struct stat st{};
+  const ino_t ino = (fstat(fd, &st) == 0) ? st.st_ino : 0;
+  close(fd);
+  return ino;
+}
+}  // namespace fic
 
 #endif // SHARED_XYZ_H

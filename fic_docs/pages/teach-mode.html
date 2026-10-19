@@ -103,7 +103,7 @@ payloads before lowering <code>joint_tau</code>.</p>
   <!-- Controller (left) -->
   <rect x="25" y="70" width="170" height="90" class="box box-green"/>
   <text x="110" y="95" class="label-bold">FIC Controller</text>
-  <text x="110" y="113" class="label-sm">fic_simulation / fic_hardware</text>
+  <text x="110" y="113" class="label-sm">fic_control</text>
   <text x="110" y="133" class="label-sm">Mode 3 / 7 while teaching</text>
   <text x="110" y="148" class="label-sm">planner mode after stop</text>
 
@@ -255,7 +255,7 @@ The session is also ended cleanly if the extension is torn down (e.g. on applica
 <h2>Troubleshooting</h2>
 <table>
   <tr><th>Symptom</th><th>Cause / Fix</th></tr>
-  <tr><td>Robot mode doesn't change on Start Teaching</td><td>The controller isn't running &mdash; the log shows <em>"No mode publisher on the GUI node"</em>. Start <code>fic_simulation</code> / <code>fic_hardware</code> (see <a href="#processes" onclick="showPage('processes')">Processes</a>), then Stop and Start Teaching again.</td></tr>
+  <tr><td>Robot mode doesn't change on Start Teaching</td><td>The controller isn't running &mdash; the log shows <em>"No mode publisher on the GUI node"</em>. Start <code>fic_control</code> (see <a href="#processes" onclick="showPage('processes')">Processes</a>), then Stop and Start Teaching again.</td></tr>
   <tr><td>Arm feels sticky / needs a hard shove</td><td>Admittance deadband too high for this robot or payload. Lower <code>admittance_deadbands.joint_tau</code> (or <code>cart_force</code>) in <code>fic_library/config/robots_config.yaml</code> and restart the controller.</td></tr>
   <tr><td>Arm drifts on its own in teach mode</td><td>Gravity-model error exceeds the deadband &mdash; typically an unregistered tool/payload. Register the payload or raise the deadband.</td></tr>
   <tr><td>Live display frozen at <code>---</code></td><td>No feedback on <code>{rid}_q_current</code> / <code>{rid}_ee_current_pose</code>. Check the controller with the <a href="#topic-monitor" onclick="showPage('topic-monitor')">Topic Monitor</a>.</td></tr>

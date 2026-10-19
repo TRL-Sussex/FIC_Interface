@@ -58,6 +58,7 @@ import os
 import time
 import uuid
 
+from fic_studio.fleet.stations import is_master, is_robot, neighbours
 from fic_studio.teleop.tracker import JointFollower
 
 SESSION_TOPIC = '/fic/teleop/session'
@@ -474,6 +475,12 @@ class TeleopManager:
             return 'this station is leading; it cannot follow at the same time'
         if not 0.05 <= s.scale <= 2.0:
             return 'scale %.2f is outside 0.05-2.0' % s.scale
+        # Robot stations stand in a line: a robot follows its neighbours only, unless a Master (the lab's
+        # control seat) paired them.
+        near = neighbours(self.station)
+        if (near is not None and is_robot(s.leader) and s.leader not in near
+                and not is_master(s.from_station)):
+            return 'station %d is not a neighbour of this station (%d)' % (s.leader, self.station)
         robot = self.hooks.robot_type()
         if s.leader_robot and s.leader_robot != robot:
             return 'different robots (%s leads, this is %s): not supported yet' % (

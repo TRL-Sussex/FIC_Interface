@@ -61,6 +61,12 @@ public:
             if (!fic::link::decodeFixed(r, p) || !loop_.acceptParams(p)) ++rx_bad_;
             break;
         }
+        case fic::link::MsgType::Estop: {
+            fic::link::EstopMsg e;
+            if (!fic::link::decodeFixed(r, e)) { ++rx_bad_; break; }
+            loop_.estop(/*direct=*/true);
+            break;
+        }
         case fic::link::MsgType::Cmd: {
             if (!fic::link::decodeCmd(r, cmd_scratch_)) { ++rx_bad_; break; }
             loop_.onCmd(cmd_scratch_, r.seq(), now_us);

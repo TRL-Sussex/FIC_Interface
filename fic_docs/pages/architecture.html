@@ -92,14 +92,14 @@
 
   <!-- Backend boxes -->
   <rect x="80" y="255" width="220" height="55" class="box box-green"/>
-  <text x="190" y="274" class="label-bold" style="fill:#1b5e20">fic_simulation</text>
-  <text x="190" y="293" class="label-sm" style="fill:#388e3c">fic_simulation_node — 1 kHz FIC loop</text>
+  <text x="190" y="274" class="label-bold" style="fill:#1b5e20">fic_control · target simulation</text>
+  <text x="190" y="293" class="label-sm" style="fill:#388e3c">+ fic_inner_loop --adapter sim</text>
 
   <rect x="400" y="255" width="220" height="55" class="box box-orange"/>
-  <text x="510" y="274" class="label-bold" style="fill:#e65100">fic_hardware</text>
-  <text x="510" y="293" class="label-sm" style="fill:#f57c00">fic_hardware_node — 1 kHz FIC loop</text>
+  <text x="510" y="274" class="label-bold" style="fill:#e65100">fic_control · target hardware</text>
+  <text x="510" y="293" class="label-sm" style="fill:#f57c00">+ fic_inner_loop (shared memory) — 1 kHz</text>
 
-  <!-- fic_simulation to physics backends -->
+  <!-- simulation target to physics backends -->
   <line x1="140" y1="310" x2="120" y2="358" class="arrow arrow-green" style="marker-end:url(#arrowhead-green)"/>
   <line x1="240" y1="310" x2="270" y2="358" class="arrow arrow-green" style="marker-end:url(#arrowhead-green)"/>
   <text x="190" y="336" class="label-code">robot{sid}_simulation/* topics</text>
@@ -114,7 +114,7 @@
   <text x="295" y="392" class="label-sm" style="fill:#00897b">Newton GPU — 500 Hz physics</text>
   <text x="295" y="406" class="label-sm" style="fill:#00897b">publishes @ 200 Hz</text>
 
-  <!-- fic_hardware to vendor driver -->
+  <!-- fic_control to vendor driver -->
   <line x1="510" y1="310" x2="510" y2="358" class="arrow arrow-orange" style="marker-end:url(#arrowhead-orange)"/>
   <text x="510" y="336" class="label-sm" style="fill:#e65100">POSIX shared memory</text>
 
@@ -124,15 +124,14 @@
   <text x="510" y="406" class="label-code">/robot_feedback_memory</text>
 </svg>
 
-<p>Three layers, one controller. The Studio (PyQt5) publishes commands on <code>robot{N}_*</code> topics. A C++ controller node — <code>fic_simulation_node</code> or <code>fic_hardware_node</code>, both wrapping the same FIC library (<code>fic_library/include/fic/</code>) at 1&nbsp;kHz — turns them into torques. In simulation the torques go over ROS 2 topics (prefix <code>robot{sid}_simulation/</code>, e.g. <code>/robot1_simulation/actuators_cmds</code>) to a physics backend: the CPU MuJoCo simulator <code>mujoco_native</code> (Python on the <code>mujoco</code> wheel, with its viewer) or the optional GPU <code>mujoco_newton</code> node. On hardware they go through POSIX shared memory to the vendor driver. See <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Simulation vs Hardware</a> and <a href="#topics" onclick="showPage('topics')">Topics</a>.</p>
+<p>Three layers, one controller. The Studio (PyQt5) publishes commands on <code>robot{N}_*</code> topics. One C++ controller node, <code>fic_control</code>, runs the task-space layer of the FIC library (<code>fic_library/include/fic/</code>) and sends each tick to the joint inner loop, <code>fic_inner_loop</code>, a separate process that turns it into joint torques. Its <code>target</code> parameter picks the plant. In simulation the inner loop steps in lockstep with the CPU MuJoCo simulator <code>mujoco_native</code> (Python on the <code>mujoco</code> wheel, with its viewer); the optional GPU <code>mujoco_newton</code> node exchanges ROS 2 topics under <code>robot{sid}_simulation/</code> (e.g. <code>/robot1_simulation/actuators_cmds</code>), which the node relays. On hardware the inner loop goes through POSIX shared memory to the vendor driver. See <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Simulation vs Hardware</a> and <a href="#topics" onclick="showPage('topics')">Topics</a>.</p>
 
 <h2>Repository Layout</h2>
 <table>
   <tr><th>Directory</th><th>Contents</th></tr>
   <tr><td><code>fic_library/</code></td><td>Core C++ FIC controller (<code>FIC.cpp</code>, <code>fic_control.h</code>, <code>shared_params.h</code>) plus <code>config/config.xml</code> and <code>config/robots_config.yaml</code></td></tr>
   <tr><td><code>fic_ws/src/fic_studio</code></td><td>PyQt5 GUI (mixins + extension framework)</td></tr>
-  <tr><td><code>fic_ws/src/fic_simulation</code></td><td>C++ FIC controller node for simulation; also ships <code>plotter_node.py</code></td></tr>
-  <tr><td><code>fic_ws/src/fic_hardware</code></td><td>C++ FIC controller node for real robots (shared-memory bridge)</td></tr>
+  <tr><td><code>fic_ws/src/fic_control</code></td><td>The C++ controller node (task-space layer) and <code>fic_inner_loop</code> (joint layer), for a real robot (<code>robot_control_launch.py</code>) or a simulated one (<code>sim_control_launch.py</code>, <code>target: simulation</code>); also installs <code>config.xml</code> and <code>plotter_node.py</code></td></tr>
   <tr><td><code>fic_ws/src/mujoco_native</code></td><td>MuJoCo simulator (CPU, Python on the <code>mujoco</code> wheel) + viewer — the default</td></tr>
   <tr><td><code>fic_ws/src/mujoco_newton</code></td><td>Optional Python Newton (GPU, NVIDIA Warp) simulation node</td></tr>
   <tr><td><code>fic_ws/src/communication</code></td><td>Custom interfaces: <code>ActuatorCmds</code>, <code>Jacobian</code> msgs, <code>SimulationReset</code> srv</td></tr>
@@ -168,11 +167,11 @@
 <table>
   <tr><th>Process</th><th>Target</th><th>Launch Command</th></tr>
   <tr><td><strong>SIM</strong> (simulator)</td><td>Simulation</td><td><code>ros2 launch mujoco_native simulation_launch.py robot_name:=&lt;robot&gt; station_id:=&lt;sid&gt;</code> — or <code>ros2 launch mujoco_newton ...</code> when Settings → Simulation backend is <code>newton</code> (falls back to <code>mujoco_native</code> if the package isn't built)</td></tr>
-  <tr><td><strong>FIC</strong> (sim controller)</td><td>Simulation</td><td><code>ros2 launch fic_simulation fic_launch.py robot_name:=&lt;robot&gt; num_joints:=&lt;n&gt; station_id:=&lt;sid&gt; source_prefix:=robot&lt;sid&gt;_simulation</code></td></tr>
-  <tr><td><strong>FIC</strong> (HW controller)</td><td>Hardware</td><td><code>ros2 launch fic_hardware robot_control_launch.py robot_name:=&lt;robot&gt; station_id:=&lt;sid&gt;</code></td></tr>
+  <tr><td><strong>FIC</strong> (sim controller)</td><td>Simulation</td><td><code>ros2 launch fic_control sim_control_launch.py robot_name:=&lt;robot&gt; num_joints:=&lt;n&gt; station_id:=&lt;sid&gt; source_prefix:=robot&lt;sid&gt;_simulation</code></td></tr>
+  <tr><td><strong>FIC</strong> (HW controller)</td><td>Hardware</td><td><code>ros2 launch fic_control robot_control_launch.py robot_name:=&lt;robot&gt; station_id:=&lt;sid&gt;</code></td></tr>
   <tr><td><strong>DRV</strong> (vendor driver)</td><td>Hardware</td><td>Runs the <code>driver_command</code> from the robot's config (placeholders <code>{robot_lib}</code>, <code>{robot_name}</code>)</td></tr>
   <tr><td><strong>BAG</strong></td><td>any</td><td><code>ros2 bag record -a -o experiments/bags/&lt;YYYY_MM_DD&gt;_session_&lt;NNN&gt;</code></td></tr>
-  <tr><td><strong>PLT</strong></td><td>any</td><td><code>ros2 run fic_simulation plotter_node.py --ros-args -p station_id:=&lt;sid&gt; -p num_joints:=&lt;n&gt;</code></td></tr>
+  <tr><td><strong>PLT</strong></td><td>any</td><td><code>ros2 run fic_control plotter_node.py --ros-args -p station_id:=&lt;sid&gt; -p num_joints:=&lt;n&gt;</code></td></tr>
 </table>
 
 <div class="admonition tip"><div class="adm-title">Simulator won't come up?</div>
@@ -202,7 +201,7 @@ timer.start(10)  # tick every 10 ms, spin ROS for up to 8 ms per tick</code></pr
     </marker>
   </defs>
 
-  <!-- fic_hardware node -->
+  <!-- fic_control node -->
   <rect x="30" y="30" width="165" height="156" class="box box-orange"/>
   <text x="112" y="86" class="label-bold" style="fill:#e65100">fic_hardware_node</text>
   <text x="112" y="104" class="label-sm">1 kHz FIC loop</text>
@@ -228,34 +227,34 @@ timer.start(10)  # tick every 10 ms, spin ROS for up to 8 ms per tick</code></pr
   <text x="350" y="162" class="label-sm">SharedDesiredJointState</text>
   <text x="350" y="176" class="label-sm">desired_joint_angles[16]</text>
 
-  <!-- measured state: driver -> segment -> fic_hardware -->
+  <!-- measured state: driver -> segment -> fic_control -->
   <line x1="505" y1="52" x2="455" y2="52" class="arrow" style="marker-end:url(#arch-shm-arrowhead)"/>
   <text x="480" y="42" class="label-sm">q, τ, F/T</text>
   <line x1="245" y1="52" x2="195" y2="52" class="arrow" style="marker-end:url(#arch-shm-arrowhead)"/>
   <text x="220" y="42" class="label-sm">feedback</text>
 
-  <!-- commanded torque: fic_hardware -> segment -> driver -->
+  <!-- commanded torque: fic_control -> segment -> driver -->
   <line x1="195" y1="94" x2="245" y2="94" class="arrow" style="marker-end:url(#arch-shm-arrowhead)"/>
   <text x="220" y="108" class="label-sm">τ_cmd</text>
   <line x1="455" y1="94" x2="505" y2="94" class="arrow" style="marker-end:url(#arch-shm-arrowhead)"/>
   <text x="480" y="108" class="label-sm">τ_cmd</text>
 
-  <!-- desired joints: fic_hardware -> segment -> driver -->
+  <!-- desired joints: fic_control -> segment -> driver -->
   <line x1="195" y1="159" x2="245" y2="159" class="arrow" style="marker-end:url(#arch-shm-arrowhead)"/>
   <text x="220" y="147" class="label-sm">q_des</text>
   <line x1="455" y1="159" x2="505" y2="159" class="arrow" style="marker-end:url(#arch-shm-arrowhead)"/>
   <text x="480" y="147" class="label-sm">q_des</text>
 </svg>
 
-<p>All fields are <code>std::atomic&lt;float&gt;</code> / <code>std::atomic&lt;uint32_t&gt;</code> with acquire/release ordering — no locks in the servo path. <code>stop_torque_mode</code> is set by <code>fic_hardware</code> after the graceful torque ramp-down so the driver exits torque mode cleanly (see <a href="#estop" onclick="showPage('estop')">E-STOP</a>). Why shared memory instead of topics is covered on <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Simulation vs Hardware</a>.</p>
+<p>All fields are <code>std::atomic&lt;float&gt;</code> / <code>std::atomic&lt;uint32_t&gt;</code> with acquire/release ordering — no locks in the servo path. <code>stop_torque_mode</code> is set by <code>fic_control</code> after the graceful torque ramp-down so the driver exits torque mode cleanly (see <a href="#estop" onclick="showPage('estop')">E-STOP</a>). Why shared memory instead of topics is covered on <a href="#sim-vs-hardware" onclick="showPage('sim-vs-hardware')">Simulation vs Hardware</a>.</p>
 
 <div class="admonition warning"><div class="adm-title">Stale segments</div>
-<p>If <code>fic_hardware</code> reports a magic/version mismatch after an upgrade, stop both processes and remove <code>/dev/shm/robot_feedback_memory</code> (and <code>/dev/shm/desired_joint_angles_memory</code>) before restarting.</p></div>
+<p>If <code>fic_control</code> reports a magic/version mismatch after an upgrade, stop both processes and remove <code>/dev/shm/robot_feedback_memory</code> (and <code>/dev/shm/desired_joint_angles_memory</code>) before restarting.</p></div>
 
 <h2>Configuration Files</h2>
 <table>
   <tr><th>File</th><th>Location</th><th>Role</th></tr>
-  <tr><td><code>config.xml</code></td><td><code>fic_library/config/</code></td><td>FIC parameters per robot / profile / mode. Written by the Tuning panel and auto-tuner (XMLManager); the C++ nodes read the installed copy under <code>install/fic_simulation/share/fic_simulation/config/</code> — build with <code>--symlink-install</code> so edits propagate without rebuilding. See <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a>.</td></tr>
+  <tr><td><code>config.xml</code></td><td><code>fic_library/config/</code></td><td>FIC parameters per robot / profile / mode. Written by the Tuning panel and auto-tuner (XMLManager); the C++ nodes read the installed copy under <code>install/fic_control/share/fic_control/config/</code> — build with <code>--symlink-install</code> so edits propagate without rebuilding. See <a href="#config-xml" onclick="showPage('config-xml')">config.xml</a>.</td></tr>
   <tr><td><code>robots_config.yaml</code></td><td><code>fic_library/config/</code></td><td>Robot definitions (joints, limits, model paths, <code>driver_command</code>). Read by the C++ nodes via <code>RobotConfigLoader</code>.</td></tr>
   <tr><td><code>fic_studio_robots.yaml</code></td><td><code>fic_ws/src/fic_studio/fic_studio/</code></td><td>The Studio's editable robot database; <a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a> → Deploy regenerates <code>robots_config.yaml</code> from it.</td></tr>
   <tr><td><code>.robot_selector_gui_settings.yaml</code></td><td><code>~/</code></td><td>Studio settings: theme, station ID, <code>ROS_DOMAIN_ID</code>, simulation backend, enabled extensions.</td></tr>
@@ -263,7 +262,7 @@ timer.start(10)  # tick every 10 ms, spin ROS for up to 8 ms per tick</code></pr
 
 <h2>Multi-robot topology (v3.3.0+)</h2>
 <p>One <code>FicStudioNode</code> can drive several robots concurrently. Internally it owns a <code>pubs[rid][key]</code> table — one publisher set per active robot, e.g. <code>pubs['robot1']['mode_select']</code>, <code>pubs['robot2']['gripper_width']</code>, etc. Robots come and go at runtime via <code>node.add_robot(N)</code> / <code>node.remove_robot(N)</code>, called from the Multi-Robot page (e.g. its <em>Drive</em> button on another station's card). The legacy single-robot attributes (<code>mode_publisher_</code>, <code>position_publisher_</code>, the <code>real_joint_publishers</code> dict, the <code>robot_N_*_publisher</code> aliases) all alias to the first active robot, so unmigrated code keeps working unchanged.</p>
-<p>Each robot still needs its own backend process — <code>fic_hardware</code> or <code>fic_simulation</code>, launched with a unique <code>station_id</code> ROS parameter (1&ndash;4, or 100&ndash;999 for a Master) — so the <code>robot{N}_*</code> topic prefix routes to the right physical or simulated arm. The Studio doesn't manage these processes; they're owned externally.</p>
+<p>Each robot still needs its own controller — <code>fic_control</code>'s <code>robot_control_launch.py</code> or <code>sim_control_launch.py</code>, launched with a unique <code>station_id</code> ROS parameter (1&ndash;4, or 100&ndash;999 for a Master) — so the <code>robot{N}_*</code> topic prefix routes to the right physical or simulated arm. The Studio doesn't manage these processes; they're owned externally.</p>
 <p>Per-extension targeting is layered on top: every extension's <code>ExtensionHost</code> carries its own <code>target_robot_id</code> independent of the Multi-Robot page's selection, with a <code>make_target_robot_combo()</code> UI factory and <code>target_robot_changed</code> Qt signal for retargeting. See <a href="#extensions" onclick="showPage('extensions')">Extensions API</a>.</p>
 
 <h2>Important Notes</h2>

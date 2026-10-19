@@ -355,9 +355,9 @@ inline bool hpmpActive(int control_mode, bool hpmp_enabled) {
     return hpmp_enabled && control_mode >= 5 && control_mode <= 8;
 }
 
-// The tuning a node reads for a control mode. fic_simulation and fic_hardware both take it
+// The tuning a node reads for a control mode. fic_control and fic_control both take it
 // from here, so every mode, H-PMP included, reads the same blocks in simulation and on the
-// robot. `mcu`: fic_hardware's inner loop on the MCU, which runs every Cartesian mode on the
+// robot. `mcu`: fic_control's inner loop on the MCU, which runs every Cartesian mode on the
 // joint admittance-haptic layer, so it needs mode 4's joints.
 inline TuningKey tuningKeyFor(const std::string& robot, size_t n_joints, int control_mode,
                               bool hpmp_enabled, bool mcu = false) {
@@ -367,8 +367,7 @@ inline TuningKey tuningKeyFor(const std::string& robot, size_t n_joints, int con
     if (hpmpActive(control_mode, hpmp_enabled)) {
         k.joint_mode = k.cart_mode = kHpmpTuningMode;
     } else {
-        // mode 9 (Cartesian IK, simulation only) drives mode 1's joint impedance
-        k.joint_mode = (mcu && control_mode > 4) ? 4 : (control_mode == 9 ? 1 : control_mode);
+        k.joint_mode = (mcu && control_mode > 4) ? 4 : control_mode;
         k.cart_mode = control_mode;
     }
     k.postural = control_mode >= 5 && control_mode <= 8;   // the robot-wide null-space block

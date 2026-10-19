@@ -117,7 +117,7 @@ struct RobotConfig {
     double deadband_cart_torque = 0.2;   // Nm — Cartesian rotational torque
     // The Cartesian force deadband on the physical arm (admittance_deadbands.cart_force_hardware),
     // when its force estimate needs a wider one than the simulator; < 0: cart_force. Read by
-    // fic_hardware, and by fic_simulation when it simulates the arm (hardware_model on).
+    // fic_control, and by fic_control when it simulates the arm (hardware_model on).
     double deadband_cart_force_hardware = -1.0;
     double cartForceDeadbandOnArm() const {
         return deadband_cart_force_hardware >= 0.0 ? deadband_cart_force_hardware : deadband_cart_force;
@@ -167,7 +167,7 @@ struct RobotConfig {
     // The real arm as the simulator reproduces it (robots_config.yaml `hardware_model:`). Absent,
     // or enabled: false, the simulator stays ideal, as before. When enabled, mujoco_native applies
     // the block's joint friction, damping, armature, torque-sensor noise and command delay, and
-    // fic_simulation measures torque as fic_hardware does: filtered at torque_filter_hz, H-PMP's
+    // fic_control measures torque as fic_control does: filtered at torque_filter_hz, H-PMP's
     // task-space admittance on the wrench estimated from that torque (not MuJoCo's contact force),
     // and H-PMP's task deadband from admittance_deadbands (cart_force_hardware when set).
     struct HardwareModel {
@@ -195,7 +195,7 @@ struct RobotConfig {
     std::optional<double> safety_max_cart_vel;
     std::optional<bool>   safety_velocity_enabled;
     // The joint target speed of the joint modes on the physical arm (safety_zones.velocity.joint_target_speed,
-    // rad/s, fic/joint_target_slew.h); read by fic_hardware only, the simulator starts with it off.
+    // rad/s, fic/joint_target_slew.h); read by fic_control only, the simulator starts with it off.
     std::optional<double> safety_joint_target_speed;
 
     // When true, read the wrench from the driver/API (shared memory tool_wrench).
@@ -209,7 +209,7 @@ struct RobotConfig {
 
     // Optional FIC inner-loop MCU (robots_config.yaml `mcu:` block). When
     // `adapter` is set AND an MCU that reports that adapter answers at
-    // fic_hardware start-up / "Start", the joint layer runs on the MCU and
+    // fic_control start-up / "Start", the joint layer runs on the MCU and
     // driver_command is not launched. Otherwise the robot runs the standard
     // way. Absent block = standard only, exactly as before.
     struct McuSettings {
@@ -218,7 +218,6 @@ struct RobotConfig {
         int arm_port = 0;                        // 0 = adapter default
         std::string setup_command;               // optional Linux-side arm prep
         std::vector<double> torque_rate_limit;   // Nm per tick (empty = off)
-        std::string cartesian_routing = "haptic";// "haptic" | "torque"
         double hold_after_s = 0.05;              // no CMD this long -> MCU holds
         double ramp_after_s = 2.0;               // no CMD this long -> MCU ramps out
     } mcu;
@@ -457,7 +456,6 @@ public:
                     config.mcu.setup_command = m["setup_command"].as<std::string>("");
                     if (m["torque_rate_limit"])
                         config.mcu.torque_rate_limit = m["torque_rate_limit"].as<std::vector<double>>();
-                    config.mcu.cartesian_routing = m["cartesian_routing"].as<std::string>("haptic");
                     config.mcu.hold_after_s = m["hold_after_s"].as<double>(0.05);
                     config.mcu.ramp_after_s = m["ramp_after_s"].as<double>(2.0);
                 }

@@ -6,7 +6,7 @@
 //      fic_library/include/fic/solvers/my_solver.hpp
 //   2. Add its #include and a name branch at the two USER SOLVERS markers
 //      below.
-//   3. Rebuild: colcon build --packages-select fic_simulation fic_hardware
+//   3. Rebuild: colcon build --packages-select fic_control fic_control
 //   4. Set `kinematics_solver: my_solver` for your robot in robots_config.yaml.
 #pragma once
 

@@ -142,7 +142,7 @@ though nobody chose it. When pre-answering the wizard, set the robot the PC actu
 (a timer, or a script run from one machine), follow the same rules the Studio's own safety relies on:</p>
 <ul>
   <li><strong>Never update while a hardware or simulation node is running</strong>
-    (<code>fic_hardware</code>, <code>fic_simulation</code>, &hellip;): the code would change under a moving
+    (<code>fic_control</code>, &hellip;): the code would change under a moving
     arm. Skip that PC and try again later.</li>
   <li><strong>Close the Studio first</strong>, update and rebuild, then start it again. An open Studio holds
     the old build, and it rewrites its settings file on exit.</li>

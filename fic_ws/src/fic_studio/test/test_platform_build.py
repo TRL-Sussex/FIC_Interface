@@ -82,8 +82,8 @@ def test_linux_build_is_left_alone(on_linux):
 
 def test_linux_build_selects_only_what_was_asked_for(on_linux):
     """Explicit package selection passes straight through on Linux."""
-    assert colcon_build_command(['fic_hardware']) == (
-        'colcon build --symlink-install --packages-select fic_hardware')
+    assert colcon_build_command(['fic_control']) == (
+        'colcon build --symlink-install --packages-select fic_control')
 
 
 def test_explicit_packages_still_get_the_macos_link_path(on_macos):

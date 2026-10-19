@@ -2,7 +2,7 @@
 
 Everything else in ``test/`` exercises pure helpers with no ROS graph at
 all (see ``test_purity.py``). This module is the exception: it runs the
-actual node, publishes the topics ``fic_hardware`` publishes, calls the
+actual node, publishes the topics ``fic_control`` publishes, calls the
 real ``calibrate`` service, and synthesises a physically-consistent push
 via ``J_p(q)^T F`` on a chosen link -- then asserts the node names that
 link back on ``{rid}_contact_estimate``.
@@ -86,7 +86,7 @@ def _settle(seconds):
 
 class FakeArm(Node):
     """Publish ``{rid}_q_current``/``joint_torques``/``joint_velocities``/
-    ``control_mode`` exactly as ``fic_hardware`` does, so ``ContactNode``
+    ``control_mode`` exactly as ``fic_control`` does, so ``ContactNode``
     cannot tell this apart from the real driver.
     """
 

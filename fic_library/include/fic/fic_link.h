@@ -1,11 +1,11 @@
 #ifndef FIC_LINK_H
 #define FIC_LINK_H
 
-// FIC-link: the UDP protocol between fic_hardware (Linux, outer loops) and an
+// FIC-link: the UDP protocol between fic_control (Linux, outer loops) and an
 // FIC inner-loop MCU (joint impedance / admittance + vendor arm adapter).
 //
 // Portable: no heap, no exceptions, no POSIX — compiled into both the MCU
-// firmware and fic_hardware. Both ends are little-endian (aarch64 / x86-64 /
+// firmware and fic_control. Both ends are little-endian (aarch64 / x86-64 /
 // Cortex-M), so fields are copied as-is.
 //
 // Every datagram: Header | payload | crc16 (CCITT-FALSE over header+payload).
@@ -35,8 +35,21 @@ namespace link {
 
 inline constexpr uint32_t kMagic = 0x4C434946u;   // "FICL"
 // 2 (FIC 5.11.0): CONFIG carries the robot's FIC law options. A board on another version
-// does not answer, and fic_hardware then runs the joint layer itself.
-inline constexpr uint16_t kVersion = 2;
+// does not answer, and fic_control then runs the joint layer itself.
+// 3 (inner-loop split): CMD carries H-PMP's Jacobian (its split drive runs in the inner loop) and the
+// joint-target speed of modes 1/2; CONFIG the task deadbands.
+inline constexpr uint16_t kVersion = 3;
+
+// The UDP port of a simulated station's inner loop (fic_inner_loop --adapter sim) on 127.0.0.1: robot stations
+// 1-99 at 7200 + N, stations 1001-1099 at 7100 + (N - 1000), Masters' own stations 100-999 at
+// 6100 + (N - 100). All below the MCU (7350), the PC inner loop (7360) and DDS (7400 + 250 * domain), so 35
+// robot stations never meet a ROS port. Copies: mujoco_native inner_loop_link.sim_inner_loop_port, the
+// Studio's inner_loop_estop.sim_inner_loop_port (tests pin all three to one table).
+inline int simInnerLoopPort(int station) {
+    if (station >= 1001 && station <= 1099) return 7100 + (station - 1000);
+    if (station >= 100 && station <= 999) return 6100 + (station - 100);
+    return 7200 + (station % 100);
+}
 // Below 7400: ROS 2's DDS owns 7400 (domain-0 discovery) and every port from
 // there up (7400 + 250*domain + participant offsets). FIC-link shares hosts and
 // networks with ROS, so it must never land in that range.
@@ -51,6 +64,9 @@ enum class MsgType : uint16_t {
     Params = 4,
     Cmd = 5,
     State = 6,
+    Estop = 7,       // E-STOP straight to the inner loop (FIC Studio), not through fic_control
+    SimStep = 8,     // simulator -> inner loop: one physics step's state (lockstep, simulated time)
+    SimTorque = 9,   // inner loop -> simulator: the torque for that step
 };
 
 // Vendor adapters an MCU firmware can drive. A robot opts in with
@@ -62,6 +78,7 @@ enum class Adapter : uint32_t {
     Kortex = 2,     // Kinova Gen3 over Ethernet (UDP 10001 BaseCyclic)
     CanFd = 3,      // CAN-FD actuators (e.g. CSPM AK60) on the MCU's FDCAN
     HostSim = 4,    // the arm is simulated on the Linux host (MuJoCo), in lockstep
+    Shm = 5,        // the PC inner loop (fic_inner_loop) on a vendor driver's shared memory
 };
 
 inline uint32_t adapterBit(Adapter a) { return 1u << static_cast<uint32_t>(a); }
@@ -71,7 +88,8 @@ inline Adapter adapterFromName(const char* s) {
     if (!std::strcmp(s, "loopback")) return Adapter::Loopback;
     if (!std::strcmp(s, "kortex"))   return Adapter::Kortex;
     if (!std::strcmp(s, "canfd"))    return Adapter::CanFd;
-    if (!std::strcmp(s, "hostsim"))  return Adapter::HostSim;
+    if (!std::strcmp(s, "hostsim") || !std::strcmp(s, "sim")) return Adapter::HostSim;
+    if (!std::strcmp(s, "shm"))      return Adapter::Shm;
     return Adapter::None;
 }
 
@@ -104,6 +122,7 @@ inline constexpr uint8_t kCmdEstop = 1u << 1;       // ramp down now, latch
 inline constexpr uint8_t kCmdStopTorque = 1u << 2;  // leave torque mode after ramp
 inline constexpr uint8_t kCmdUsePlanner = 1u << 3;  // admittance through the planner
 inline constexpr uint8_t kCmdHasGravJac = 1u << 4;  // dg/dq block present
+inline constexpr uint8_t kCmdHasJacobian = 1u << 5; // 6 x n Jacobian present (H-PMP's split drive)
 
 // STATE fault bits
 inline constexpr uint32_t kFaultArm = 1u << 0;          // vendor-reported fault
@@ -147,14 +166,16 @@ struct Config {
     float ramp_after_s;      // stale CMD -> Ramp
     float deadband_joint_tau;
     float dt;                // inner-loop period (s)
-    float torque_cutoff_hz;  // measured-torque Butterworth (fic_hardware: 200)
-    float state_cutoff_hz;   // position Butterworth (fic_hardware: 10)
+    float torque_cutoff_hz;  // measured-torque Butterworth (fic_control: 200)
+    float state_cutoff_hz;   // position Butterworth (fic_control: 10)
     float damping_alpha;     // first-order lag on the damping velocity
     // The robot's FIC law options (robots_config.yaml fic_law, fic::core::JointCore).
     uint8_t restart_on_stall;
     float planner_max_hz;
     float planner_speed_margin;
     float joint_speed_limit;  // joint planners' speed cap (rad/s, 0: none), as at CONFIG time
+    float task_db_force;      // H-PMP's split drive: end-effector force deadband (N)
+    float task_db_torque;     // and moment deadband (N m)
     char robot_name[32];
     // Per joint (n_joints entries each, fixed arrays for simplicity)
     float lower[kLinkMaxJoints];              // controller clamp limits (URDF)
@@ -165,6 +186,10 @@ struct Config {
     float torque_rate_limit[kLinkMaxJoints];  // Nm per tick
     float torque_sign[kLinkMaxJoints];        // measured-torque sign convention
     uint8_t continuous[kLinkMaxJoints];
+};
+
+struct EstopMsg {
+    uint32_t reason;         // 1: operator E-STOP
 };
 
 struct Params {
@@ -191,6 +216,10 @@ struct CmdMsg {
     float kd[kLinkMaxJoints] = {};             // velocity damping gain (Nm s/rad), 0 = off
     float q0[kLinkMaxJoints] = {};             // pose g0 was evaluated at
     float g0[kLinkMaxJoints] = {};             // gravity at q0
+    float joint_target_speed = 0.0f;           // modes 1/2: the target moves at most this fast (rad/s), 0 = off
+    float joint_speed_limit = 0.0f;            // joint planners' speed cap (rad/s), 0 = none; live (the operator's)
+    // Before dgdq: InnerLoop::onCmd keeps the last dg/dq by copying the fields up to it.
+    float jac[6 * kLinkMaxJoints] = {};        // row-major 6 x n, if kCmdHasJacobian
     float dgdq[kLinkMaxJoints * kLinkMaxJoints] = {};  // row-major n x n, if kCmdHasGravJac
 };
 
@@ -205,17 +234,37 @@ struct StateMsg {
     McuState state = McuState::Idle;
     InnerMode mode = InnerMode::Gravity;
     uint16_t n = 0;
+    float dt = 0.0f;                           // the step the loop runs at (s): a simulator's own step in sim
     float q_raw[kLinkMaxJoints] = {};          // arm position as the adapter read it
     float tau_raw[kLinkMaxJoints] = {};        // arm torque as the adapter read it (vendor sign)
     float q[kLinkMaxJoints] = {};              // MCU-filtered position (what the law used)
     float tau_meas[kLinkMaxJoints] = {};       // MCU-filtered, sign-corrected torque
     float tau_cmd[kLinkMaxJoints] = {};
+    float tau_law[kLinkMaxJoints] = {};        // the law's torque before the output guard (damper, clamps)
     float g_used[kLinkMaxJoints] = {};
     float adm_offset[kLinkMaxJoints] = {};
     float q_target_adm[kLinkMaxJoints] = {};
     float wrench[6] = {};
     float gripper_pos = 0.0f;
     float gripper_current = 0.0f;
+};
+
+// The simulator in lockstep with the inner loop (fic_inner_loop --adapter sim): one SimStep per physics step,
+// answered by one SimTorque. Arrays are sent with length n.
+struct SimStepMsg {
+    uint64_t t_us = 0;                         // simulated time of this step
+    uint16_t n = 0;
+    float q[kLinkMaxJoints] = {};              // joint positions
+    float tau[kLinkMaxJoints] = {};            // measured joint torques (as the simulator's joint_states effort)
+    float wrench[6] = {};                      // F/T sensor, if any
+};
+
+struct SimTorqueMsg {
+    uint32_t step = 0;                         // the loop's tick
+    uint64_t t_us = 0;                         // the SimStep this answers (its t_us, echoed)
+    uint8_t torque_mode = 0;                   // 0: not torquing (the plant holds the arm itself)
+    uint16_t n = 0;
+    float tau[kLinkMaxJoints] = {};
 };
 
 // ---------------------------------------------------------------------------
@@ -337,6 +386,9 @@ inline size_t encodeCmd(const CmdMsg& m, uint32_t seq, uint8_t* buf, size_t cap)
     w.putArr(m.kd, m.n);
     w.putArr(m.q0, m.n);
     w.putArr(m.g0, m.n);
+    w.put(m.joint_target_speed);
+    w.put(m.joint_speed_limit);
+    if (m.flags & kCmdHasJacobian) w.putArr(m.jac, 6 * m.n);
     if (m.flags & kCmdHasGravJac) w.putArr(m.dgdq, m.n * m.n);
     return w.end();
 }
@@ -349,7 +401,9 @@ inline bool decodeCmd(Reader& r, CmdMsg& m) {
         return false;
     m.mode = static_cast<InnerMode>(mode);
     ok = r.getArr(m.q_target, m.n) && r.getArr(m.tau_des, m.n) && r.getArr(m.tau_ff, m.n) &&
-         r.getArr(m.kd, m.n) && r.getArr(m.q0, m.n) && r.getArr(m.g0, m.n);
+         r.getArr(m.kd, m.n) && r.getArr(m.q0, m.n) && r.getArr(m.g0, m.n) && r.get(m.joint_target_speed) &&
+         r.get(m.joint_speed_limit);
+    if (ok && (m.flags & kCmdHasJacobian)) ok = r.getArr(m.jac, 6 * m.n);
     if (ok && (m.flags & kCmdHasGravJac)) ok = r.getArr(m.dgdq, m.n * m.n);
     return ok && r.left() == 0;
 }
@@ -368,11 +422,13 @@ inline size_t encodeState(const StateMsg& m, uint32_t seq, uint8_t* buf, size_t 
     w.put(static_cast<uint8_t>(m.state));
     w.put(static_cast<uint8_t>(m.mode));
     w.put(m.n);
+    w.put(m.dt);
     w.putArr(m.q_raw, m.n);
     w.putArr(m.tau_raw, m.n);
     w.putArr(m.q, m.n);
     w.putArr(m.tau_meas, m.n);
     w.putArr(m.tau_cmd, m.n);
+    w.putArr(m.tau_law, m.n);
     w.putArr(m.g_used, m.n);
     w.putArr(m.adm_offset, m.n);
     w.putArr(m.q_target_adm, m.n);
@@ -386,15 +442,49 @@ inline bool decodeState(Reader& r, StateMsg& m) {
     uint8_t st = 0, mode = 0;
     bool ok = r.get(m.ack_seq) && r.get(m.tick) && r.get(m.config_epoch) &&
               r.get(m.param_epoch) && r.get(m.faults) && r.get(m.jitter_us_max) &&
-              r.get(m.cmd_age_ms) && r.get(st) && r.get(mode) && r.get(m.n);
+              r.get(m.cmd_age_ms) && r.get(st) && r.get(mode) && r.get(m.n) && r.get(m.dt);
     if (!ok || m.n > kLinkMaxJoints) return false;
     m.state = static_cast<McuState>(st);
     m.mode = static_cast<InnerMode>(mode);
     ok = r.getArr(m.q_raw, m.n) && r.getArr(m.tau_raw, m.n) && r.getArr(m.q, m.n) && r.getArr(m.tau_meas, m.n) &&
-         r.getArr(m.tau_cmd, m.n) && r.getArr(m.g_used, m.n) && r.getArr(m.adm_offset, m.n) &&
+         r.getArr(m.tau_cmd, m.n) && r.getArr(m.tau_law, m.n) && r.getArr(m.g_used, m.n) && r.getArr(m.adm_offset, m.n) &&
          r.getArr(m.q_target_adm, m.n) && r.getArr(m.wrench, 6) &&
          r.get(m.gripper_pos) && r.get(m.gripper_current);
     return ok && r.left() == 0;
+}
+
+inline size_t encodeSimStep(const SimStepMsg& m, uint32_t seq, uint8_t* buf, size_t cap) {
+    if (m.n > kLinkMaxJoints) return 0;
+    Writer w(buf, cap);
+    w.begin(MsgType::SimStep, seq);
+    w.put(m.t_us);
+    w.put(m.n);
+    w.putArr(m.q, m.n);
+    w.putArr(m.tau, m.n);
+    w.putArr(m.wrench, 6);
+    return w.end();
+}
+
+inline bool decodeSimStep(Reader& r, SimStepMsg& m) {
+    if (!(r.get(m.t_us) && r.get(m.n)) || m.n > kLinkMaxJoints) return false;
+    return r.getArr(m.q, m.n) && r.getArr(m.tau, m.n) && r.getArr(m.wrench, 6) && r.left() == 0;
+}
+
+inline size_t encodeSimTorque(const SimTorqueMsg& m, uint32_t seq, uint8_t* buf, size_t cap) {
+    if (m.n > kLinkMaxJoints) return 0;
+    Writer w(buf, cap);
+    w.begin(MsgType::SimTorque, seq);
+    w.put(m.step);
+    w.put(m.t_us);
+    w.put(m.torque_mode);
+    w.put(m.n);
+    w.putArr(m.tau, m.n);
+    return w.end();
+}
+
+inline bool decodeSimTorque(Reader& r, SimTorqueMsg& m) {
+    if (!(r.get(m.step) && r.get(m.t_us) && r.get(m.torque_mode) && r.get(m.n)) || m.n > kLinkMaxJoints) return false;
+    return r.getArr(m.tau, m.n) && r.left() == 0;
 }
 
 template <typename V>
@@ -408,10 +498,14 @@ inline size_t encodeFixed(MsgType t, const V& v, uint32_t seq, uint8_t* buf, siz
 template <typename V>
 inline bool decodeFixed(Reader& r, V& v) { return r.get(v) && r.left() == 0; }
 
-// Worst case CMD must fit one datagram.
-static_assert(sizeof(Header) + 4 + 4 + 1 + 1 + 2 + 4 +
+// A CMD with dg/dq, or with the Jacobian, fits one datagram for every robot; one with both may not
+// (16 joints): encodeCmd then returns 0 and the client sends that tick without dg/dq.
+static_assert(sizeof(Header) + 4 + 4 + 1 + 1 + 2 + 4 + 4 + 4 +
               sizeof(float) * (6 * kLinkMaxJoints + kLinkMaxJoints * kLinkMaxJoints) + 2
-              <= kMaxDatagram, "CMD exceeds one UDP datagram");
+              <= kMaxDatagram, "CMD with dg/dq exceeds one UDP datagram");
+static_assert(sizeof(Header) + 4 + 4 + 1 + 1 + 2 + 4 + 4 + 4 +
+              sizeof(float) * (6 * kLinkMaxJoints + 6 * kLinkMaxJoints) + 2
+              <= kMaxDatagram, "CMD with the Jacobian exceeds one UDP datagram");
 static_assert(sizeof(Header) + sizeof(Params) + 2 <= kMaxDatagram, "PARAMS too large");
 // JointParamsPOD crosses between aarch64 Linux and the Cortex-M MCU; pin its
 // layout so an ABI difference fails the build instead of scrambling gains.

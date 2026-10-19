@@ -72,7 +72,7 @@ fi
 # ── Resources ──
 FIC_NPROC="$(nproc 2>/dev/null || echo 2)"
 FIC_MEM_GB="$(awk '/MemTotal/ {printf "%d", $2/1048576}' /proc/meminfo 2>/dev/null || echo 0)"
-# colcon runs one compiler per package; fic_hardware + pinocchio templates need
+# colcon runs one compiler per package; fic_control + pinocchio templates need
 # ~2 GB each. Cap parallel jobs on small boards so the build is not OOM-killed.
 FIC_BUILD_JOBS="$FIC_NPROC"
 if [ "$FIC_MEM_GB" -gt 0 ] && [ $((FIC_MEM_GB / 2)) -lt "$FIC_BUILD_JOBS" ]; then

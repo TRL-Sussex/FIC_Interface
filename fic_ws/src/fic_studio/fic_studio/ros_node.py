@@ -49,6 +49,11 @@ _PER_ROBOT_PUB_SPECS = [
 
 
 # ---------------------- ROS NODE ----------------------
+#: The state thread reads robot state this far apart (50 Hz: above the web UI's
+#: push rate and the dashboards' refresh).
+STATE_PERIOD_S = 0.02
+
+
 class FicStudioNode(Node):
     def __init__(self, station_id: int = 1, active_robots=None):
         # Unique node name per machine so two FIC Studios on the same
@@ -86,7 +91,10 @@ class FicStudioNode(Node):
         is spun on the Qt thread the whole UI froze for ~29 s of every 30 s
         (measured on a robot PC running the simulator). The state node holds
         only those subscriptions, so its wait set is small, and its own
-        thread keeps the UI responsive. Its callbacks only store data.
+        thread keeps the UI responsive. Its callbacks only store data, so the
+        thread reads them STATE_PERIOD_S apart and the subscriptions keep only
+        the newest message (joint_state_mixin.latest_qos): at 1 kHz the board's
+        state thread otherwise saturated and starved the Qt thread of the GIL.
         """
         import threading
         from rclpy.executors import SingleThreadedExecutor
@@ -95,14 +103,16 @@ class FicStudioNode(Node):
         self.state_node = Node(self.get_name() + '_state')
         self._state_executor = SingleThreadedExecutor()
         self._state_executor.add_node(self.state_node)
+        self._state_stop = threading.Event()
         self._state_thread = threading.Thread(
             target=self._spin_state, name='fic-studio-state', daemon=True)
         self._state_thread.start()
         return self.state_node
 
     def _spin_state(self):
+        from fic_studio.ros_pump import pace
         try:
-            self._state_executor.spin()
+            pace(self._state_executor, self._state_stop, STATE_PERIOD_S)
         except Exception:       # shutdown while spinning
             pass
 
@@ -111,6 +121,7 @@ class FicStudioNode(Node):
         node = getattr(self, 'state_node', None)
         if node is None:
             return
+        self._state_stop.set()
         try:
             self._state_executor.shutdown(timeout_sec=1.0)
         except Exception:

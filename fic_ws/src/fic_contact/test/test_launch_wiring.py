@@ -1,19 +1,19 @@
 """The hardware stack must bring up contact_node, or nothing estimates.
 
-``fic_hardware/launch/robot_control_launch.py`` is what FIC Studio runs
+``fic_control/launch/robot_control_launch.py`` is what FIC Studio runs
 for a hardware session (``process_mixin._start_robot_control``). Without
 contact_launch.py included there, ``{rid}_contact_estimate`` has no
 publisher at all: the twin opens, mirrors the pose, and never highlights
 because ``link`` never leaves its initial -1.
 
-fic_hardware is a C++ package with no pytest harness of its own, so this
+fic_control is a C++ package with no pytest harness of its own, so this
 lives with the node whose startup it guards.
 """
 
 import os
 
 _LAUNCH = os.path.join(
-    os.path.dirname(__file__), '..', '..', 'fic_hardware', 'launch',
+    os.path.dirname(__file__), '..', '..', 'fic_control', 'launch',
     'robot_control_launch.py')
 
 

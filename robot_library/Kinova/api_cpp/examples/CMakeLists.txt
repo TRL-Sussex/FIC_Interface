@@ -227,7 +227,7 @@ endif()
 set(tinyxml2_DIR "/usr/lib/x86_64-linux-gnu/cmake/tinyxml2")
 # No pinocchio here. It arrived with the FIC library and nothing in this
 # directory has ever used it: the driver talks Kortex, shared memory and
-# Eigen, and gravity/RNEA is fic_hardware's job on the ROS side. Requiring it
+# Eigen, and gravity/RNEA is fic_control's job on the ROS side. Requiring it
 # only meant the build failed on any machine without robotpkg's
 # /opt/openrobots, which is every robot in this lab (pinocchio comes from
 # ros-jazzy-pinocchio here, somewhere else again).

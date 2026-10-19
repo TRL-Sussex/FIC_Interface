@@ -220,9 +220,9 @@ class _Clock:
 
 def _lab(**follower_kw):
     bus, clock = _Bus(), _Clock()
-    hooks = {0: _Hooks(), 1: _Hooks(), 3: _Hooks(**follower_kw)}
+    hooks = {0: _Hooks(), 1: _Hooks(), 2: _Hooks(**follower_kw)}
     managers = {}
-    for station, host in ((0, 'control'), (1, 'robot1'), (3, 'robot3')):
+    for station, host in ((0, 'control'), (1, 'robot1'), (2, 'robot2')):
         m = ts.TeleopManager(_Node(bus), station, host, hooks[station], clock=clock)
         managers[station] = m
         bus.studios.append(m)
@@ -241,122 +241,122 @@ def _run(managers, clock, seconds, step=0.01, before_tick=None):
 class TestSessions:
     def test_master_pairs_two_robots_and_the_follower_copies(self):
         m, h, clock = _lab()
-        s = m[0].request(1, 3, max_speed=10.0, leader_robot='KinovaGen3_7DOF', leader_joints=7)
-        assert m[3].following().sid == s.sid
+        s = m[0].request(1, 2, max_speed=10.0, leader_robot='KinovaGen3_7DOF', leader_joints=7)
+        assert m[2].following().sid == s.sid
         assert [x.sid for x in m[1].leading()] == [s.sid]
-        assert h[3].began == [s.sid]
+        assert h[2].began == [s.sid]
         _run(m, clock, 0.05)                     # tracker anchors on the first data
         h[1].q = [0.1] + [0.0] * 6               # the leader arm moves
         _run(m, clock, 0.5)
-        assert h[3].sent, 'follower never sent a target'
-        assert h[3].sent[-1][0] == pytest.approx(0.1, abs=0.002)   # within the deadband
+        assert h[2].sent, 'follower never sent a target'
+        assert h[2].sent[-1][0] == pytest.approx(0.1, abs=0.002)   # within the deadband
         assert m[0].sessions[s.sid].state == ts.ACTIVE
 
     def test_follower_on_hardware_asks_its_operator(self):
         m, h, _ = _lab(target='hardware')
-        s = m[1].request(1, 3)
-        assert h[3].asked == [s.sid] and m[3].sessions[s.sid].state == ts.PENDING
-        assert not h[3].began
-        assert m[3].accept(s.sid)
+        s = m[1].request(1, 2)
+        assert h[2].asked == [s.sid] and m[2].sessions[s.sid].state == ts.PENDING
+        assert not h[2].began
+        assert m[2].accept(s.sid)
         assert m[1].leading()
 
     def test_follower_on_vr_accepts_like_simulation(self):
         # VR drives the headset's simulated arm: no real arm moves, so nobody is asked.
         m, h, _ = _lab(target='vr')
-        s = m[1].request(1, 3)
-        assert not h[3].asked and m[3].following().sid == s.sid
+        s = m[1].request(1, 2)
+        assert not h[2].asked and m[2].following().sid == s.sid
 
     def test_refused_when_robots_differ(self):
         m, h, _ = _lab(robot='Franka_FR3')
-        s = m[0].request(1, 3, leader_robot='KinovaGen3_7DOF', leader_joints=7)
+        s = m[0].request(1, 2, leader_robot='KinovaGen3_7DOF', leader_joints=7)
         assert m[0].sessions[s.sid].state == ts.ENDED
         assert 'different robots' in m[0].sessions[s.sid].reason
-        assert not h[3].began
+        assert not h[2].began
 
     def test_the_follower_holds_where_it_is_before_the_leader_moves(self):
         """Or the arm sags under gravity while the leader stands still."""
         m, h, clock = _lab()
-        h[3].q = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
-        m[0].request(1, 3)
+        h[2].q = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
+        m[0].request(1, 2)
         _run(m, clock, 0.2)                       # the leader is not moving
-        assert h[3].sent, 'nothing was published: the arm is left to sag'
-        assert h[3].sent[0] == pytest.approx(h[3].q)
+        assert h[2].sent, 'nothing was published: the arm is left to sag'
+        assert h[2].sent[0] == pytest.approx(h[2].q)
 
     def test_an_arm_that_is_still_starting_is_waited_for(self):
         """Start the robot, then ask it to follow: one move, in practice."""
         m, h, clock = _lab()
-        h[3].q = []                                   # the simulator is still coming up
-        s = m[0].request(1, 3)
+        h[2].q = []                                   # the simulator is still coming up
+        s = m[0].request(1, 2)
         _run(m, clock, 2.0)
-        assert m[3].sessions[s.sid].state == ts.PENDING
-        assert not h[3].began
-        h[3].q = [0.0] * 7                            # it says where it is
+        assert m[2].sessions[s.sid].state == ts.PENDING
+        assert not h[2].began
+        h[2].q = [0.0] * 7                            # it says where it is
         _run(m, clock, 0.5)
-        assert m[1].leading() and h[3].began == [s.sid]
+        assert m[1].leading() and h[2].began == [s.sid]
 
     def test_an_arm_that_never_starts_is_refused_in_the_end(self):
         m, h, clock = _lab()
-        h[3].q = []
-        s = m[0].request(1, 3)
+        h[2].q = []
+        s = m[0].request(1, 2)
         _run(m, clock, ts.ARM_WAIT_S + 1.0)
         assert m[0].sessions[s.sid].state == ts.ENDED
         assert 'no joint data' in m[0].sessions[s.sid].reason
-        assert not h[3].began
+        assert not h[2].began
 
     def test_a_hardware_follower_is_asked_only_once_its_arm_is_up(self):
         m, h, clock = _lab(target='hardware')
-        h[3].q = []
-        s = m[0].request(1, 3)
+        h[2].q = []
+        s = m[0].request(1, 2)
         _run(m, clock, 1.0)
-        assert h[3].asked == []                       # no dialog about a dead arm
-        h[3].q = [0.0] * 7
+        assert h[2].asked == []                       # no dialog about a dead arm
+        h[2].q = [0.0] * 7
         _run(m, clock, 0.5)
-        assert h[3].asked == [s.sid]
+        assert h[2].asked == [s.sid]
 
     def test_one_leader_at_a_time_per_follower(self):
         m, _, _ = _lab()
-        m[0].request(1, 3)
-        second = m[0].request(0, 3)
+        m[0].request(1, 2)
+        second = m[0].request(0, 2)
         assert 'already following' in m[0].sessions[second.sid].reason
 
     def test_stop_from_anywhere_releases_the_follower(self):
         m, h, clock = _lab()
-        s = m[0].request(1, 3)
+        s = m[0].request(1, 2)
         _run(m, clock, 0.1)
         m[0].stop(s.sid, 'done')
-        assert m[3].following() is None and m[1].leading() == []
-        assert h[3].ended == ['done']
+        assert m[2].following() is None and m[1].leading() == []
+        assert h[2].ended == ['done']
 
     def test_follower_holds_then_ends_when_leader_goes_quiet(self):
         m, h, clock = _lab()
-        s = m[0].request(1, 3)
+        s = m[0].request(1, 2)
         _run(m, clock, 0.1)
         leader = m.pop(1)                        # leader's Studio vanishes from the network
         leader._node.bus.studios.remove(leader)
         _run(m, clock, ts.HOLD_S + 0.1)
-        assert m[3].following().holding
+        assert m[2].following().holding
         _run(m, clock, ts.LOST_S)
-        assert m[3].following() is None
-        assert 'lost leader' in h[3].ended[0]
+        assert m[2].following() is None
+        assert 'lost leader' in h[2].ended[0]
         assert leader.sessions[s.sid].state == ts.ACTIVE     # it never heard
 
     def test_leader_ends_when_follower_goes_quiet(self):
         m, _, clock = _lab()
-        s = m[0].request(1, 3)
-        m.pop(3)
+        s = m[0].request(1, 2)
+        m.pop(2)
         _run(m, clock, ts.LOST_S + 1.5)
         assert m[1].sessions[s.sid].state == ts.ENDED
 
     def test_stop_all_on_estop_names_the_partners(self):
         m, h, _ = _lab()
-        m[0].request(1, 3)
-        assert m[3].partner_stations() == [1]
-        m[3].stop_all('E-stop on Robot 3')
-        assert h[3].ended == ['E-stop on Robot 3'] and m[1].leading() == []
+        m[0].request(1, 2)
+        assert m[2].partner_stations() == [1]
+        m[2].stop_all('E-stop on Robot 2')
+        assert h[2].ended == ['E-stop on Robot 2'] and m[1].leading() == []
 
     def test_unanswered_request_fails(self):
         m, h, clock = _lab(target='hardware')
-        s = m[0].request(1, 3)
+        s = m[0].request(1, 2)
         _run(m, clock, ts.ANSWER_S + 0.5, step=0.5)
         assert m[0].sessions[s.sid].state == ts.ENDED
 
@@ -364,16 +364,16 @@ class TestSessions:
         m, _, _ = _lab()
         for text in ('nope', json.dumps({'type': 'request'}),
                      json.dumps({'type': 'request', 'sid': 'x', 'leader': 'a', 'follower': 3})):
-            m[3].on_json(text)
-        assert m[3].following() is None
+            m[2].on_json(text)
+        assert m[2].following() is None
 
     def test_follower_ignores_other_leaders_streams(self):
         m, h, clock = _lab()
-        m[0].request(1, 3)
+        m[0].request(1, 2)
         h[0].q = [0.5] * 7              # station 0 is not a leader: it must not be copied
         _run(m, clock, 0.1)
-        m[3].on_leader_q(0, [0.9] * 7)
-        assert m[3]._leader_q != [0.9] * 7
+        m[2].on_leader_q(0, [0.9] * 7)
+        assert m[2]._leader_q != [0.9] * 7
 
     def test_cannot_lead_itself(self):
         m, _, _ = _lab()
@@ -386,38 +386,38 @@ class TestForceChannel:
 
     def test_off_by_default(self):
         m, h, clock = _lab()
-        m[0].request(1, 3)
-        h[3].w = [5.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        m[0].request(1, 2)
+        h[2].w = [5.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         _run(m, clock, 0.3)
         assert h[1].reflected == [], 'force reached the leader without being asked for'
 
     def test_follower_contact_reaches_the_leader_scaled(self):
         m, h, clock = _lab()
-        m[0].request(1, 3)
+        m[0].request(1, 2)
         m[1].force_scale = 0.5
-        h[3].w = [4.0, 0.0, -2.0, 0.0, 0.0, 0.0]
+        h[2].w = [4.0, 0.0, -2.0, 0.0, 0.0, 0.0]
         _run(m, clock, 0.3)
         assert h[1].reflected, 'the leader never felt anything'
         assert h[1].reflected[-1] == pytest.approx([2.0, 0.0, -1.0, 0.0, 0.0, 0.0])
 
     def test_only_the_leader_of_that_follower_feels_it(self):
         m, h, clock = _lab()
-        m[0].request(1, 3)
+        m[0].request(1, 2)
         m[0].force_scale = 1.0          # station 0 leads nobody
         m[1].force_scale = 1.0
-        h[3].w = [3.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        h[2].w = [3.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         _run(m, clock, 0.3)
         assert h[0].reflected == []
         assert h[1].reflected
 
     def test_released_once_when_the_follower_goes_quiet(self):
         m, h, clock = _lab()
-        m[0].request(1, 3)
+        m[0].request(1, 2)
         m[1].force_scale = 1.0
-        h[3].w = [3.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        h[2].w = [3.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         _run(m, clock, 0.3)
         assert h[1].reflected[-1][0] == pytest.approx(3.0)
-        h[3].w = None                   # the follower stops reporting
+        h[2].w = None                   # the follower stops reporting
         _run(m, clock, 1.0)
         assert h[1].reflected[-1] == [0.0] * 6, 'the leader was left holding a force'
         # and the release is sent once, not every tick
@@ -425,9 +425,9 @@ class TestForceChannel:
 
     def test_released_when_the_session_ends(self):
         m, h, clock = _lab()
-        s = m[0].request(1, 3)
+        s = m[0].request(1, 2)
         m[1].force_scale = 1.0
-        h[3].w = [3.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        h[2].w = [3.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         _run(m, clock, 0.3)
         assert h[1].reflected[-1][0] == pytest.approx(3.0)
         m[0].stop(s.sid, 'done')
@@ -436,7 +436,7 @@ class TestForceChannel:
 
     def test_a_follower_reports_nothing_when_not_in_a_session(self):
         m, h, clock = _lab()
-        h[3].w = [9.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        h[2].w = [9.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         m[1].force_scale = 1.0
         _run(m, clock, 0.3)
         assert h[1].reflected == []
@@ -447,7 +447,7 @@ class TestRoundTrip:
 
     def test_leader_measures_the_round_trip(self):
         m, _, clock = _lab()
-        s = m[0].request(1, 3)
+        s = m[0].request(1, 2)
         _run(m, clock, 2.5)                     # PING_S is 1 s
         assert m[1].sessions[s.sid].rtt is not None
         # The fake bus is instant, so the trip is one tick's worth at most.
@@ -455,13 +455,13 @@ class TestRoundTrip:
 
     def test_the_follower_does_not_measure_its_leader(self):
         m, _, clock = _lab()
-        s = m[0].request(1, 3)
+        s = m[0].request(1, 2)
         _run(m, clock, 2.5)
-        assert m[3].sessions[s.sid].rtt is None, 'only the leader pings'
+        assert m[2].sessions[s.sid].rtt is None, 'only the leader pings'
 
     def test_rtt_is_reported(self):
         m, _, clock = _lab()
-        s = m[0].request(1, 3)
+        s = m[0].request(1, 2)
         _run(m, clock, 2.5)
         assert 'rtt' in m[1].sessions[s.sid].as_dict()
 
@@ -480,92 +480,124 @@ class TestRemoteCommands:
 
     def test_control_pc_starts_a_session(self):
         m, h, clock = _lab()
-        self._cmd(m, 1, action='request', follower=3, max_speed=10.0)
-        assert m[3].following(), 'the follower never took it up'
-        assert [s.follower for s in m[1].leading()] == [3]
+        self._cmd(m, 1, action='request', follower=2, max_speed=10.0)
+        assert m[2].following(), 'the follower never took it up'
+        assert [s.follower for s in m[1].leading()] == [2]
         _run(m, clock, 0.05)
         h[1].q = [0.1] + [0.0] * 6
         _run(m, clock, 0.5)
-        assert h[3].sent[-1][0] == pytest.approx(0.1, abs=0.002)
+        assert h[2].sent[-1][0] == pytest.approx(0.1, abs=0.002)
 
     def test_control_pc_accepts_for_a_hardware_follower(self):
         m, h, _ = _lab(target='hardware')
-        s = m[1].request(1, 3)
-        assert h[3].asked == [s.sid] and not h[3].began   # waiting on its operator
-        self._cmd(m, 3, action='accept')                  # answered from the control PC
-        assert h[3].began == [s.sid]
-        assert m[3].sessions[s.sid].state == ts.ACTIVE
+        s = m[1].request(1, 2)
+        assert h[2].asked == [s.sid] and not h[2].began   # waiting on its operator
+        self._cmd(m, 2, action='accept')                  # answered from the control PC
+        assert h[2].began == [s.sid]
+        assert m[2].sessions[s.sid].state == ts.ACTIVE
         assert m[1].leading(), 'the leader never learned it was accepted'
 
     def test_accept_finds_the_pending_session_without_being_told_its_sid(self):
         m, h, _ = _lab(target='hardware')
-        s = m[1].request(1, 3)
-        self._cmd(m, 3, sid='not-a-real-sid', action='accept')
-        assert h[3].began == [s.sid]
+        s = m[1].request(1, 2)
+        self._cmd(m, 2, sid='not-a-real-sid', action='accept')
+        assert h[2].began == [s.sid]
 
     def test_only_the_named_station_acts(self):
         m, h, _ = _lab(target='hardware')
-        m[1].request(1, 3)
+        m[1].request(1, 2)
         self._cmd(m, 1, action='accept')       # addressed to the LEADER
-        assert not h[3].began, 'the follower acted on a command meant for another station'
+        assert not h[2].began, 'the follower acted on a command meant for another station'
 
     def test_a_remote_request_still_refuses_a_different_robot(self):
         # leader_robot is filled from the leader's own hooks, not the message,
         # so omitting it must not quietly disable the check.
         m, h, _ = _lab(robot='Franka_FR3')
-        self._cmd(m, 1, action='request', follower=3)
-        assert not m[3].following()
-        assert not h[3].began
+        self._cmd(m, 1, action='request', follower=2)
+        assert not m[2].following()
+        assert not h[2].began
 
     def test_accepting_nothing_is_harmless(self):
         m, h, _ = _lab(target='hardware')
-        self._cmd(m, 3, action='accept')
-        assert not h[3].began
+        self._cmd(m, 2, action='accept')
+        assert not h[2].began
 
     def test_control_pc_stops_a_session(self):
         m, h, _ = _lab()
-        s = m[0].request(1, 3)
-        assert m[3].following()
-        self._cmd(m, 3, action='stop', reason='stopped from the dashboard')
-        assert not m[3].following()
-        assert h[3].ended and 'dashboard' in h[3].ended[-1]
+        s = m[0].request(1, 2)
+        assert m[2].following()
+        self._cmd(m, 2, action='stop', reason='stopped from the dashboard')
+        assert not m[2].following()
+        assert h[2].ended and 'dashboard' in h[2].ended[-1]
         assert m[1].sessions[s.sid].state == ts.ENDED
 
     def test_an_inconsistent_leader_is_refused(self):
         m, h, _ = _lab()
         self._cmd(m, 1, action='request', leader=3, follower=3)
-        assert not m[3].following(), 'acted on a command whose leader was not itself'
+        assert not m[2].following(), 'acted on a command whose leader was not itself'
 
     def test_a_request_from_the_master_needs_no_operator(self):
         # The whole point of driving from one place: on hardware a pairing the
         # master asked for runs without anyone answering at the follower.
         m, h, _ = _lab(target='hardware')
-        self._cmd(m, 1, action='request', follower=3)
-        assert h[3].asked == [], 'the follower still asked its operator'
-        assert h[3].began, 'the follower never started following'
+        self._cmd(m, 1, action='request', follower=2)
+        assert h[2].asked == [], 'the follower still asked its operator'
+        assert h[2].began, 'the follower never started following'
         assert m[1].leading()
 
     def test_a_robot_studio_still_asks_on_hardware(self):
         # Only the master is taken on trust. A robot Studio starting a pairing
         # by itself must still be agreed to at the far end.
         m, h, _ = _lab(target='hardware')
-        s = m[1].request(1, 3, leader_robot='KinovaGen3_7DOF', leader_joints=7)
-        assert h[3].asked == [s.sid]
-        assert not h[3].began
+        s = m[1].request(1, 2, leader_robot='KinovaGen3_7DOF', leader_joints=7)
+        assert h[2].asked == [s.sid]
+        assert not h[2].began
 
     def test_an_unknown_origin_is_not_trusted(self):
         m, h, _ = _lab(target='hardware')
-        m[1].request(1, 3, origin='some-laptop')
-        assert not h[3].began, 'accepted a request claiming an origin we do not know'
+        m[1].request(1, 2, origin='some-laptop')
+        assert not h[2].began, 'accepted a request claiming an origin we do not know'
 
     def test_control_pc_sets_a_control_mode(self):
         m, h, _ = _lab(target='hardware')
-        self._cmd(m, 3, action='mode', mode=3)
-        assert h[3].modes == [3]
+        self._cmd(m, 2, action='mode', mode=3)
+        assert h[2].modes == [3]
         assert h[1].modes == [], 'another station took a mode meant for station 3'
 
     def test_a_mode_outside_1_to_8_is_ignored(self):
         m, h, _ = _lab()
         for bad in (0, 9, 'three', None, True):
-            self._cmd(m, 3, action='mode', mode=bad)
-        assert h[3].modes == []
+            self._cmd(m, 2, action='mode', mode=bad)
+        assert h[2].modes == []
+
+
+def _lab_of(stations_hosts):
+    bus, clock = _Bus(), _Clock()
+    managers, hooks = {}, {}
+    for station, host in stations_hosts:
+        hooks[station] = _Hooks()
+        managers[station] = ts.TeleopManager(_Node(bus), station, host, hooks[station], clock=clock)
+        bus.studios.append(managers[station])
+    return managers, hooks, clock
+
+
+class TestNeighbours:
+    """Robot stations stand in a line: a robot pairs with its neighbours (N-1, N+1). A Master, the lab's
+    control seat, may pair any two."""
+
+    def test_a_robot_does_not_follow_a_robot_that_is_not_its_neighbour(self):
+        m, h, _ = _lab_of(((0, 'control'), (2, 'robot2'), (4, 'robot4')))
+        s = m[4].request(4, 2)
+        assert m[4].sessions[s.sid].state == ts.ENDED
+        assert 'not a neighbour' in m[4].sessions[s.sid].reason
+        assert not h[2].began
+
+    def test_neighbours_pair(self):
+        m, h, _ = _lab_of(((1, 'robot1'), (2, 'robot2')))
+        s = m[1].request(1, 2)
+        assert m[2].following().sid == s.sid
+
+    def test_a_master_pairs_any_two(self):
+        m, h, _ = _lab_of(((0, 'control'), (2, 'robot2'), (4, 'robot4')))
+        s = m[0].request(4, 2)
+        assert m[2].following().sid == s.sid

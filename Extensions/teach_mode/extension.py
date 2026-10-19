@@ -559,7 +559,7 @@ class Extension(ExtensionBase):
         if not self._publish_teach_mode_string(admittance_mode):
             self.host.log("WARN",
                 "No mode publisher on the GUI node — robot mode not switched. "
-                "Start fic_hardware first, then re-arm teach mode.", "Teach")
+                "Start fic_control first, then re-arm teach mode.", "Teach")
         else:
             self.host.log("INFO", f"Switched to {admittance_mode}", "Teach")
         self.teach_mode_active = True

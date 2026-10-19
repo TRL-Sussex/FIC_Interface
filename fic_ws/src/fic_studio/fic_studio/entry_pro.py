@@ -123,17 +123,15 @@ def main():
     # the children themselves. See process_mixin.install_crash_cleanup.
     install_crash_cleanup(window, app)
 
-    import time as _time
+    from fic_studio.ros_pump import IDLE_MS, drain, next_interval_ms
 
     def _spin_ros():
-        # Process callbacks for up to 5ms, then yield back to Qt event loop
-        deadline = _time.monotonic() + 0.008
-        while _time.monotonic() < deadline:
-            executor.spin_once(timeout_sec=0)
+        # The callbacks ready now (at most 8 ms of them), then back to the Qt event loop.
+        timer.setInterval(next_interval_ms(drain(executor, budget_s=0.008)))
 
     timer = QTimer()
     timer.timeout.connect(_spin_ros)
-    timer.start(10)  # tick every 10ms, spin for up to 5ms each
+    timer.start(IDLE_MS)
 
     signal.signal(signal.SIGINT, lambda *args: app.quit())
 

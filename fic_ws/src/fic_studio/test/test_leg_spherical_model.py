@@ -32,7 +32,7 @@ BALL_CENTRE = np.array([0.18898, 0.11298, 0.38522])
 STL_DIR = MODEL_DIR / 'Leg-V4' / 'STL'
 JOINTS = ['hip_ball_x_joint', 'hip_ball_y_joint', 'hip_ball_z_joint']
 DRIVES = ['torq_j1', 'torq_j2', 'torq_j3']
-#: The hip axis each actuator drives. fic_simulation.cpp:1522 binds actuator k
+#: The hip axis each actuator drives. fic_control.cpp binds actuator k
 #: positionally to joint_names[k] = [x, y, z], so this MUST stay the identity
 #: map. The drums themselves are crossed - the left/right drum turns the hip
 #: about z and the green loop drum about x - so torq_j1 is wired to
@@ -108,7 +108,7 @@ def test_hip_axes_are_coincident_and_orthogonal(model):
 
 
 def test_actuators_use_the_name_fic_commands(model):
-    """FIC addresses actuators as torq_jN (fic_simulation.cpp:1522), not by joint name."""
+    """FIC addresses actuators as torq_jN (fic_control.cpp), not by joint name."""
     assert model.nu == 3
     names = [mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, a) for a in range(model.nu)]
     assert names == DRIVES

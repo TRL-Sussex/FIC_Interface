@@ -110,7 +110,7 @@ PUBLISH_RATE_HZ = 100
 SCAN_RATE_HZ = 2
 LIVE_TIMEOUT_S = 0.75
 
-# ── Control modes (must match fic_simulation.h ControlMode enum) ─────
+# ── Control modes (must match fic_control.h ControlMode enum) ─────
 _JOINT_MODES = [
     (1, "Joint Impedance"),
     (2, "Joint Impedance With Planner"),

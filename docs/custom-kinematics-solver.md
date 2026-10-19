@@ -1,13 +1,13 @@
 # Custom Kinematics Solvers
 
-Pinocchio is **optional**. The FIC nodes (`fic_hardware`, `fic_simulation`) talk to
+Pinocchio is **optional**. The FIC nodes (`fic_control`, `fic_control`) talk to
 an abstract solver interface — `fic::KinematicsSolver` — and the concrete backend is
 selected **per robot** via the `kinematics_solver:` key in
 `fic_library/config/robots_config.yaml`. This document explains the architecture, how
 to write and register your own solver, and what happens when no solver is available.
 
 ```
- fic_hardware / fic_simulation
+ fic_control
         │  (per-robot key: kinematics_solver)
         ▼
  fic::createKinematicsSolver(name)          fic_library/include/fic/solvers/solver_factory.hpp
@@ -189,7 +189,7 @@ Rebuild the two consumers:
 
 ```bash
 cd fic_ws
-colcon build --packages-select fic_simulation fic_hardware
+colcon build --packages-select fic_control
 ```
 
 Then point a robot at it:

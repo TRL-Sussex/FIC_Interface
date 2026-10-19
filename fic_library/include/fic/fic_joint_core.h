@@ -3,7 +3,7 @@
 
 // Portable FIC joint-space core: the per-joint impedance / planner / admittance
 // path of FIC.cpp + fic_control.h, with no heap, no exceptions, no Eigen and no
-// iostream, so the same code runs in fic_hardware (Linux) and on the MCU.
+// iostream, so the same code runs in fic_control (Linux) and on the MCU.
 //
 // This is a faithful port — including its quirks — so the MCU inner loop and the
 // Linux reference produce identical torques for identical inputs. Keep it in
@@ -21,6 +21,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -75,7 +76,7 @@ struct JointParamsPOD {
 template <typename T>
 class SatController {
 public:
-    // FIC(4.0, true, 2.0, ...) in fic_hardware builds every channel as 4 / 2.
+    // FIC(4.0, true, 2.0, ...) in fic_control builds every channel as 4 / 2.
     SatController() { reconfigure(4, true, 2); }
 
     void reconfigure(int new_N_S, bool asymmetric, int new_N_NegSat) {
@@ -472,6 +473,39 @@ struct JointDiagT {
 using JointDiag = JointDiagT<double>;
 
 //=============================================================================
+// Cholesky solve of a symmetric positive-definite 6x6 system (row-major A), as H-PMP's
+// (J J^T + lambda^2 I) w = J u. No Eigen on the MCU. False if A is not positive definite.
+//=============================================================================
+template <typename T>
+inline bool solveSpd6(const T A[36], const T b[6], T x[6]) {
+    T L[36] = {};
+    for (int r = 0; r < 6; ++r) {
+        for (int c = 0; c <= r; ++c) {
+            T s = A[r * 6 + c];
+            for (int k = 0; k < c; ++k) s -= L[r * 6 + k] * L[c * 6 + k];
+            if (r == c) {
+                if (!(s > T(0))) return false;
+                L[r * 6 + r] = std::sqrt(s);
+            } else {
+                L[r * 6 + c] = s / L[c * 6 + c];
+            }
+        }
+    }
+    T y[6];
+    for (int r = 0; r < 6; ++r) {
+        T s = b[r];
+        for (int k = 0; k < r; ++k) s -= L[r * 6 + k] * y[k];
+        y[r] = s / L[r * 6 + r];
+    }
+    for (int r = 5; r >= 0; --r) {
+        T s = y[r];
+        for (int k = r + 1; k < 6; ++k) s -= L[k * 6 + r] * x[k];
+        x[r] = s / L[r * 6 + r];
+    }
+    return true;
+}
+
+//=============================================================================
 // Joint-space FIC for up to kMaxCoreJoints joints.
 //=============================================================================
 template <typename T>
@@ -479,6 +513,12 @@ class JointCore {
 public:
     T dt = T(0.001);
     T deadband_joint_tau = T(1.5);
+    // H-PMP's split drive (fic_control.h cartesianHpmp): task deadbands on the end-effector wrench part
+    // of the torque gap, engaged at the value and released below kSplitRelease of it.
+    T task_db_force = T(1.0);    // N
+    T task_db_torque = T(0.1);   // N m
+    static constexpr T kSplitRelease = T(0.25);
+    static constexpr T kSplitLambda = T(0.01);
     // The robot's FIC law options (robots_config.yaml fic_law), applied by initJoint.
     bool restart_on_stall = true;
     T planner_max_hz = T(8.75);
@@ -495,7 +535,7 @@ public:
     void setJointContinuous(int i, bool c) { continuous_[i] = c; }
 
     // initJointController + initJointPlanner + initJointAdmittance, in the order
-    // FicHardwareNode::initJointControllers calls them. Returns false where the
+    // FicControlNode::initJointControllers calls them. Returns false where the
     // original would have thrown.
     bool initJoint(int i, const JointParamsPOD& p, T q_current) {
         bool ok = true;
@@ -568,12 +608,15 @@ public:
     // Modes 3/4 and hapfic — handleJointAdmitanceControl.
     // adm_mode 1 = push-and-stay, 2 = haptic spring-return.
     // release_tau > 0: deadband with hysteresis (HAP-FIC), as fic_control.h.
+    // drive (not NaN): the interaction torque already deadbanded by splitDrive (H-PMP).
     T admittance(int i, T& q_target, T q_current, T desired_effort,
                       T current_effort, int adm_mode, bool use_planner, JointDiagT<T>& d,
-                      T release_tau = T(0)) {
+                      T release_tau = T(0), T drive = std::numeric_limits<T>::quiet_NaN()) {
         Admittance<T>& a = adm_[i];
         T ext_tau = desired_effort - current_effort;
-        if (release_tau > T(0)) {
+        if (drive == drive) {                    // a drive given (not NaN): already deadbanded, split drive
+            ext_tau = drive;
+        } else if (release_tau > T(0)) {
             if (!engaged_[i] && std::fabs(ext_tau) >= deadband_joint_tau) engaged_[i] = true;
             else if (engaged_[i] && std::fabs(ext_tau) < release_tau) engaged_[i] = false;
             if (!engaged_[i]) ext_tau = T(0);
@@ -624,6 +667,45 @@ public:
 
     T humanOffset(int i) const { return offset_[i]; }
 
+    // H-PMP's split drive (fic_control.h cartesianHpmp): the torque gap u (per joint) split into its
+    // end-effector wrench part, w = (J J^T + lambda^2 I)^-1 J u through the task deadband, and the rest,
+    // u - J^T w through each joint's deadband (its own hysteresis, engaged_), recombined into the drive
+    // that admittance() takes. jac: 6 x n, row-major (FIC-link's layout).
+    void splitDrive(const float* jac, const T* u, int n, T* drive) {
+        T A[36], b[6], w[6];
+        for (int r = 0; r < 6; ++r) {
+            T s = T(0);
+            for (int c = 0; c < n; ++c) s += T(jac[r * n + c]) * u[c];
+            b[r] = s;
+            for (int q = 0; q < 6; ++q) {
+                T a = (r == q) ? kSplitLambda * kSplitLambda : T(0);
+                for (int c = 0; c < n; ++c) a += T(jac[r * n + c]) * T(jac[q * n + c]);
+                A[r * 6 + q] = a;
+            }
+        }
+        if (!solveSpd6(A, b, w)) for (int k = 0; k < 6; ++k) w[k] = T(0);
+        const T fn = std::sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
+        const T tn = std::sqrt(w[3] * w[3] + w[4] * w[4] + w[5] * w[5]);
+        if (!task_on_f_ && fn >= task_db_force) task_on_f_ = true;
+        else if (task_on_f_ && fn < kSplitRelease * task_db_force) task_on_f_ = false;
+        if (!task_on_t_ && tn >= task_db_torque) task_on_t_ = true;
+        else if (task_on_t_ && tn < kSplitRelease * task_db_torque) task_on_t_ = false;
+        for (int c = 0; c < n; ++c) {
+            T jw = T(0), jwd = T(0);
+            for (int r = 0; r < 6; ++r) {
+                const T jrc = T(jac[r * n + c]);
+                jw += jrc * w[r];
+                if ((r < 3 && task_on_f_) || (r >= 3 && task_on_t_)) jwd += jrc * w[r];
+            }
+            const T un = u[c] - jw;
+            bool& on = engaged_[c];
+            if (!on && std::fabs(un) >= deadband_joint_tau) on = true;
+            else if (on && std::fabs(un) < kSplitRelease * deadband_joint_tau) on = false;
+            drive[c] = jwd + (on ? un : T(0));
+        }
+    }
+    void resetSplit() { task_on_f_ = task_on_t_ = false; }
+
 private:
     SatController<T> ctrl_[kMaxCoreJoints];
     Planner<T> plan_[kMaxCoreJoints];
@@ -634,6 +716,7 @@ private:
     T offset_[kMaxCoreJoints] = {};
     T last_delta_[kMaxCoreJoints] = {};
     bool engaged_[kMaxCoreJoints] = {};
+    bool task_on_f_ = false, task_on_t_ = false;   // split drive: task deadband engaged (force, moment)
 
 public:
     JointCore() { reset(); }
@@ -649,6 +732,7 @@ public:
             continuous_[i] = false;
             offset_[i] = 0; last_delta_[i] = 0; engaged_[i] = false;
         }
+        task_on_f_ = task_on_t_ = false;
     }
 };
 

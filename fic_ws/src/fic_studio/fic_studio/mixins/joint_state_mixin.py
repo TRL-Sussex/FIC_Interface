@@ -17,6 +17,23 @@ from sensor_msgs.msg import JointState
 from rclpy.qos import qos_profile_sensor_data
 
 
+def latest_qos(base):
+    """``base`` (a depth, i.e. reliable, or a QoS profile) keeping only the newest message.
+
+    The Studio shows the newest robot state; its state thread reads it at a
+    steady pace (ros_node.STATE_PERIOD_S), so older samples are dropped in DDS
+    instead of each costing a Python callback. Reliability is unchanged: a
+    reliable reader never matches a best-effort publisher.
+    """
+    import copy
+    from rclpy.qos import QoSProfile
+    if isinstance(base, int):
+        return QoSProfile(depth=1)
+    qos = copy.copy(base)
+    qos.depth = 1
+    return qos
+
+
 def parse_trajectory_joint(data, n, mode):
     """Return (commanded, effort) lists for n joints from trajectory_data.
 
@@ -101,7 +118,7 @@ class JointStateMixin:
         self.current_joint_torque_by_robot: dict[str, list] = {}
         self.current_contact_estimate_by_robot: dict[str, dict] = {}
         self.current_admittance_offset_by_robot: dict[str, list] = {}
-        # Measured gripper state from fic_hardware's {rid}_gripper_state:
+        # Measured gripper state from fic_control's {rid}_gripper_state:
         # rid -> (width_m, motor_current, monotonic receive time).
         self.current_gripper_state_by_robot: dict[str, tuple] = {}
         # Raw sim joint_states keyed BY NAME (for robots whose control page
@@ -136,12 +153,12 @@ class JointStateMixin:
         if not hasattr(self.node, 'js_joint_states_sub'):
             self.node.js_joint_states_sub = sub_node.create_subscription(
                 JointState, 'joint_states',
-                self._on_js_joint_states_global, 10)
+                self._on_js_joint_states_global, latest_qos(10))
 
         if not hasattr(self.node, 'js_sim_joint_sub'):
             self.node.js_sim_joint_sub = sub_node.create_subscription(
                 JointState, 'simulation_joint_states',
-                self._on_js_joint_states_global, 10)
+                self._on_js_joint_states_global, latest_qos(10))
 
     def _js_sub_node(self):
         """The node robot-state subscriptions live on: the state node if running.
@@ -168,49 +185,49 @@ class JointStateMixin:
         subs = {}
         subs['q_current'] = sub_node.create_subscription(
             Float64MultiArray, f'{rid}_q_current',
-            lambda msg, r=rid: self._on_q_current(r, msg), 10)
+            lambda msg, r=rid: self._on_q_current(r, msg), latest_qos(10))
         subs['ee_pose'] = sub_node.create_subscription(
             Pose, f'{rid}_ee_current_pose',
-            lambda msg, r=rid: self._on_ee_pose(r, msg), 10)
+            lambda msg, r=rid: self._on_ee_pose(r, msg), latest_qos(10))
         subs['trajectory'] = sub_node.create_subscription(
             Float64MultiArray, f'{rid}_trajectory_data',
-            lambda msg, r=rid: self._on_trajectory_data(r, msg), 10)
+            lambda msg, r=rid: self._on_trajectory_data(r, msg), latest_qos(10))
         subs['joint_velocities'] = sub_node.create_subscription(
             Float64MultiArray, f'{rid}_joint_velocities',
-            lambda msg, r=rid: self._on_joint_velocities(r, msg), 10)
+            lambda msg, r=rid: self._on_joint_velocities(r, msg), latest_qos(10))
         subs['sim_joint_states'] = sub_node.create_subscription(
             JointState, '/robot%d_simulation/joint_states' % n,
             lambda msg, r=rid: self._on_sim_joint_states(r, msg),
-            qos_profile_sensor_data)
+            latest_qos(qos_profile_sensor_data))
         subs['force_torque_sim'] = sub_node.create_subscription(
             Wrench, '/robot%d_simulation/force_torque' % n,
             lambda msg, r=rid: self._on_wrench(r, msg),
-            qos_profile_sensor_data)
+            latest_qos(qos_profile_sensor_data))
         subs['force_torque_hw'] = sub_node.create_subscription(
             Wrench, f'{rid}_force_torque',
             lambda msg, r=rid: self._on_wrench(r, msg),
-            qos_profile_sensor_data)
+            latest_qos(qos_profile_sensor_data))
         subs['force_torque_vr'] = sub_node.create_subscription(
             Wrench, '/vr/force_torque',
             lambda msg, r=rid: self._on_wrench(r, msg),
-            qos_profile_sensor_data)
+            latest_qos(qos_profile_sensor_data))
         subs['joint_torques'] = sub_node.create_subscription(
             Float64MultiArray, f'{rid}_joint_torques',
             lambda msg, r=rid: self._on_joint_torques(r, msg),
-            qos_profile_sensor_data)
+            latest_qos(qos_profile_sensor_data))
         subs['contact_estimate'] = sub_node.create_subscription(
             ContactEstimate, f'{rid}_contact_estimate',
-            lambda msg, r=rid: self._on_contact_estimate(r, msg), 10)
+            lambda msg, r=rid: self._on_contact_estimate(r, msg), latest_qos(10))
         subs['admittance_offset'] = sub_node.create_subscription(
             Float64MultiArray, f'{rid}_admittance_offset',
             lambda msg, r=rid: self._on_admittance_offset(r, msg),
-            qos_profile_sensor_data)
+            latest_qos(qos_profile_sensor_data))
         # Best-effort publisher (SensorDataQoS) -- a reliable subscription
         # would never match it.
         subs['gripper_state'] = sub_node.create_subscription(
             Float64MultiArray, f'{rid}_gripper_state',
             lambda msg, r=rid: self._on_gripper_state(r, msg),
-            qos_profile_sensor_data)
+            latest_qos(qos_profile_sensor_data))
         self._js_subs_by_robot[rid] = subs
 
     def _remove_robot_subscriptions(self, n: int):
@@ -489,7 +506,7 @@ class JointStateMixin:
     def _on_gripper_state(self, rid: str, msg):
         """Store the latest MEASURED gripper state for the given robot.
 
-        From ``{rid}_gripper_state`` (fic_hardware), data = [width_m,
+        From ``{rid}_gripper_state`` (fic_control), data = [width_m,
         motor_current]. A short or non-finite message is dropped rather
         than clobbering the last good reading.
         """
@@ -571,7 +588,7 @@ class JointStateMixin:
     def gripper_state_for(self, rid=None):
         """Return ``(width_m, current, age_s)`` for rid's gripper, or None.
 
-        From {rid}_gripper_state, which fic_hardware publishes at ~50 Hz
+        From {rid}_gripper_state, which fic_control publishes at ~50 Hz
         only once the driver writes a measured gripper state. ``width_m``
         is the measured finger opening in metres (0 = closed, ~0.085 =
         fully open on a Robotiq 2F-85), ``current`` the gripper motor

@@ -144,7 +144,7 @@ def test_derived_link_names_highlight_a_non_kinova_arm():
 def test_pose_prefers_raw_over_filtered():
     """The twin must mirror the unfiltered joint positions when it has them.
 
-    ``fic_hardware`` low-passes a wrapped angle, so every +-pi crossing
+    ``fic_control`` low-passes a wrapped angle, so every +-pi crossing
     leaves ``{rid}_q_current`` sweeping the whole circle over ~35 ms --
     measured at 275 deg in 35 ms, which the twin renders as a spin the
     real arm never made. The raw topic keeps the wrap an instantaneous
@@ -157,7 +157,7 @@ def test_pose_prefers_raw_over_filtered():
 def test_pose_falls_back_to_filtered_before_any_raw_sample():
     """A twin run against a hardware node without the raw topic still works.
 
-    fic_hardware is C++ and only publishes {rid}_q_current_raw once
+    fic_control is C++ and only publishes {rid}_q_current_raw once
     rebuilt; until then the twin must mirror the filtered pose rather
     than freeze at its start configuration.
     """

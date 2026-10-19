@@ -6,7 +6,7 @@
 #   .github/set-version.sh 5.12.0 "Short title of the release"
 #
 # Writes the number into fic_studio/version.py (RELEASE), fic_studio's package.xml and setup.py,
-# fic_hardware's package.xml, the docs badge (fic_docs/index.html) and the Settings page subtitle,
+# fic_control's package.xml, the docs badge (fic_docs/index.html) and the Settings page subtitle,
 # and turns CHANGELOG.md's "## [Unreleased]" heading into "## [<version>] — <date> — <title>" with
 # a new empty "## [Unreleased]" above it. The "What's new" box on the docs home page and the docs
 # changelog are written by hand. Commit the result, then release.
@@ -20,7 +20,7 @@ fi
 cd "$(git rev-parse --show-toplevel)"
 studio=fic_ws/src/fic_studio
 sed -i -E "s/^RELEASE = '[0-9.]+'/RELEASE = '$ver'/" $studio/fic_studio/version.py
-sed -i -E "0,/<version>[0-9.]+<\/version>/s//<version>$ver<\/version>/" $studio/package.xml fic_ws/src/fic_hardware/package.xml
+sed -i -E "0,/<version>[0-9.]+<\/version>/s//<version>$ver<\/version>/" $studio/package.xml fic_ws/src/fic_control/package.xml
 sed -i -E "s/^    version='[0-9.]+',/    version='$ver',/" $studio/setup.py
 sed -i -E "s/(<span class=\"version-badge\"[^>]*>)v[0-9.]+/\1v$ver/" fic_docs/index.html
 sed -i -E "s/(settings\.yaml<\/code> &mdash; )v[0-9.]+/\1v$ver/" fic_docs/pages/settings.html
@@ -37,5 +37,5 @@ s = s.replace('## [Unreleased]', '## [Unreleased]\n\n' + head, 1)
 open('CHANGELOG.md', 'w').write(s)
 EOF
 grep -n "RELEASE = \|<version>\|version='\|version-badge\|&mdash; v" $studio/fic_studio/version.py $studio/package.xml \
-    fic_ws/src/fic_hardware/package.xml $studio/setup.py fic_docs/index.html fic_docs/pages/settings.html
+    fic_ws/src/fic_control/package.xml $studio/setup.py fic_docs/index.html fic_docs/pages/settings.html
 grep -n -m2 '^## \[' CHANGELOG.md

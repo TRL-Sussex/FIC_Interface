@@ -3,7 +3,7 @@
 > **Package:** `menagerie`
 > **Type:** ament_cmake (data-only — no executables)
 
-The `menagerie` package stores all robot model files (URDF for Pinocchio, MuJoCo XML for simulation) used by `fic_simulation`, `fic_hardware`, and the MuJoCo simulator. It is installed as a ROS 2 package so other packages can declare it as a dependency and resolve model paths at build time.
+The `menagerie` package stores all robot model files (URDF for Pinocchio, MuJoCo XML for simulation) used by `fic_control`, `fic_control`, and the MuJoCo simulator. It is installed as a ROS 2 package so other packages can declare it as a dependency and resolve model paths at build time.
 
 ---
 
@@ -125,14 +125,14 @@ For what the importer does not cover, such as a robot with sliding drives:
    `fic_library/config/robots_config.yaml` and gives the robot default tuning in `config.xml`.
 
 No rebuild is needed with `colcon build --symlink-install` (this workspace). A copy install
-needs `colcon build --packages-select menagerie fic_simulation` for new model files and the
+needs `colcon build --packages-select menagerie fic_control` for new model files and the
 new `config.xml` entry to reach the install space.
 
 ---
 
 ## Notes
 
-- **URDF is used by Pinocchio** (in both `fic_simulation` and `fic_hardware`) for forward kinematics, Jacobians, inverse kinematics, and gravity compensation (RNEA).
+- **URDF is used by Pinocchio** (in both `fic_control` and `fic_control`) for forward kinematics, Jacobians, inverse kinematics, and gravity compensation (RNEA).
 - **MuJoCo XML is used only by the MuJoCo simulator** for physics stepping and 3D rendering.
 - **Both models must represent the same robot** with consistent joint ordering, link names, and kinematics.
 - **IIWA_14 ships only `.xacro` sources.** `robots_config.yaml` expects `IIWA_14/URDF/IIWA_14.urdf`: generate it with `xacro` before running the FIC controller on it. The other robots ship compiled URDF files.

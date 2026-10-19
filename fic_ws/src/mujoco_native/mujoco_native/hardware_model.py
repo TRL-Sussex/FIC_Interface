@@ -11,7 +11,7 @@ command delay it returns.
       armature: [...]           # kg m^2, rotor inertia at each joint   -> MuJoCo armature
       torque_noise: [...]       # N m, standard deviation of the measured joint torque at rest
       command_delay_ms: 0       # torque command applied this late
-      torque_filter_hz: 200     # read by fic_simulation (the measured-torque filter)
+      torque_filter_hz: 200     # read by fic_control (the measured-torque filter)
       torque_sensor: motor      # measured joint torque: motor (the actuator torque, default) or
                                 # output (`link_side_torque`: less the joint's own friction, damping
                                 # and rotor inertia, as a sensor after the gearbox reads it)
@@ -22,7 +22,7 @@ motion (the friction and damping values were fitted with it).
 
 Lists are per joint, in the order of the robot's joint_names; a missing list keeps the MJCF's
 own values. Absent block, or enabled: false: nothing changes (the ideal simulator). The
-environment variable FIC_HARDWARE_MODEL=off turns it off for one run (fic_simulation honours it
+environment variable FIC_HARDWARE_MODEL=off turns it off for one run (fic_control honours it
 too), e.g. to reproduce results made with the ideal simulator.
 """
 from __future__ import annotations
@@ -34,16 +34,16 @@ PER_JOINT = {'joint_friction': 'dof_frictionloss', 'joint_damping': 'dof_damping
 
 
 def config_path() -> str | None:
-    """robots_config.yaml as the Studio and fic_simulation read it: $FIC_ROOT/fic_library/config,
+    """robots_config.yaml as the Studio and fic_control read it: $FIC_ROOT/fic_library/config,
     then ../fic_library/config from the working directory (the Studio starts nodes in fic_ws),
-    then fic_simulation's share (a symlink to the same file on Linux)."""
+    then fic_control's share (a symlink to the same file on Linux)."""
     cands = []
     if os.environ.get('FIC_ROOT'):
         cands.append(os.path.join(os.environ['FIC_ROOT'], 'fic_library', 'config'))
     cands.append(os.path.join(os.getcwd(), '..', 'fic_library', 'config'))
     try:
         from ament_index_python.packages import get_package_share_directory
-        cands.append(os.path.join(get_package_share_directory('fic_simulation'), 'config'))
+        cands.append(os.path.join(get_package_share_directory('fic_control'), 'config'))
     except Exception:
         pass
     for d in cands:

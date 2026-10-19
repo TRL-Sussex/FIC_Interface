@@ -219,7 +219,7 @@ robots:
       cart_torque_hardware: 1.5
     # The real arm as the simulator reproduces it (fic_docs: Simulation vs. Hardware). With it on,
     # the simulated Kinova has the arm's joint friction and torque-sensor noise and measures torque
-    # as fic_hardware does (200 Hz filter, H-PMP's push estimated from the joint torques, the
+    # as fic_control does (200 Hz filter, H-PMP's push estimated from the joint torques, the
     # deadbands above), so tunes made in simulation carry over. torque_noise: measured at rest on
     # Robot1 (14 Oct 2026). joint_friction/joint_damping: estimated from the wall runs of that day
     # (about 2 N of apparent push along the motion at the gripper at 10-20 mm/s); replace them with
@@ -255,7 +255,7 @@ robots:
     # Cartesian zones are OFF, deliberately, decided 2026-09-28.
     #
     # Enabling them is tempting: the 2000 N/m virtual wall they switch on
-    # (fic_hardware.cpp, the joint-mode wall block) is the only guard that acts
+    # (fic_control.cpp, the joint-mode wall block) is the only guard that acts
     # on the ARM rather than on the command, so it is the one that would catch
     # a teleoperation session going wrong. The bounds below are generous for an
     # arm that reaches about 0.9 m, so in practice they would only catch a

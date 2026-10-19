@@ -30,7 +30,7 @@ zsh fic_install/macos/install-fic-studio-macos.sh</code></pre>
   <tr><td>2</td><td>Installs <strong>Miniforge</strong> (conda/mamba) if absent, through Homebrew when there</td></tr>
   <tr><td>3</td><td>Creates the <code>fic_ros</code> conda env with <strong>ROS 2 Humble</strong> from the <code>robostack-staging</code> + <code>conda-forge</code> channels</td></tr>
   <tr><td>4</td><td>Installs deps into the env: compilers, cmake, colcon, ament-cmake, Eigen, TinyXML2, yaml-cpp, <strong>Pinocchio</strong>, PyQt5 with QtWebEngine, pyqtgraph, <code>numpy&ge;2</code>, SciPy, cryptography, matplotlib, <code>mujoco&ge;3.3</code>, <code>setuptools&lt;80</code></td></tr>
-  <tr><td>5</td><td>Builds the whole workspace (<code>communication</code>, <code>menagerie</code>, <code>fic_simulation</code>, <code>fic_studio</code>, <code>mujoco_native</code>, &hellip;)</td></tr>
+  <tr><td>5</td><td>Builds the whole workspace (<code>communication</code>, <code>menagerie</code>, <code>fic_control</code>, <code>fic_studio</code>, <code>mujoco_native</code>, &hellip;)</td></tr>
   <tr><td>6</td><td>Builds real <strong><code>.app</code> bundles</strong> — <em>FIC Control Studio.app</em> and <em>FIC Dev Console.app</em> — in <code>~/Applications</code> (with the FIC icon, rendered from the SVG), so they appear in Launchpad, Spotlight and the Dock. Also drops <code>.command</code> launchers as a terminal-visible fallback</td></tr>
 </table>
 
@@ -100,7 +100,7 @@ mamba install -c conda-forge -c robostack-staging \
 # 4. Build the simulation packages (or the whole workspace: drop --packages-select)
 cd fic_ws
 colcon build \
-    --packages-select communication menagerie fic_simulation fic_studio mujoco_native \
+    --packages-select communication menagerie fic_studio mujoco_native \
     --cmake-args -DPython3_EXECUTABLE=$CONDA_PREFIX/bin/python
 source install/setup.zsh</code></pre>
 <div class="admonition warning"><div class="adm-title">Use <code>numpy&ge;2</code> (not <code>&lt;2</code>)</div><p>RoboStack's <code>ros-humble</code> on osx-arm64 is built against NumPy 2.x (its <code>std_msgs</code> cmake references <code>numpy/_core/include</code>). Pinning <code>numpy&lt;2</code> makes the <code>communication</code> package fail to configure. This is the opposite of the Linux install's <code>numpy&lt;2</code> pin.</p></div>

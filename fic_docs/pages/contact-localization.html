@@ -127,7 +127,7 @@ before any filter smoothed it over. A debouncer that only ever gets asked about 
 output cannot tell you how often it is masking a wrong instantaneous answer.</p>
 
 <h2>The signal chain</h2>
-<pre><code>fic_hardware  (C++, 1 kHz)
+<pre><code>fic_control  (C++, 1 kHz)
     reads torque from /dev/shm, applies torque_sign, Butterworth-filters it
     &rarr; publishes {rid}_joint_torques          &lt;- NEW
     &rarr; publishes {rid}_admittance_offset      &lt;- NEW, modes 3/4 only
@@ -152,7 +152,7 @@ fic_contact/twin.py  (mjpython)
     model.geom_rgba[geom_of[k]] = hot
     user_scn: sphere @ point + arrow along -force  &lt;- NEW, v2 only, point/force non-empty
 </code></pre>
-<p>The node runs continuously alongside <code>fic_hardware</code> &mdash; it does not wait for
+<p>The node runs continuously alongside <code>fic_control</code> &mdash; it does not wait for
 the twin viewer to be open, so contact events are estimated and recordable whenever the
 hardware stack is up.</p>
 
@@ -202,7 +202,7 @@ correctly claim no statement rather than a spurious measurement.</p>
 
 <div class="admonition note">
   <div class="adm-title">Why a new topic was needed</div>
-  <p>Before this work, the Studio could not see the arm's measured joint torque at all. <code>fic_hardware</code> read it at 1 kHz and threw it away. It reached ROS only as block 7 of <code>{rid}_trajectory_data</code>, and only in joint-admittance modes 3 and 4 &mdash; identically zero in every other mode. Worse, <code>host.joint_effort_for()</code> is documented as &ldquo;measured joint efforts&rdquo; but actually returns block 4, the FIC controller's <strong>commanded</strong> control effort. Use <code>joint_torque_for()</code> for the real measurement.</p>
+  <p>Before this work, the Studio could not see the arm's measured joint torque at all. <code>fic_control</code> read it at 1 kHz and threw it away. It reached ROS only as block 7 of <code>{rid}_trajectory_data</code>, and only in joint-admittance modes 3 and 4 &mdash; identically zero in every other mode. Worse, <code>host.joint_effort_for()</code> is documented as &ldquo;measured joint efforts&rdquo; but actually returns block 4, the FIC controller's <strong>commanded</strong> control effort. Use <code>joint_torque_for()</code> for the real measurement.</p>
 </div>
 
 <h2>Calibration</h2>
@@ -262,7 +262,7 @@ per-estimate column empty, which is itself a useful (if boring) recording.</p>
     <tr><td><code>q1&hellip;qN</code></td><td>rad</td><td>Measured joint configuration,
 <code>{rid}_q_current</code>, robot joint order.</td></tr>
     <tr><td><code>tau_meas1&hellip;N</code></td><td>N&middot;m</td><td>Measured joint torque,
-<code>{rid}_joint_torques</code>, after <code>fic_hardware</code>'s own
+<code>{rid}_joint_torques</code>, after <code>fic_control</code>'s own
 <code>torque_sign</code> and filtering.</td></tr>
     <tr><td><code>tau_ext1&hellip;N</code></td><td>N&middot;m</td><td>The residual
 (<code>ResidualEstimator.residual()</code>) for <strong>this tick only</strong> &mdash; absent
@@ -571,7 +571,7 @@ full trace, but <code>contact_node.py</code>'s live decision path no longer call
   <div class="adm-title">Cartesian admittance (7, 8) is weaker, on purpose</div>
   <p>Cartesian admittance never routes through <code>handleJointAdmitanceControl</code>, so
 <code>fic::ficControl::humanOffset()</code> is never populated in modes 7/8 and neither
-<code>fic_hardware</code> nor <code>fic_simulation</code> publishes
+<code>fic_control</code> publishes
 <code>{rid}_admittance_offset</code> in them (see each publisher's own mode gate). There is no
 per-joint offset to read, so modes 7 and 8 fall back to the torque residual alone: a real,
 working, single-observable estimate, just without the cross-check that makes modes 3/4
@@ -580,7 +580,7 @@ stronger.</p>
 
 <div class="admonition note">
   <div class="adm-title">Blocks 6/7 are not used for the torque observable</div>
-  <p><code>fic_hardware.cpp</code> calls the admittance controller with the measured torque
+  <p><code>fic_control.cpp</code> calls the admittance controller with the measured torque
 negated (<code>current_effort_ = -joint_torques_[i]</code>), so block 6 minus block 7 works out
 to <code>g(q) + tau_meas</code> &mdash; a sum, not a zero-mean residual. Reusing it would risk
 biasing or inverting the link decision, so the node computes the torque observable the same way
@@ -775,8 +775,8 @@ looking exactly alike would make the difference invisible to whoever is watching
   <li><code>fic_ws/src/fic_contact/fic_contact/contact_node.py</code> &mdash; the ROS node</li>
   <li><code>fic_ws/src/fic_contact/fic_contact/twin.py</code> &mdash; the MuJoCo viewer</li>
   <li><code>fic_library/include/fic/fic_control.h</code> &mdash; <code>ficControl::humanOffset()</code>, the per-instance accumulated push offset read by both publishers below</li>
-  <li><code>fic_ws/src/fic_hardware/src/fic_hardware.cpp</code> &mdash; publishes <code>{rid}_joint_torques</code> and <code>{rid}_admittance_offset</code></li>
-  <li><code>fic_ws/src/fic_simulation/src/fic_simulation.cpp</code> &mdash; publishes <code>{rid}_admittance_offset</code> for the simulated arm too</li>
+  <li><code>fic_ws/src/fic_control/src/fic_control.cpp</code> &mdash; publishes <code>{rid}_joint_torques</code> and <code>{rid}_admittance_offset</code></li>
+  <li><code>fic_ws/src/fic_control/src/fic_control.cpp</code> &mdash; publishes <code>{rid}_admittance_offset</code> for the simulated arm too</li>
   <li><code>fic_ws/src/fic_studio/fic_studio/mixins/joint_state_mixin.py</code> &mdash; subscribes to <code>{rid}_joint_torques</code>/<code>{rid}_contact_estimate</code>/<code>{rid}_admittance_offset</code>; exposes <code>joint_torque_for()</code>, <code>contact_estimate_for()</code>, <code>admittance_offset_for()</code></li>
   <li><code>fic_ws/src/fic_studio/fic_studio/mixins/process_mixin.py</code> &mdash; <code>_start_contact_twin()</code>/<code>_stop_contact_twin()</code>, launching <code>twin.py</code> as a managed subprocess</li>
   <li><code>fic_ws/src/fic_studio/fic_studio/mixins/control_bar_mixin.py</code> &mdash; the Contact panel (Calibrate, ground truth) and the four-state live link readout &mdash; see &ldquo;Launching the viewer from the Studio&rdquo;, above</li>

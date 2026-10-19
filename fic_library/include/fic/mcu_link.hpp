@@ -3,7 +3,7 @@
 
 // Linux end of FIC-link (fic_link.h): a UDP client for an FIC inner-loop MCU.
 //
-// fic_hardware owns one of these. probe() is how the system decides, per robot
+// fic_control owns one of these. probe() is how the system decides, per robot
 // load, whether an MCU is there and can drive this robot; everything after that
 // is fire-and-forget sends from the control loop plus a receive thread that
 // keeps the latest STATE. Nothing here needs real-time scheduling — lateness on
@@ -107,6 +107,22 @@ public:
 
     bool sendConfig(const fic::link::Config& c) { return sendFixed(fic::link::MsgType::Config, c); }
     bool sendParams(const fic::link::Params& p) { return sendFixed(fic::link::MsgType::Params, p); }
+    // The topic plant (a simulated arm that cannot step in lockstep): this link is the plant too.
+    bool sendSimStep(const fic::link::SimStepMsg& m) {
+        uint8_t buf[fic::link::kMaxDatagram];
+        const size_t n = fic::link::encodeSimStep(m, ++tx_seq_, buf, sizeof(buf));
+        return n && sendRaw(buf, n);
+    }
+    bool latestSimTorque(fic::link::SimTorqueMsg& out, double& age_s) const {
+        std::lock_guard<std::mutex> l(m_);
+        if (!have_sim_torque_) return false;
+        out = sim_torque_;
+        age_s = std::chrono::duration<double>(Clock::now() - sim_torque_time_).count();
+        return true;
+    }
+
+    // E-STOP straight to the inner loop (latched there like a CMD's e-stop flag; no CONFIG needed).
+    bool sendEstop() { return sendFixed(fic::link::MsgType::Estop, fic::link::EstopMsg{1}); }
 
     bool sendCmd(const fic::link::CmdMsg& m) {
         uint8_t buf[fic::link::kMaxDatagram];
@@ -141,6 +157,9 @@ private:
     std::optional<fic::link::HelloAck> hello_;
     fic::link::StateMsg state_{};
     bool have_state_ = false;
+    fic::link::SimTorqueMsg sim_torque_{};
+    Clock::time_point sim_torque_time_{};
+    bool have_sim_torque_ = false;
     Clock::time_point state_time_{};
     std::atomic<double> rate_hz_{0.0};
 
@@ -180,6 +199,13 @@ private:
                 state_time_ = now;
                 have_state_ = true;
                 ++count;
+            } else if (r.type() == fic::link::MsgType::SimTorque) {
+                fic::link::SimTorqueMsg t;
+                if (!fic::link::decodeSimTorque(r, t)) continue;
+                std::lock_guard<std::mutex> l(m_);
+                sim_torque_ = t;
+                sim_torque_time_ = now;
+                have_sim_torque_ = true;
             } else if (r.type() == fic::link::MsgType::HelloAck) {
                 fic::link::HelloAck a;
                 if (!fic::link::decodeFixed(r, a)) continue;

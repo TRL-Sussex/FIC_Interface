@@ -88,16 +88,15 @@ def main():
     # process_mixin.install_crash_cleanup.
     install_crash_cleanup(window, app)
 
-    import time as _time
+    from fic_studio.ros_pump import IDLE_MS, drain, next_interval_ms
 
     def _spin_ros():
-        deadline = _time.monotonic() + 0.008
-        while _time.monotonic() < deadline:
-            executor.spin_once(timeout_sec=0)
+        # what is ready, then back to Qt; poll less while idle (ros_pump.py)
+        timer.setInterval(next_interval_ms(drain(executor, budget_s=0.008)))
 
     timer = QTimer()
     timer.timeout.connect(_spin_ros)
-    timer.start(10)
+    timer.start(IDLE_MS)
 
     signal.signal(signal.SIGINT, lambda *args: app.quit())
 

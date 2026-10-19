@@ -76,10 +76,10 @@ from communication.srv import SimulationReset
 
 import mujoco
 
-from mujoco_native import hardware_model
+from mujoco_native import hardware_model, inner_loop_link
 
 from mujoco_native.experiment_hooks import (
-    applied_wrench_torques, body_positions, object_bodies, object_poses, set_wall, site_wrench,
+    applied_wrench_torques, body_positions, object_bodies, object_poses, set_wall, site_wrench_adr, site_wrench_at,
     step_push, wall_contact_force)
 
 # Links whose world positions are published on `body_poses` (flattened xpos).
@@ -228,6 +228,16 @@ def _quat_to_euler(w: float, x: float, y: float, z: float):
     return roll, pitch, yaw
 
 
+def log_real_time_factor(logger, rtf, period_s):
+    """One line about the real-time factor: a warning below 0.95. rclpy pins one severity per call site, so
+    the two severities are two calls (one call switching between them crashed the simulator, or dropped lines)."""
+    if rtf < 0.95:
+        logger.warning(f"real-time factor {rtf:.3f} over the last {period_s:.0f} s "
+                       "(below 0.95: wall-timed controllers run fast against the physics)")
+    else:
+        logger.info(f"real-time factor {rtf:.3f} over the last {period_s:.0f} s")
+
+
 class NativeMujocoSimulation(Node):
     def __init__(self) -> None:
         super().__init__('simulation_mujoco_native')
@@ -252,6 +262,10 @@ class NativeMujocoSimulation(Node):
         # robots_config.yaml hardware_model of the robot, as JSON (see hardware_model.py); empty =
         # the ideal simulator.
         self.declare_parameter('hardware_model', '')
+        # The joint inner loop in lockstep (fic_inner_loop --adapter sim): its UDP port on this PC (0: off), and
+        # the prefix of the arm's torque actuators it drives ("<prefix>torq_j1..n", as FIC names them).
+        self.declare_parameter('inner_loop_port', 0)
+        self.declare_parameter('inner_loop_actuator_prefix', '')
 
         model_file = self.get_parameter('simulation/model_file').value
         if not model_file or not os.path.exists(model_file):
@@ -362,6 +376,7 @@ class NativeMujocoSimulation(Node):
         self._last_cmd_stamp = 0.0
         # Per-actuator merged commands: name -> (torque, kp, pos, kd, vel, t).
         self._cmd_table: dict[str, tuple] = {}
+        self._init_inner_loop()
         self._stop = threading.Event()
         self._viewer = None
         self._paused = False
@@ -381,6 +396,7 @@ class NativeMujocoSimulation(Node):
                           [self._model.geom(i).name for i in range(self._model.ngeom)])
         self._ft_sensors = find_ft_sensors(self._model)
         self._has_ft = self._ft_sensors is not None
+        self._ft_adr = site_wrench_adr(self._model, *self._ft_sensors) if self._has_ft else None
         self._imu_adr = find_imu_sensors(self._model)
         self._pose_bodies = [b for b in _POSE_BODIES if b in body_names]
         self._objects = object_bodies(self._model)
@@ -577,6 +593,9 @@ class NativeMujocoSimulation(Node):
     def run_sim_loop(self) -> None:
         self._build_viewer()
         m, d = self._model, self._data
+        # The real-time factor, logged every 10 s.
+        self._rtf_period = 10.0
+        self._rtf = inner_loop_link.RtfMeter(self._rtf_period)
         # Wall clock <-> sim time anchor for real-time pacing.
         sync_wall = time.monotonic()
         sync_sim = d.time
@@ -603,6 +622,7 @@ class NativeMujocoSimulation(Node):
                 n_steps = 1 + min(max(int(lag / self._dt), 0), _MAX_CATCH_UP)
                 ok = True
                 for _ in range(n_steps):
+                    self._lockstep_pre_step()
                     self._apply_latest_cmd()
                     self._apply_hooks_pre_step()
                     mujoco.mj_step(m, d)
@@ -622,6 +642,9 @@ class NativeMujocoSimulation(Node):
                 if not ok:
                     self._stop.set()
                     break
+                rtf = self._rtf.update(float(d.time), time.monotonic())
+                if rtf is not None:
+                    log_real_time_factor(self.get_logger(), rtf, self._rtf_period)
 
             now = time.monotonic()
             try:
@@ -720,10 +743,91 @@ class NativeMujocoSimulation(Node):
             msg.wrench.force.x, msg.wrench.force.y, msg.wrench.force.z = map(float, f)
             self._pub_wall_force.publish(msg)
         if self._has_ft:
-            self._ft_cache = site_wrench(m, d, *self._ft_sensors)
+            self._ft_cache = site_wrench_at(d, *self._ft_adr)
         if self._imu_adr:
             self._imu_cache = {k: d.sensordata[a:a + (4 if k == 'quat' else 3)].copy()
                                for k, a in self._imu_adr.items()}
+
+    # ------------------------------------------------------------------
+    #  The joint inner loop in lockstep
+    # ------------------------------------------------------------------
+    def _init_inner_loop(self) -> None:
+        """Find the arm's torque actuators and open the link to the inner loop (inner_loop_port > 0)."""
+        self._il = None
+        self._il_arm = []            # (actuator name, actuator id, qpos address, dof address)
+        self._il_names = set()
+        self._il_torqued = False     # the inner loop has torqued the arm since it started answering
+        self._il_hold = None         # q to hold at while it does not torque the arm
+        self._il_last = None         # the last torques it sent (repeated over a missed reply)
+        port = int(self.get_parameter('inner_loop_port').value)
+        if port <= 0:
+            return
+        prefix = str(self.get_parameter('inner_loop_actuator_prefix').value)
+        m = self._model
+        for i in range(1, 64):
+            name = f"{prefix}torq_j{i}"
+            aid = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_ACTUATOR, name)
+            if aid == -1:
+                break
+            j = int(m.actuator_trnid[aid][0])
+            self._il_arm.append((name, aid, int(m.jnt_qposadr[j]), int(m.jnt_dofadr[j])))
+        if not self._il_arm:
+            self.get_logger().warn(f"inner_loop_port {port}: no actuators '{prefix}torq_j1..' in the model")
+            return
+        self._il_names = {a[0] for a in self._il_arm}
+        self._il = inner_loop_link.InnerLoopLink(port)
+        self.get_logger().info(f"Lockstep with the joint inner loop on 127.0.0.1:{port} "
+                               f"({len(self._il_arm)} joints, actuators '{prefix}torq_j*')")
+
+    def _arm_effort(self):
+        """The arm's measured torques exactly as joint_states carries them (actuator force, or the link-side
+        torque of the hardware model, with its noise)."""
+        d = self._data
+        dadr = np.array([a[3] for a in self._il_arm], dtype=int)
+        if self._hw['applied'] and self._hw.get('torque_sensor') == 'output':
+            eff = hardware_model.link_side_torque(self._model, d, dadr).tolist()
+        else:
+            eff = d.qfrc_actuator[dadr].tolist()
+        if self._hw['noise']:
+            for k, dof in enumerate(dadr):
+                sd = self._hw['noise'].get(int(dof))
+                if sd:
+                    eff[k] += float(self._noise_rng.normal(0.0, sd))
+        return eff
+
+    def _lockstep_pre_step(self) -> None:
+        """One SimStep / SimTorque with the inner loop; its torques (or the robot's own hold) go into the
+        command table for the arm's actuators, so the delay FIFO and clamp apply as to any command."""
+        if self._il is None:
+            return
+        d = self._data
+        q = [float(d.qpos[a[2]]) for a in self._il_arm]
+        reply = self._il.step(float(d.time), q, self._arm_effort(), [0.0] * 6)
+        if reply is None and not self._il.alive() and not self._il_torqued:
+            return                                    # no inner loop: actuators_cmds drive the arm as before
+        if reply is not None:
+            torque_mode, tau = reply
+            if torque_mode:
+                self._il_torqued = True
+                self._il_hold = None
+                self._il_last = tau
+            elif self._il_torqued:
+                self._il_last = None                  # it stopped torquing: the robot holds the arm itself
+            else:
+                return                                # not torqued yet: leave the arm to actuators_cmds
+        elif self._il.alive() and self._il_last is not None:
+            tau = self._il_last                       # a missed reply: repeat the last torque
+        else:
+            self._il_last = None                      # the inner loop is gone after torquing: hold
+        if self._il_last is None:
+            if self._il_hold is None:
+                self._il_hold = list(q)
+            tau = [inner_loop_link.hold_torque(float(d.qfrc_bias[a[3]]), qh, qi, float(d.qvel[a[3]]))
+                   for a, qh, qi in zip(self._il_arm, self._il_hold, q)]
+        now = time.monotonic()
+        with self._cmd_lock:
+            for (name, _aid, _qa, _da), t in zip(self._il_arm, tau):
+                self._cmd_table[name] = (float(t), 0.0, 0.0, 0.0, 0.0, now)
 
     def _hold_spawn_pose_until_first_cmd(self) -> None:
         """Keep a floating-base model in its spawn pose until a controller talks.
@@ -780,10 +884,15 @@ class NativeMujocoSimulation(Node):
 
         def at(seq, k):
             return float(seq[k]) if k < len(seq) else 0.0
+        # While the inner loop drives (or holds) the arm, its actuators are its own: the task node's
+        # actuators_cmds for them are a record of what was applied, not a command.
+        owned = self._il_names if (self._il is not None and (self._il.alive() or self._il_torqued)) else ()
         with self._cmd_lock:
             self._latest_cmd = msg
             self._last_cmd_stamp = now
             for k, name in enumerate(msg.actuators_name):
+                if name in owned:
+                    continue
                 self._cmd_table[name] = (at(msg.torque, k), at(msg.kp, k), at(msg.pos, k),
                                          at(msg.kd, k), at(msg.vel, k), now)
 
@@ -1106,6 +1215,9 @@ class NativeMujocoSimulation(Node):
         with self._cmd_lock:
             self._cmd_table.clear()
         self._data.ctrl[:] = self._start_ctrl
+        # The inner loop's lockstep: hold the arm where the reset put it, and never repeat a torque from before.
+        self._il_hold = None
+        self._il_last = None
 
     @staticmethod
     def _hinge_gravity_torques(full_tau: list, hinge_joints: list) -> list:

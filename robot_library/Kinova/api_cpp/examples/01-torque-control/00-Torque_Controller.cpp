@@ -495,9 +495,9 @@ bool example_cyclic_torque_control(k_api::Base::BaseClient* base, k_api::BaseCyc
 
     try
     {
-        // ── Wait for fic_hardware to be commanding BEFORE handing over the arm ──
+        // ── Wait for fic_control to be commanding BEFORE handing over the arm ──
         //
-        // In TORQUE mode the actuators apply only what they are told. fic_hardware
+        // In TORQUE mode the actuators apply only what they are told. fic_control
         // cannot tell them anything until it has seen joint feedback, and the
         // feedback it reads is what this process publishes. Entering torque mode
         // first therefore opened a window — about a second, longer when the node was
@@ -516,11 +516,11 @@ bool example_cyclic_torque_control(k_api::Base::BaseClient* base, k_api::BaseCyc
             while (!g_stop_requested &&
                    !shared_feedback->stop_torque_mode.load(std::memory_order_acquire))
             {
-                // Same units and conventions as the main loop, or fic_hardware
+                // Same units and conventions as the main loop, or fic_control
                 // reads nonsense: joint angles in RADIANS wrapped to +-pi, from
                 // GetMeasuredJointAngles (which reports DEGREES, 0..360), and
                 // torque raw from the cyclic feedback. Passing the raw degrees
-                // here made fic_hardware read 15 deg as 15 rad = 858 deg and hard
+                // here made fic_control read 15 deg as 15 rad = 858 deg and hard
                 // fault, which drops it to its gravity-only output: the arm then
                 // holds against gravity but with no impedance at all.
                 base_feedback = base_cyclic->RefreshFeedback();
@@ -539,13 +539,13 @@ bool example_cyclic_torque_control(k_api::Base::BaseClient* base, k_api::BaseCyc
                                        .load(std::memory_order_acquire))) { ready = false; break; }
                 }
                 if (ready) {
-                    std::cout << "fic_hardware is commanding - entering torque control"
+                    std::cout << "fic_control is commanding - entering torque control"
                               << std::endl;
                     break;
                 }
                 if (!announced) {
                     announced = true;
-                    std::cout << "Holding position: waiting for fic_hardware to command "
+                    std::cout << "Holding position: waiting for fic_control to command "
                                  "(the arm stays held until it does)" << std::endl;
                 }
                 // No timeout on purpose: holding the arm indefinitely is correct, and
@@ -645,8 +645,8 @@ bool example_cyclic_torque_control(k_api::Base::BaseClient* base, k_api::BaseCyc
 
 while (timer_count < (60 * 10000000))
        {
-        // Exit gracefully on: SIGTERM/SIGINT, fic_hardware stop signal,
-        // or fic_hardware process died (alive flag dropped).
+        // Exit gracefully on: SIGTERM/SIGINT, fic_control stop signal,
+        // or fic_control process died (alive flag dropped).
         if (g_stop_requested) {
             std::cout << "Signal received — exiting torque control loop" << std::endl;
             break;

@@ -60,6 +60,7 @@ def test_no_literal_currentindex_comparison_remains():
 def test_registry_round_trips_every_registered_page():
     """Registering then showing a page must land on that exact widget."""
     stack = QStackedWidget()
+    stack.show()                     # "showing" means on screen (test_hidden_window_idle.py)
     registry = PageRegistry(stack)
 
     made = {}

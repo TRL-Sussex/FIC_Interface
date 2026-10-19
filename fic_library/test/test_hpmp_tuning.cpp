@@ -1,5 +1,5 @@
 // H-PMP's tuning, as both nodes read it: fic::tuningKeyFor (which blocks a control mode reads,
-// in fic_simulation and fic_hardware alike) and loadTuningSet's H-PMP block, with the fallback
+// in fic_simulation and fic_control alike) and loadTuningSet's H-PMP block, with the fallback
 // to modes 4 and 6 for a robot that has none. Needs tinyxml2:  see fic_library/test/CMakeLists.txt
 
 #include <cstdio>
@@ -30,10 +30,12 @@ static std::string write(const char* name, const std::string& robot_body) {
 int main() {
     using fic::tuningKeyFor;
     std::printf("tuningKeyFor\n");
-    for (int m = 1; m <= 9; ++m) {
-        // H-PMP off: every mode reads itself (mode 9, simulation only, mode 1's joints)
+    // Mode 9 (the old simulation-only Cartesian IK) is gone: it is not special any more.
+    CHECK(tuningKeyFor("R", 7, 9, false).joint_mode == 9);
+    for (int m = 1; m <= 8; ++m) {
+        // H-PMP off: every mode reads itself
         auto k = tuningKeyFor("R", 7, m, false);
-        CHECK(k.joint_mode == (m == 9 ? 1 : m) && k.cart_mode == m && k.postural == (m >= 5 && m <= 8));
+        CHECK(k.joint_mode == m && k.cart_mode == m && k.postural == (m >= 5 && m <= 8));
         // H-PMP on: its own block in the Cartesian modes 5-8 only, simulation and hardware alike
         auto h = tuningKeyFor("R", 7, m, true), hw = tuningKeyFor("R", 7, m, true, false);
         const bool on = m >= 5 && m <= 8;

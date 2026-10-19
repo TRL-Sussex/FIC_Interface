@@ -149,6 +149,8 @@ class StatusRow(QWidget):
 
     def set_ok(self, ok):
         """Set the OK/WARN state and refresh the indicator colours."""
+        if bool(ok) == self._ok:
+            return                      # refreshed 20 times a second: restyle only on a change
         self._ok = bool(ok)
         self._apply_style()
 

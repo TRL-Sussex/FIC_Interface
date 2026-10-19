@@ -45,7 +45,8 @@ apt and, when needed, the tinyxml2 fix below. pip installs go into your home fol
    git curl libeigen3-dev libtinyxml2-dev libyaml-cpp-dev libboost-dev libboost-serialization-dev
    libboost-system-dev libboost-filesystem-dev libglfw3 python3-pip python3-pyqt5
    python3-pyqt5.qtsvg python3-pyqt5.qtwebengine python3-yaml python3-numpy python3-scipy
-   python3-cryptography python3-pyqtgraph python3-matplotlib python3-tk`, and
+   python3-cryptography python3-pyqtgraph python3-matplotlib python3-tk ffmpeg`, `adb` (best-effort: where apt cannot
+   install it, as on the Arduino board, `fic_install/adb-private.sh` unpacks it on its own), and
    `ros-<distro>-rclcpp -std-msgs -geometry-msgs -sensor-msgs -nav-msgs -std-srvs
    -urdfdom-headers`.
 4. **Pinocchio** (`ros-<distro>-pinocchio`, the kinematics library; optional, and an older one is
@@ -84,7 +85,8 @@ For a machine that already has ROS 2 (it does not add the ROS apt source).
 - apt: `libeigen3-dev libyaml-cpp-dev libglfw3 libtinyxml2-dev python3-dev python3-numpy
   python3-pip python3-pyqt5 python3-pyqt5.qtsvg python3-pyqt5.qtwebengine python3-yaml
   python3-scipy python3-cryptography python3-pyqtgraph python3-opencv python3-matplotlib
-  python3-tk git cmake build-essential pkg-config lsb-release curl`, and `ros-dev-tools`,
+  python3-tk git cmake build-essential pkg-config lsb-release curl ffmpeg`, `adb` best-effort (else
+  `fic_install/adb-private.sh`), and `ros-dev-tools`,
   `ros-<distro>-std-srvs -urdfdom-headers -nav-msgs -sensor-msgs`, optionally
   `ros-<distro>-pinocchio`.
 - If no packaged tinyxml2 CMake config exists: tinyxml2 is cloned from github.com/leethomason

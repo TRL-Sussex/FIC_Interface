@@ -169,14 +169,14 @@ on but no window appears. If <code>mujoco_newton</code> is not built
 
 <h3>FIC Simulation Controller (FIC button, simulation mode)</h3>
 <pre><code>source ~/FIC_Interface/fic_ws/install/setup.bash
-ros2 launch fic_simulation fic_launch.py robot_name:=Franka_FR3 num_joints:=7 \
+ros2 launch fic_control sim_control_launch.py robot_name:=Franka_FR3 num_joints:=7 \
     station_id:=1 source_prefix:=robot1_simulation</code></pre>
 <p><code>source_prefix</code> selects the joint-state source: <code>robot&lt;sid&gt;_simulation</code> for the
 simulator, or <code>vr</code> when driven by the VR relay.</p>
 
 <h3>FIC Hardware Controller (FIC button, hardware mode)</h3>
 <pre><code>source ~/FIC_Interface/fic_ws/install/setup.bash
-ros2 launch fic_hardware robot_control_launch.py robot_name:=Franka_FR3 station_id:=1</code></pre>
+ros2 launch fic_control robot_control_launch.py robot_name:=Franka_FR3 station_id:=1</code></pre>
 
 <h3>Robot Driver / API (API button)</h3>
 <p>The driver command is configured per robot in <code>robots_config.yaml</code> under
@@ -205,7 +205,7 @@ ros2 bag play ~/FIC_Interface/experiments/bags/2026_04_12_session_001</code></pr
 
 <h3>Plotter (PLT button)</h3>
 <pre><code>source ~/FIC_Interface/fic_ws/install/setup.bash
-ros2 run fic_simulation plotter_node.py --ros-args -p station_id:=1 -p num_joints:=7</code></pre>
+ros2 run fic_control plotter_node.py --ros-args -p station_id:=1 -p num_joints:=7</code></pre>
 
 <h3>FIC Control Studio GUI</h3>
 <pre><code>source ~/FIC_Interface/fic_ws/install/setup.bash

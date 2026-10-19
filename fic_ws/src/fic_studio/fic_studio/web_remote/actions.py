@@ -382,6 +382,29 @@ def _teleop(w, args, client):
     return {'ok': True}
 
 
+def _kortex(w, args, client):
+    """Clear faults / Home through the arm's Kortex API (one-switch layout only).
+
+    The Kortex supervisor refuses both while the MCU or a driver has the arm,
+    and reports the outcome in the state's kortex.last. E-stop is not here:
+    the web E-STOP already reaches the arm through w._emergency_stop().
+    """
+    op = args.get('op')
+    if op not in ('clear_faults', 'home'):
+        raise Refused('No such arm command', 'bad_args')
+    if op == 'home' and not args.get('confirm'):
+        raise Refused('Homing moves the arm: it needs confirmation', 'confirm')
+    _require_command(w, args)
+    command = getattr(w, 'kortex_command', None)
+    if command is None:
+        raise Refused('This Studio has no Kortex support', 'unavailable')
+    sent, why = command(op)
+    if not sent:
+        raise Refused(why, 'unavailable')
+    w.log_message('WARN' if op == 'home' else 'INFO',
+                  'Web remote (%s): Kortex %s' % (_who(client), op.replace('_', ' ')), 'Web')
+
+
 def _sequence(w, args, client):
     """Quick Actions on the Sequences extension: play / loop / step / stop a sequence, make a new
     one, set the playback speed, run a trajectory template or save one as a sequence."""
@@ -776,6 +799,7 @@ HANDLERS = {
     'home': _home,
     'set_target': _set_target,
     'set_robot': _set_robot,
+    'kortex': _kortex,
     'session': _session,
     'teleop': _teleop,
     'sequence': _sequence,
@@ -957,6 +981,12 @@ def _teleop_state(w, ctx):
     }
 
 
+def _kortex_state(w, ctx):
+    """The arm's Kortex side: state, faults, camera; available only on the one-switch layout."""
+    summary = getattr(w, 'kortex_summary', None)
+    return summary() if summary is not None else {'available': False, 'note': 'no Kortex support'}
+
+
 def _inner_loop_state(w, ctx):
     """Inner loop: the FIC MCU (where, state, rate, faults) or standard."""
     summary = getattr(w, 'inner_loop_summary', None)
@@ -1103,7 +1133,7 @@ def _gripper_state(w, ctx):
         'reason': availability(w)['gripper_reason'],
         'percent': slider.value() if slider is not None else None,
         'max_width': GRIPPER_MAX_WIDTH_M,
-        # what the arm reports (fic_hardware), so a view can show the real fingers
+        # what the arm reports (fic_control), so a view can show the real fingers
         'measured': measured,
         'measured_age': age,
     }
@@ -1156,7 +1186,7 @@ def _log_state(w, ctx):
 
 
 def _fleet_state(w, ctx):
-    """Every Studio on the network, for the Multi-robot page."""
+    """The Studios this one works with (its neighbours; a Master: every one), for the Multi-robot page."""
     from fic_studio.fleet.stations import is_master, is_vr, station_label
     directory = getattr(w, '_fleet_dir', None)
     if directory is None:
@@ -1165,7 +1195,7 @@ def _fleet_state(w, ctx):
     studios = []
     modes = getattr(w, '_web_modes', None) or {}
     mine = list(getattr(w.node, '_active_robots', None) or [])
-    for card in directory.studios():
+    for card in directory.visible():                 # itself, its neighbours, Masters
         n = card.get('station')
         known = modes.get('robot%d' % n) if n in mine else None
         if known is not None and known < len(CONTROL_MODE_DISPLAY):
@@ -1225,6 +1255,7 @@ SECTIONS = (
     ('session', _session_state),
     ('teleop', _teleop_state),
     ('inner_loop', _inner_loop_state),
+    ('kortex', _kortex_state),
     ('mode', _mode_state),
     ('options', _options_state),
     ('desired_wrench', _desired_wrench_state),

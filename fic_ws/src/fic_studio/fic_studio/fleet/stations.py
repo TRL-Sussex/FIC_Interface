@@ -1,6 +1,8 @@
 """Stations: which robotN_* topics a Studio drives, and what it is called.
 
-Robot stations 1..MAX_ROBOTS own the topics ``robotN_*``, one per robot PC.
+Robot stations 1..MAX_ROBOTS own the topics ``robotN_*``, one per robot PC. They stand in a line:
+a robot Studio sees and pairs with its neighbours, stations N-1 and N+1 (``neighbours``, ``sees``),
+so a lab of up to 35 benches on one network shows each bench only what is next to it.
 
 The Master is the control seat for a PC with no arm of its own (a lab's control
 PC, a developer's laptop): it sees and commands the whole fleet. Any number of
@@ -12,7 +14,7 @@ else uses and can never reach a real arm. It is always shown as "Master".
 import zlib
 
 #: Robot stations are 1..MAX_ROBOTS.
-MAX_ROBOTS = 4
+MAX_ROBOTS = 35
 #: The settings value meaning "this Studio is a Master".
 MASTER = 0
 #: Internal stations of running Masters.
@@ -61,6 +63,23 @@ def valid_station(n) -> bool:
 def all_stations():
     """Return the stations a toolbar picker offers (robots, then Master)."""
     return list(range(1, MAX_ROBOTS + 1)) + [MASTER]
+
+
+def neighbours(n):
+    """The robot stations beside robot station ``n`` (N-1 and N+1, within 1..MAX_ROBOTS), or None when
+    ``n`` sees the whole lab (a Master) or is not a robot station."""
+    if not is_robot(n):
+        return None
+    return [m for m in (n - 1, n + 1) if 1 <= m <= MAX_ROBOTS]
+
+
+def sees(own, other) -> bool:
+    """Does a Studio on station ``own`` show (and pair with) station ``other``? A robot Studio: itself, its
+    neighbours and Masters (and stations 1001+). A Master or anything else: every station."""
+    near = neighbours(own)
+    if near is None or own == other:
+        return True
+    return not is_robot(other) or other in near
 
 
 def picker_value(n: int) -> int:

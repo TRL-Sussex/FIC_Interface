@@ -11,7 +11,7 @@ be told apart. Compatibility numbers keep their own versions: the FIC-link proto
 import subprocess
 
 #: The last release: the version of a released tree, the base of a development build.
-RELEASE = '5.11.0'
+RELEASE = '6.0.0'
 
 _build = None
 

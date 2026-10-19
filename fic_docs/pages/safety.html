@@ -26,8 +26,8 @@ not need to be enabled for the hard stops to work, and vice versa. The
 
 <h2>Enforcement pipeline</h2>
 <p>All enforcement runs <strong>inside the controller node</strong> &mdash; the same code exists in
-<code>fic_ws/src/fic_simulation/src/fic_simulation.cpp</code> (simulation) and
-<code>fic_ws/src/fic_hardware/src/fic_hardware.cpp</code> (hardware), so behaviour is identical on both
+<code>fic_ws/src/fic_control/src/fic_control.cpp</code> (simulation) and
+<code>fic_ws/src/fic_control/src/fic_control.cpp</code> (hardware), so behaviour is identical on both
 targets. Targets are sanitised at the moment they arrive (subscriber callbacks), and torques are
 guarded again in the 1&nbsp;kHz control loop before anything is published:</p>
 
@@ -77,7 +77,7 @@ guarded again in the 1&nbsp;kHz control loop before anything is published:</p>
 
   <!-- controller node -->
   <rect x="180" y="15" width="500" height="250" class="container"/>
-  <text x="430" y="33" class="label-bold">Controller node (fic_simulation / fic_hardware)</text>
+  <text x="430" y="33" class="label-bold">Controller node (fic_control)</text>
 
   <rect x="195" y="50" width="145" height="48" class="box box-teal"/>
   <text x="267" y="66" class="label-bold">Cartesian clamp</text>

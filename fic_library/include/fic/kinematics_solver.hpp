@@ -1,7 +1,7 @@
 // kinematics_solver.hpp — abstract kinematics/dynamics solver interface.
 //
 // This is the seam that makes the rigid-body solver pluggable: the FIC nodes
-// (fic_hardware, fic_simulation) talk only to this interface, and concrete
+// (fic_control, fic_control) talk only to this interface, and concrete
 // solvers (the built-in Pinocchio one, or a user-supplied one) implement it.
 // See docs/custom-kinematics-solver.md for a full walkthrough of writing and
 // registering your own solver.
@@ -69,8 +69,8 @@ public:
         double dt             = 1e-2;   // integration step per iteration
         double damping        = 1e-6;   // damped-least-squares regulariser
         // true  → error/Jacobian anchored at the target frame's parent JOINT
-        //         (fic_hardware flavor). false → anchored at the FRAME itself
-        //         in the Local convention (fic_simulation flavor).
+        //         (fic_control flavor). false → anchored at the FRAME itself
+        //         in the Local convention (fic_control flavor).
         bool   joint_based        = false;
         // > 0 → clamp ||v|| per iteration to this value (sim uses 0.5).
         double max_joint_velocity = 0.0;

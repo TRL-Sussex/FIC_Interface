@@ -15,13 +15,11 @@
   <tr><td>7</td><td>Cartesian Admittance</td><td><code>RC.admittance(m=1)</code></td><td><span class="mark-yes" aria-label="Yes">✓</span> Kv</td></tr>
   <tr><td>8</td><td>Cartesian HAP-FIC</td><td><code>RC.admittance(m=2)</code></td><td><span class="mark-yes" aria-label="Yes">✓</span> Kv</td></tr>
 </table>
-<p>Gravity handling: in both controller nodes (<code>fic_simulation</code> and
-  <code>fic_hardware</code>; on hardware not when the robot's <code>gravity_compensated</code> is
-  set), Modes 1 and 2 add the model gravity torque <code>g(q)</code> on top of the FIC output (the
+<p>Gravity handling: in the joint inner loop that drives every arm (on hardware not when the robot's
+  <code>gravity_compensated</code> is set), Modes 1 and 2 add the model gravity torque <code>g(q)</code> on top of the FIC output (the
   impedance law itself has no gravity term); Modes 3/4 and H-PMP add it too, and Modes 3/4 also
-  use it as the commanded effort against which the interaction torque is measured; Cartesian modes fold it in as <code>&tau; = J<sup>T</sup>w + g(q)</code>. Mode 9 (Cartesian IK +
-  joint impedance) was removed in v3.9.0 &mdash; a legacy enum entry remains in the code but the
-  mode is no longer exposed in the GUI.</p>
+  use it as the commanded effort against which the interaction torque is measured; Cartesian modes fold it in as <code>&tau; = J<sup>T</sup>w + g(q)</code>. There is no Mode 9: the
+  old simulation-only "Cartesian IK" mode was Cartesian impedance (Mode 5) with the postural task on.</p>
 
 <div class="admonition tip"><div class="adm-title">H-PMP overlay (Modes 5&ndash;8, on by default)</div>
 <p><strong>Naming.</strong> HAP-FIC is a mode: Joint HAP-FIC (Mode 4) and Cartesian HAP-FIC (Mode 8). H-PMP is not a
@@ -67,7 +65,7 @@
   <tr><td>Simulation</td><td><code>robot{N}_control_mode</code></td><td>Int32</td><td>0&ndash;8 (0 = zero torques)</td></tr>
   <tr><td>Hardware</td><td><code>robot{N}_mode_select</code></td><td>String</td><td>Exact mode name, see below</td></tr>
 </table>
-<p><code>{N}</code> is the station ID (1&ndash;4; 100&ndash;999 for a Master station) set by the <code>station_id</code> node
+<p><code>{N}</code> is the station ID (1&ndash;35; 100&ndash;999 for a Master station) set by the <code>station_id</code> node
   parameter &mdash; see <a href="#topics" onclick="showPage('topics')">Topics</a>. The hardware hub accepts these
   exact strings: <code>"Joint Impedance"</code>, <code>"Joint Impedance With Planner"</code>,
   <code>"Joint Admittance"</code>, <code>"Joint HAP-FIC"</code>,
@@ -502,7 +500,7 @@
 <p>All loading is <strong>fail-safe</strong>: missing XML tags retain defaults. No exceptions on missing tags.</p>
 <div class="admonition warning"><div class="adm-title">Controllers read the <em>installed</em> copy</div>
 <p>At runtime the C++ nodes read <code>config.xml</code> from the package share directory
-  (e.g. <code>&lt;install&gt;/fic_simulation/share/fic_simulation/config/config.xml</code>),
+  (e.g. <code>&lt;install&gt;/fic_control/share/fic_control/config/config.xml</code>),
   which CMake installs from <code>fic_library/config/</code> at build time. If you hand-edit the
   source file, rebuild (or use a symlink install) so the controller sees the change — or edit
   through the GUI's <a href="#config-xml" onclick="showPage('config-xml')">config editor</a>, which manages this for

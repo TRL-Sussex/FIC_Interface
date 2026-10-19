@@ -142,7 +142,7 @@ if wait_topic /robot9_simulation/joint_states sensor_msgs/msg/JointState 40; the
 else
     fail "MuJoCo simulator (Kinova Gen3)" "${WORK}/sim_arm.log"
 fi
-spawn "${WORK}/fic.log" ros2 launch fic_simulation fic_launch.py \
+spawn "${WORK}/fic.log" ros2 launch fic_control sim_control_launch.py \
     robot_name:=KinovaGen3_7DOF num_joints:=7 station_id:=9 \
     source_prefix:=robot9_simulation
 if wait_topic /robot9_simulation/actuators_cmds communication/msg/ActuatorCmds 40; then

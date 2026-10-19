@@ -179,7 +179,7 @@
 <ul>
   <li>the controllers read <code>robots_config.yaml</code> and the URDF from the source tree every time a robot is loaded;</li>
   <li>the Studio starts the simulator with <code>model_file:=</code> the robot's scene, so the simulators' launch files need no entry for it (any <code>simulation_launch.py</code> takes it: <code>mujoco_native</code> and <code>mujoco_newton</code>);</li>
-  <li><code>config.xml</code> is installed as a link to <code>fic_library/config/config.xml</code> by <code>colcon build --symlink-install</code>, which this workspace uses. (A copy install would need <code>colcon build --packages-select fic_simulation</code> to see a new robot's tuning.)</li>
+  <li><code>config.xml</code> is installed as a link to <code>fic_library/config/config.xml</code> by <code>colcon build --symlink-install</code>, which this workspace uses. (A copy install would need <code>colcon build --packages-select fic_control</code> to see a new robot's tuning.)</li>
 </ul>
 
 <h2>After importing</h2>

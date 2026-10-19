@@ -1,6 +1,6 @@
 """Tests for the measured gripper state: JointStateMixin + ExtensionHost.
 
-fic_hardware publishes {rid}_gripper_state = [width_m, motor_current] once
+fic_control publishes {rid}_gripper_state = [width_m, motor_current] once
 the driver writes the gripper slot in shared memory. gripper_state_for()
 must hand an extension (width_m, current, age_s) and must return None --
 not a zero width, which would read as "fully closed" -- when no message has
@@ -116,7 +116,7 @@ class TestGripperStateFor:
 def test_each_robot_subscribes_to_its_gripper_state(monkeypatch):
     """{rid}_gripper_state, Float64MultiArray, best-effort QoS.
 
-    fic_hardware publishes with SensorDataQoS (best effort); a reliable
+    fic_control publishes with SensorDataQoS (best effort); a reliable
     subscription would silently never match it.
     """
     # _add_robot_subscriptions defers `from communication.msg import

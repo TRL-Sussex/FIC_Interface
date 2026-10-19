@@ -47,22 +47,37 @@ def _card(studio_id, station, host='h'):
 class TestStations:
     def test_master_is_zero_and_listed_last(self):
         assert stations.MASTER == 0
-        assert stations.all_stations() == [1, 2, 3, 4, 0]
+        assert stations.all_stations() == list(range(1, 36)) + [0]
 
     def test_labels_and_prefixes(self):
         assert stations.station_label(0) == 'Master'
         assert stations.station_label(3) == 'Robot 3'
         assert stations.rid_station('robot4') == 4
         assert stations.rid_station('robot915') == 915
-        assert stations.rid_station('robot9') is None
+        assert stations.rid_station('robot35') == 35
+        assert stations.rid_station('robot36') is None
         assert stations.rid_station('robotx') is None
 
     def test_valid(self):
-        assert stations.valid_station(0) and stations.valid_station(4)
-        assert not stations.valid_station(5)
+        assert stations.valid_station(0) and stations.valid_station(4) and stations.valid_station(35)
+        assert not stations.valid_station(36)
         assert not stations.valid_station(True)
         assert not stations.valid_station('1')
         assert stations.valid_station(stations.master_station('control'))
+
+    def test_neighbours_stand_in_a_line(self):
+        assert stations.neighbours(1) == [2]
+        assert stations.neighbours(2) == [1, 3]
+        assert stations.neighbours(35) == [34]
+        assert stations.neighbours(stations.master_station('control')) is None   # a Master: everyone
+        assert stations.neighbours(1001) is None
+
+    def test_who_a_studio_sees(self):
+        master = stations.master_station('control')
+        assert stations.sees(2, 2) and stations.sees(2, 1) and stations.sees(2, 3)
+        assert not stations.sees(2, 4) and not stations.sees(1, 35)
+        assert stations.sees(2, 1001) and stations.sees(2, master)     # stations 1001+ and Masters: always
+        assert stations.sees(master, 17) and stations.sees(master, 35)  # a Master sees the whole lab
 
     def test_each_master_gets_its_own_stable_station(self):
         a, b = stations.master_station('control'), stations.master_station('alice-laptop')
@@ -87,6 +102,20 @@ class TestPresence:
         d.on_card_json(_card('r1:9', 1, 'robot1'))
         assert [c['station'] for c in d.studios()] == [0, 1, 3]
         assert d.studios()[0]['self'] is True
+
+    def test_a_robot_studio_lists_itself_its_neighbours_vr_and_masters(self):
+        d, _ = self._dir(own_station=2)
+        master = stations.master_station('control-pc')
+        for sid, n in (('r1:9', 1), ('r3:9', 3), ('r4:9', 4), ('r35:9', 35), ('vr:9', 1001), ('m:9', master)):
+            d.on_card_json(_card(sid, n, sid.split(':')[0]))
+        assert [c['station'] for c in d.studios()] == [2, 1, 3, 4, 35, master, 1001]   # everyone, as before
+        assert [c['station'] for c in d.visible()] == [2, 1, 3, master, 1001]
+
+    def test_a_master_lists_the_whole_lab(self):
+        d, _ = self._dir(own_station=stations.master_station('control'))
+        for sid, n in (('r1:9', 1), ('r20:9', 20), ('r35:9', 35)):
+            d.on_card_json(_card(sid, n))
+        assert [c['station'] for c in d.visible()][1:] == [1, 20, 35]
 
     def test_peer_expires(self):
         d, clock = self._dir()

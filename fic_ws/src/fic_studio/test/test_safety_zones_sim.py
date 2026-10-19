@@ -1,7 +1,7 @@
 """
 Sim integration test: safety zones actually clamp commanded targets.
 
-Launches the REAL fic_simulation controller headless (MUJOCO_GL=egl, no MuJoCo
+Launches the REAL simulation controller (fic_control, target simulation) headless (MUJOCO_GL=egl, no MuJoCo
 physics needed — we feed /simulation/joint_states ourselves), publishes a
 Cartesian safety limit + an out-of-range EE target, and reads the resulting
 clamped target back from trajectory_data to prove enforcement end to end.
@@ -56,9 +56,9 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture(scope='module')
 def sim_controller():
-    """Launch the fic_simulation controller headless; tear down on exit."""
+    """Launch the simulation controller (fic_control) headless; tear down on exit."""
     env = dict(os.environ, QT_QPA_PLATFORM='offscreen', MUJOCO_GL='egl')
-    cmd = ('source %s && exec ros2 launch fic_simulation fic_launch.py '
+    cmd = ('source %s && exec ros2 launch fic_control sim_control_launch.py '
            'robot_name:=Franka_FR3 num_joints:=7 station_id:=1 '
            'source_prefix:=simulation' % _SETUP)
     proc = subprocess.Popen(['bash', '-c', cmd], env=env, preexec_fn=os.setsid,

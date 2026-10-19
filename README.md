@@ -5,8 +5,8 @@ robot arms under Fractal Impedance Control (FIC), in simulation and on real
 robots. It contains:
 
 - `fic_library/`: the FIC controller, a C++ library;
-- `fic_ws/`: the ROS 2 workspace, with the controller nodes for MuJoCo
-  simulation (`fic_simulation`) and for real robots (`fic_hardware`), the
+- `fic_ws/`: the ROS 2 workspace, with the controller (`fic_control`: one node
+  and its joint inner loop, for MuJoCo simulation and for real robots), the
   simulators, the robot models and the Studio itself (`fic_studio`), a desktop
   and web interface for running, tuning and scripting the robots;
 - `robot_library/`: the robot drivers (Franka libfranka, Kinova Kortex);
@@ -124,7 +124,7 @@ ros2 run fic_studio fic_studio_pro --web-ui
 
 ### Several robots
 
-Each robot needs its own `fic_hardware` process with a unique `station_id`.
+Each robot needs its own `fic_control` process with a unique `station_id`.
 One Studio controls up to four robots with **+ Add Robot**; each card has a
 **Station** selector for the robot it drives. The **Teleop** checkbox in the
 toolbar locks the local controls so that a robot takes commands only from

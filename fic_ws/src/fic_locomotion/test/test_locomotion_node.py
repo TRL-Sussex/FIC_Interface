@@ -221,7 +221,7 @@ def test_the_station_id_scopes_the_source_namespace():
 
 
 def test_the_hardware_source_reads_the_topic_fic_hardware_actually_publishes():
-    # fic_hardware publishes `{rid}_q_current` (Float64MultiArray, in the
+    # fic_control publishes `{rid}_q_current` (Float64MultiArray, in the
     # robots_config.yaml joint order) and no sensor_msgs/JointState at all.
     topics = resolve_state_topics('robot1', HARDWARE_SOURCE)
     assert topics.joints == 'robot1_q_current'

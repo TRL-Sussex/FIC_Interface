@@ -291,6 +291,7 @@ class TestShowHelpPanel:
         win.setCentralWidget(page)
         stack = QStackedWidget()
         stack.addWidget(page)
+        stack.show()                 # "visible" means on screen (test_hidden_window_idle.py)
         win.main_stack = stack
 
         stub_btn = QPushButton('Help')

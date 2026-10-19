@@ -367,7 +367,7 @@ def test_station_add_select_remove_and_set(studio):
     assert run(studio, 'station', op='set', n=2)['error'] == 'confirm'
     assert run(studio, 'station', op='set', n=2, confirm=True)['restarting'] is True
     assert studio.settings['general']['station_id'] == 2 and ('restart',) in studio.calls
-    assert run(studio, 'station', op='set', n=17, confirm=True)['error'] == 'bad_args'
+    assert run(studio, 'station', op='set', n=36, confirm=True)['error'] == 'bad_args'   # stations are 1-35
     studio.running = True
     assert run(studio, 'station', op='set', n=3, confirm=True)['error'] == 'session_running'
 

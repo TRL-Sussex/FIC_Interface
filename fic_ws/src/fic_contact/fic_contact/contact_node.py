@@ -134,9 +134,9 @@ class ContactNode(Node):
     #: ``fic_contact.admittance``) gave them a meaningful estimate.
     ALLOWED_MODES = frozenset({1, 2, 3, 4, 5, 6, 7, 8})
 
-    #: Joint admittance — the only modes where fic_hardware/fic_simulation
+    #: Joint admittance — the only modes where fic_control/fic_control
     #: publish `{rid}_admittance_offset` at all (see the publisher's own
-    #: comment in fic_hardware.cpp/fic_simulation.cpp: absent, not zero,
+    #: comment in fic_control.cpp/fic_control.cpp: absent, not zero,
     #: in every other mode). Cartesian admittance (7, 8) has no equivalent
     #: topic, so it is deliberately excluded here.
     JOINT_ADMITTANCE_MODES = frozenset({3, 4})
@@ -404,7 +404,7 @@ class ContactNode(Node):
                 'report no statement.' % robot_name)
         self._est = ResidualEstimator(
             self._model,
-            torque_sign=1.0,  # already applied by fic_hardware — see the spec
+            torque_sign=1.0,  # already applied by fic_control — see the spec
             gravity_compensated=bool(cfg.get('gravity_compensated', False)),
             sigma_k=float(self.get_parameter('sigma_k').value),
             sigma_pool=int(self.get_parameter('sigma_pool').value),
@@ -507,7 +507,7 @@ class ContactNode(Node):
             self._on_admittance_offset, qos_profile_sensor_data)
         self.create_subscription(
             Int32, '%s_control_mode' % self._rid, self._on_mode, 10)
-        # Float32, not Float64: FIC Studio and fic_hardware both publish
+        # Float32, not Float64: FIC Studio and fic_control both publish
         # this topic as Float32MultiArray, and a mismatched subscription
         # never matches the publisher -- silently, with _q_desired stuck
         # at None and auto-calibration never firing.
@@ -569,7 +569,7 @@ class ContactNode(Node):
     def _on_dq(self, msg):
         """Cache the latest joint velocity.
 
-        Published by ``fic_hardware`` in every control mode, so this is
+        Published by ``fic_control`` in every control mode, so this is
         available whether the arm is holding still or being moved by a
         planner.
         """
@@ -580,7 +580,7 @@ class ContactNode(Node):
         """Cache the latest `{rid}_admittance_offset` array.
 
         Only ever published while joint admittance is active (modes 3,
-        4 — see the publisher in fic_hardware.cpp/fic_simulation.cpp),
+        4 — see the publisher in fic_control.cpp/fic_control.cpp),
         so a stale cached value from a previous admittance session can
         briefly survive a mode switch; ``_estimate`` only reads this
         while ``self._mode`` is itself in ``JOINT_ADMITTANCE_MODES``, so
@@ -608,7 +608,7 @@ class ContactNode(Node):
     def _on_q_target(self, msg):
         """Cache the target the impedance controller is tracking.
 
-        Distinct from `_q_desired`: in the Cartesian modes fic_hardware
+        Distinct from `_q_desired`: in the Cartesian modes fic_control
         derives q_target from its own IK, so the command stream cannot be
         used to reconstruct the tracking error.
         """

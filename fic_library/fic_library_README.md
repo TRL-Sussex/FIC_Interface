@@ -24,10 +24,10 @@ fic_library/
 │   ├── solvers/                    # Pinocchio solvers (serial and closed-loop) and the factory
 │   ├── butterworth_filter.hpp      # Second-order Butterworth low-pass filter
 │   ├── shared_params.h             # POSIX shared memory structs for hardware comms
-│   ├── fic_joint_core.h            # The joint layer shared by fic_hardware and the MCU
+│   ├── fic_joint_core.h            # The joint layer shared by fic_control and the MCU
 │   ├── joint_params_pod.h          # Joint parameters as plain data (for the MCU)
 │   ├── inner_loop.h, mcu_node.h    # The inner loop that runs on the MCU
-│   ├── fic_link.h, mcu_link.hpp    # The FIC link between fic_hardware and the MCU (UDP 7350)
+│   ├── fic_link.h, mcu_link.hpp    # The FIC link between fic_control and the MCU (UDP 7350)
 │   └── kortex_adapter.h, kortex_min.h  # Kinova Kortex access for the MCU
 └── test/                           # host tests (ctest)
 ```
@@ -167,7 +167,7 @@ double filtered = filter.filter(raw_value);
 
 ## Shared Memory — `shared_params.h`
 
-POSIX shared memory structs for lock-free communication between `fic_hardware` and vendor robot drivers. See the `fic_hardware` README for full field documentation.
+POSIX shared memory structs for lock-free communication between `fic_control` and vendor robot drivers. See the `fic_control` README for full field documentation.
 
 | Struct | Segment Name | Purpose |
 |--------|-------------|---------|
@@ -228,7 +228,7 @@ Robot definitions shared across all packages. Read by `robot_config_loader.hpp` 
 
 | Package | Uses |
 |---------|------|
-| `fic_simulation` | All headers + `config/` files |
-| `fic_hardware` | All headers + `config/` files |
+| `fic_control` | All headers + `config/` files |
+| `fic_control` | All headers + `config/` files |
 | `fic_studio` | `config.xml` and `robots_config.yaml` (via Python `xml_manager.py`) |
 | `mujoco_native` | `robots_config.yaml` (`mujoco_xml_path`) |

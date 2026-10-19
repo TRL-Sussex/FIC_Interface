@@ -6,8 +6,7 @@ repository root (see the top-level README).
 | Package | What it is |
 |---|---|
 | `communication` | Messages and services the other packages share |
-| `fic_simulation` | The FIC controller node for the simulators |
-| `fic_hardware` | The FIC controller node for real robots |
+| `fic_control` | The FIC controller: the node and its joint inner loop, for simulated and real robots |
 | `fic_studio` | FIC Control Studio (desktop and web interface) |
 | `mujoco_native` | The MuJoCo simulator (CPU) |
 | `mujoco_newton` | An optional GPU simulator (needs an NVIDIA GPU) |
