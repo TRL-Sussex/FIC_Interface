@@ -37,7 +37,8 @@ DEFAULT_PORT = 7350
 ROUTER_SOCKET = '/var/run/arduino-router.sock'
 _FIC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), *(['..'] * 4)))
 RELAY_BINARY = os.path.join(_FIC_ROOT, 'robot_library', 'fic_mcu', 'build', 'fic_mcu_relay')
-_MAGIC, _VERSION, _HELLO, _HELLO_ACK = 0x4C434946, 1, 1, 2
+# _VERSION: fic/fic_link.h kVersion (2 since FIC 5.11.0, when CONFIG gained the FIC law options).
+_MAGIC, _VERSION, _HELLO, _HELLO_ACK = 0x4C434946, 2, 1, 2
 ADAPTERS = {'loopback': 1, 'kortex': 2, 'canfd': 3, 'hostsim': 4}
 
 
@@ -49,12 +50,13 @@ def _crc16(data, crc=0xFFFF):
     return crc
 
 
-def probe(address=None, timeout=0.3, attempts=3):
-    """HELLO -> dict(fw, version, adapters, max_joints, state), or None."""
+def probe(address=None, timeout=0.3, attempts=3, link_version=_VERSION):
+    """HELLO -> dict(fw, version, adapters, max_joints, state), or None. A board answers only a
+    HELLO of its own FIC-link version (``link_version``)."""
     host, _, port = (address or DEFAULT_ADDRESS).partition(':')
     port = int(port) if port else DEFAULT_PORT
     nonce = random.getrandbits(32)
-    head = struct.pack('<IHHIHH', _MAGIC, _VERSION, _HELLO, 1, 4, 0) + struct.pack('<I', nonce)
+    head = struct.pack('<IHHIHH', _MAGIC, link_version, _HELLO, 1, 4, 0) + struct.pack('<I', nonce)
     datagram = head + struct.pack('<H', _crc16(head))
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.settimeout(timeout / max(1, attempts))
@@ -95,23 +97,6 @@ def controller_mcu_settings(robot_name):
             return ((yaml.safe_load(f) or {}).get('robots', {}).get(robot_name) or {}).get('mcu') or {}
     except (OSError, ImportError, yaml.YAMLError, AttributeError):
         return {}
-
-
-def mcu_for_robot(robot_config, address=None, robot_name=None):
-    """(True, detail) if an MCU answers at ``address`` and reports this
-    robot's adapter. ``discover`` also looks on the Bridge."""
-    mcu = (robot_config or {}).get('mcu') or (controller_mcu_settings(robot_name) if robot_name else {})
-    adapter = mcu.get('adapter')
-    if not adapter:
-        return False, 'robot has no mcu adapter configured'
-    if adapter not in ADAPTERS:
-        return False, "unknown mcu adapter '%s'" % adapter
-    ack = probe(address)
-    if ack is None:
-        return False, 'no MCU answered at %s' % (address or DEFAULT_ADDRESS)
-    if not ack['adapters'] & (1 << ADAPTERS[adapter]):
-        return False, "%s does not support adapter '%s'" % (ack['fw'], adapter)
-    return True, "%s v%d at %s, adapter '%s'" % (ack['fw'], ack['version'], ack['address'], adapter)
 
 
 # ── The board's own MCU, over the Bridge ──────────────────────────────────
@@ -191,10 +176,6 @@ _RELAY = BridgeRelay()
 atexit.register(_RELAY.stop)
 
 
-def relay():
-    return _RELAY
-
-
 def adapter_name(bit_mask):
     """Adapter names in an MCU's HELLO_ACK bit mask."""
     return [n for n, b in ADAPTERS.items() if bit_mask & (1 << b)]
@@ -236,6 +217,12 @@ def discover(robot_config, robot_name=None, bridge=None):
         else:
             ack = probe(address)
         if ack is None:
+            if probe(address, timeout=0.3, attempts=1, link_version=_VERSION - 1) is not None:
+                out.update(address=address, via=via)
+                out['detail'] = ('the MCU at %s (%s) runs older firmware (FIC-link v%d, this FIC speaks v%d): '
+                                 'flash it again with robot_library/fic_mcu/scripts/deploy_app.sh'
+                                 % (address, via, _VERSION - 1, _VERSION))
+                return out
             misses.append('%s %s: no answer' % (via, address))
             continue
         out.update(address=address, via=via, fw=ack['fw'], state=ack['state'],

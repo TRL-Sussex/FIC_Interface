@@ -187,9 +187,6 @@ class WebUIMixin:
         from PyQt5.QtCore import QTimer
         QTimer.singleShot(300, self.close)
 
-    def show_classic_ui(self):
-        self.show()
-
     def _teardown_web_ui(self):
         server, self._web_ui_server = getattr(self, '_web_ui_server', None), None
         if server is not None:

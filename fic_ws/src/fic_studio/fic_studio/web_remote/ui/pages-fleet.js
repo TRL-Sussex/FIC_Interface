@@ -30,7 +30,8 @@ window.FIC.pages.multi_robot = function buildFleet(root) {
     h('div', { class: 'btn-row', style: 'margin-top:32px' },
       h('button', { class: 'btn btn-danger strong', type: 'button', text: 'Stop every robot', title: 'Lab-wide E-STOP: every station stops, no confirmation',
         onclick: async () => { const r = await cmd('fleet', { op: 'estop_all' }); if (r.ok) toast('E-STOP sent to every station'); } }),
-      h('button', { class: 'btn', type: 'button', text: 'Pause all', onclick: async () => { const r = await cmd('fleet', { op: 'pause_all' }); if (r.ok) toast('Pause sent'); } }),
+      h('button', { class: 'btn', type: 'button', text: 'Pause all', title: 'Every robot ramps down and holds until Resume all', onclick: async () => { const r = await cmd('fleet', { op: 'pause_all' }); if (r.ok) toast('Pause sent'); } }),
+      h('button', { class: 'btn', type: 'button', text: 'Resume all', title: 'Every paused robot gets its mode back', onclick: async () => { const r = await cmd('fleet', { op: 'resume_all' }); if (r.ok) toast('Resume sent'); } }),
       h('span', { class: 'faint', style: 'font-size:var(--fs-m)', text: 'Stop every robot acts at once, like E-STOP.' })),
     warn,
     section('Studios', { id: 'fl-aside' },
@@ -43,7 +44,7 @@ window.FIC.pages.multi_robot = function buildFleet(root) {
       h('p', { class: 'faint', style: 'font-size:var(--fs-m);margin-top:12px;max-width:46rem' }, 'Joint space, same robot type. The follower starts where it is and copies the leader’s motion. An E-stop on either side stops both.'),
       err, tAsk, pairBox));
 
-  function stateOf(c) { return c.running ? ['ok', 'Running'] : c.has_joints ? ['ok', 'Live'] : ['', 'Idle']; }
+  function stateOf(c) { return c.viewer ? ['ok', 'Watching'] : c.running ? ['ok', 'Running'] : c.has_joints ? ['ok', 'Live'] : ['', 'Idle']; }
   function askStation(c, session_op, target) {
     const hw = target === 'hardware';
     inlineConfirm(ask, {
@@ -62,7 +63,8 @@ window.FIC.pages.multi_robot = function buildFleet(root) {
     setText(err, '');
     const l = Number(leader.value), f = Number(follower.value);
     if (!l || !f || l === f) { setText(err, 'Pick two different stations.'); return; }
-    inlineConfirm(tAsk, { title: 'Station ' + l + ' leads station ' + f + '?', lines: ['Scale ' + scale.value + ', max ' + speed.value + ' °/s.', 'The follower’s Studio is asked to agree (at once in simulation, its operator on hardware).'],
+    const lab = n => (leader.querySelector('option[value="' + n + '"]') || {}).textContent || 'Station ' + n;
+    inlineConfirm(tAsk, { title: lab(l) + ' leads ' + lab(f) + '?', lines: ['Scale ' + scale.value + ', max ' + speed.value + ' °/s.', 'The follower’s Studio is asked to agree (at once in simulation, its operator on hardware).'],
       label: 'Start teleop',
       onConfirm: async () => { const r = await cmd('teleop', { op: 'start', leader: l, follower: f, scale: parseFloat(scale.value), max_speed_deg: parseFloat(speed.value), confirm: true }, true); if (r.ok) toast('Teleop requested'); else setText(err, r.message || 'Refused'); } });
   }
@@ -101,8 +103,9 @@ window.FIC.pages.multi_robot = function buildFleet(root) {
     if (next !== sig) {
       sig = next; body.textContent = '';
       for (const c of studios) {
-        const [dot, text] = stateOf(c), remote = !c.self && !c.master;
-        const roles = (c.teleop || []).map(p => p.leader === c.station ? 'leads ' + p.follower : p.follower === c.station ? 'follows ' + p.leader : '').filter(Boolean).join(', ');
+        const [dot, text] = stateOf(c), remote = !c.self && !c.master && !c.vr;
+        const lab = n => (studios.find(x => x.station === n) || {}).label || n;
+        const roles = (c.teleop || []).map(p => p.leader === c.station ? 'leads ' + lab(p.follower) : p.follower === c.station ? 'follows ' + lab(p.leader) : '').filter(Boolean).join(', ');
         body.append(h('tr', null,
           h('td', null, c.label, c.self ? h('span', { class: 'faint', text: '  this Studio' }) : null, h('div', { class: 'faint', style: 'font-size:var(--fs-s)', text: c.host })),
           h('td', { text: c.robot_display || c.robot }), h('td', { text: (TARGET[c.target] || c.target) }),
@@ -116,20 +119,22 @@ window.FIC.pages.multi_robot = function buildFleet(root) {
       }
       for (const sel of [leader, follower]) {
         const keep = sel.value;
-        sel.replaceChildren(...studios.map(c => h('option', { value: String(c.station), text: c.label + ' — ' + c.host })));
+        sel.replaceChildren(...studios.filter(c => !c.viewer).map(c => h('option', { value: String(c.station), text: c.label + ' — ' + c.host })));
         if (keep) sel.value = keep;
       }
-      if (!follower.__set && studios.length > 1) { follower.value = String(studios[1].station); follower.__set = true; }
+      const robots = studios.filter(c => !c.viewer);
+      if (!follower.__set && robots.length > 1) { follower.value = String(robots[1].station); follower.__set = true; }
     }
     setText($('#fl-aside'), studios.length + ' on the network');
     // pairings seen anywhere in the fleet
-    const seen = new Map();
+    const seen = new Map(), labels = new Map(studios.map(c => [c.station, c.label]));
+    const name = n => labels.get(n) || 'Station ' + n;
     for (const c of studios) for (const p of c.teleop || []) seen.set(p.sid, p);
     const psigNew = JSON.stringify([...seen.values()]);
     if (psigNew !== psig) {
       psig = psigNew; pairBox.textContent = '';
       for (const p of seen.values()) pairBox.append(h('div', { class: 'pair' },
-        h('span', null, 'Station ' + p.leader + ' → station ' + p.follower, h('span', { class: 'faint', text: ' · ' + p.state })),
+        h('span', null, name(p.leader) + ' → ' + name(p.follower), h('span', { class: 'faint', text: ' · ' + p.state })),
         h('button', { class: 'btn btn-danger', type: 'button', text: 'Stop', onclick: () => cmd('teleop', { op: 'stop', sid: p.sid, confirm: true }) })));
       if (!seen.size) pairBox.append(h('div', { class: 'empty', text: 'No pairings.' }));
     }

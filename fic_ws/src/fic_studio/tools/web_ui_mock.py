@@ -433,6 +433,17 @@ class _Phase_B_Studio(_Phase_C):
     def _publish_safety_limits(self):
         pass
 
+    def zone_state_for(self, rid):
+        """The arm against the first safety zone that is on, coming and going (what a controller reports)."""
+        zones = [z for z in (self.safety_limits or {}).get('zones') or [] if z.get('enabled', True)]
+        if not zones:
+            return None
+        c = 0.03 + 0.04 * math.sin(time.time() / 3.0)
+        z = zones[0]
+        x, y, zz = self.mock.traj()[2]
+        return {'clearance': c, 'zone': 0, 'name': z['name'], 'past': 1 if c < 0 else 0, 'point': [x, y, zz],
+                'state': 'violation' if c < 0 else 'warn' if c < 0.05 else 'ok'}
+
     def _publish_param_update(self, kind, value=''):
         self.param_updates.append((kind, value))
         self.mock.say('INFO', 'param_update %s %s' % (kind, value), 'Tuning')

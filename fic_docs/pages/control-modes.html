@@ -138,6 +138,15 @@
     <code>K_conv = |effort_max| / max(|error_max/2|, 1e-5)</code>. The force crosses zero at
     half the peak error, releasing the stored energy symmetrically. If the error crosses zero
     or starts growing again, <code>error_max</code> re-anchors.</li>
+  <li><strong>Restart on a stall</strong> (since v5.11.0, on unless the robot's
+    <code>fic_law.restart_on_stall</code> is off): a joint damped enough to creep up to the zero-force point
+    used to stop there, half the peak error short of its target, with no torque. When the error has not
+    changed (by less than 1e-5 a tick) for 50 ticks in a row while the law pushes with under half its peak
+    effort, <code>error_max</code> re-anchors at the current error as a divergence ending there would, so the
+    joint is pushed on toward the target. An arm held still while the law still pushes hard (a hand, a
+    wall) is left alone. It acts in the tracking modes (1, 2, 5, 6) only: where an admittance moves the
+    goal (modes 3, 4, 7, 8 and H-PMP) it is off, because the admittance reads the measured torque, which
+    carries the law's own effort, and would take the restart's step for a push.</li>
 </ul>
 <p>This hysteresis is what makes FIC stable without velocity feedback: each
   divergence/convergence cycle returns the energy injected on the way out, so the closed loop is

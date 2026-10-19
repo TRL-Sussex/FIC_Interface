@@ -68,3 +68,20 @@ def test_emergency_stop_orders_safe_stop_before_kill():
     ProfessionalRobotGUI._emergency_stop(s)
     # the graceful safe-stop must be commanded before the hard process kill
     assert calls.index('safe') < calls.index('wait') < calls.index('kill')
+
+
+def test_estop_kill_stops_only_this_studios_processes(monkeypatch):
+    """The hard backstop stops the Studio's own processes and their sessions, never a pkill by name
+    (which also stopped other users' simulators and launches on the same PC)."""
+    import subprocess
+    import fic_studio.mixins.process_mixin as pm
+    ran, sessions, calls = [], [], []
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **kw: ran.append(a))
+    monkeypatch.setattr(pm, '_kill_session', lambda sid, *a: sessions.append(sid) or 0)
+    s = _EstopStub()
+    s._owned_sessions = lambda: [111, 222]
+    s._kill_all_processes = lambda reason='': calls.append(reason)
+    ProfessionalRobotGUI._estop_kill_processes(s)
+    assert not ran
+    assert calls == ['E-STOP']
+    assert sessions == [111, 222]

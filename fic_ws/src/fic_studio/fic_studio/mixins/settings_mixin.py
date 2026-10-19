@@ -3,6 +3,8 @@
 import copy
 import logging
 import os
+
+from fic_studio import paths as _paths
 import yaml
 from datetime import datetime
 from functools import partial
@@ -81,6 +83,10 @@ DEFAULT_SETTINGS = {
         'show_log_viewer': True,
         'log_viewer_height': 150,
     },
+    # Where recordings go ('' = the default: see fic_studio.paths). Read at start-up.
+    'paths': {
+        'experiments': '',
+    },
     'appearance': {
         'theme': 'warmth_dark',
         'font_size': 12,
@@ -118,6 +124,13 @@ DEFAULT_SETTINGS = {
     'web_remote': {
         'enabled': True,            # serve the controls to browsers on the network
         'port': 8088,               # next free port is used if taken
+    },
+    'vr': {
+        'relay_always_on': True,    # run the VR relay while the Studio is open, not only after VR > Start
+        'allow_viewers': True,      # headsets may Watch the lab (every Studio's robots, live)
+        'fleet_stations': True,     # a headset's robots are listed on Multi-Robot as VR stations
+        'headset_ip': '',           # also announce to this address (when broadcasts do not reach the headset)
+        'require_key': False,       # sign every relay <-> headset packet with the pairing key (fleet/vr_pairing.py)
     },
     'advanced': {
         'verbose_logging': False,
@@ -274,7 +287,7 @@ class LogViewer(QWidget):
 class SettingsMixin:
     """Mixin for settings page, theme management, and keyboard shortcuts."""
     
-    SETTINGS_FILE = os.path.expanduser("~/.robot_selector_gui_settings.yaml")
+    SETTINGS_FILE = _paths.settings_file()
     
     def _init_settings(self):
         """Initialize settings system."""
@@ -321,8 +334,14 @@ class SettingsMixin:
     def _save_settings(self):
         """Save settings to file."""
         try:
-            with open(self.SETTINGS_FILE, 'w') as f:
+            # Written whole, then moved over the old file: a crash or a full disk mid-write
+            # leaves the previous settings, not half a file.
+            tmp = self.SETTINGS_FILE + '.new'
+            with open(tmp, 'w') as f:
                 yaml.dump(self.settings, f, default_flow_style=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self.SETTINGS_FILE)
             self.log_message("INFO", "Settings saved", "Settings")
         except Exception as e:
             self.log_message("ERROR", f"Could not save settings: {e}", "Settings")
@@ -449,10 +468,6 @@ class SettingsMixin:
         if hasattr(self, '_stop_sequence'):
             self._stop_sequence()
     
-    def _toggle_log_viewer(self):
-        """Toggle log viewer visibility."""
-        if hasattr(self, '_toggle_log_collapse'):
-            self._toggle_log_collapse()
     
     def log_message(self, level: str, message: str, source: str = ""):
         """Log a message to the log viewer."""
@@ -978,9 +993,6 @@ class SettingsMixin:
             if button is not None:
                 button.setChecked(wanted)
 
-    def _preview_theme(self, theme_name: str):
-        """Preview theme when selected."""
-        self.apply_theme(theme_name)
     
     def _save_settings_from_ui(self):
         """Save settings from UI inputs to self.settings, then persist and apply."""
@@ -1062,6 +1074,10 @@ class SettingsMixin:
         if hasattr(self, 'timeout_seconds'):
             self.timeout_seconds = self.settings['tolerances']['timeout_seconds']
         
+        # VR card: the background relay follows it (once the window is up)
+        if getattr(self, '_vr_settings_ready', False) and hasattr(self, '_apply_vr_settings'):
+            self._apply_vr_settings(from_settings=True)
+
         # Update auto-save timer
         if self.settings['general']['auto_save']:
             self.auto_save_timer.start(self.settings['general']['auto_save_interval'] * 1000)
@@ -1076,63 +1092,6 @@ class SettingsMixin:
         # Re-setup shortcuts
         self._setup_keyboard_shortcuts()
     
-    def _reset_settings(self):
-        """Reset settings to defaults and refresh all card widgets."""
-        reply = QMessageBox.question(
-            self, 'Reset Settings',
-            'Are you sure you want to reset all settings to defaults?',
-            QMessageBox.Yes | QMessageBox.No,
-        )
-        if reply == QMessageBox.Yes:
-            self.settings = copy.deepcopy(DEFAULT_SETTINGS)
-            self._save_settings()
-            self._apply_settings()
-
-            # Refresh card widgets
-            if hasattr(self, 'settings_default_robot'):
-                self.settings_default_robot.setCurrentText(
-                    self.settings['general']['default_robot'])
-            if hasattr(self, 'settings_auto_save'):
-                self.settings_auto_save.setChecked(self.settings['general']['auto_save'])
-            if hasattr(self, 'settings_auto_save_interval'):
-                self.settings_auto_save_interval.setValue(
-                    self.settings['general']['auto_save_interval'])
-            if hasattr(self, 'settings_show_log'):
-                self.settings_show_log.setChecked(self.settings['general']['show_log_viewer'])
-            if hasattr(self, 'settings_log_height'):
-                self.settings_log_height.setValue(self.settings['general']['log_viewer_height'])
-
-            # Theme segmented control
-            self._set_theme_selection(self.settings['appearance']['theme'])
-
-            if hasattr(self, 'settings_font_size'):
-                self.settings_font_size.setValue(self.settings['appearance']['font_size'])
-            if hasattr(self, 'settings_font_family'):
-                self.settings_font_family.setCurrentText(
-                    self.settings['appearance']['font_family'])
-            if hasattr(self, 'settings_ros_domain'):
-                self.settings_ros_domain.setValue(self.settings['network']['ros_domain_id'])
-            if hasattr(self, 'settings_partner_ip'):
-                self.settings_partner_ip.setText(
-                    self.settings['network'].get('partner_ip', ''))
-            if hasattr(self, 'settings_dds_mode'):
-                self.settings_dds_mode.setCurrentIndex(
-                    1 if self.settings['network'].get('dds_mode') == 'unicast' else 0)
-            if hasattr(self, 'settings_joint_tol'):
-                self.settings_joint_tol.setValue(
-                    self.settings['tolerances']['joint_tolerance_deg'])
-            if hasattr(self, 'settings_pos_tol'):
-                self.settings_pos_tol.setValue(
-                    self.settings['tolerances']['position_tolerance_mm'])
-            if hasattr(self, 'settings_timeout'):
-                self.settings_timeout.setValue(self.settings['tolerances']['timeout_seconds'])
-
-            if hasattr(self, 'shortcut_inputs'):
-                for key, line_edit in self.shortcut_inputs.items():
-                    line_edit.setText(self.settings['shortcuts'].get(key, ''))
-
-            QMessageBox.information(self, 'Reset Complete',
-                                    'Settings have been reset to defaults.')
 
     def _discard_settings(self):
         """Revert all settings widgets and the live theme to the saved snapshot.

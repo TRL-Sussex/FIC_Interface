@@ -66,8 +66,8 @@ NO_SEQUENCES = ('The Sequences extension is disabled — enable it in '
 NO_CARTESIAN = ('This robot has no kinematics solver, so Cartesian modes '
                 'cannot run on it.')
 
-VR_DRIVEN = ('The VR target drives this robot from the headset — local '
-             'commanding is disabled while VR is selected.')
+VR_NO_GRIPPER = ('On the VR target FIC drives the headset\'s arm; its gripper is '
+                 'not commanded from the Studio yet.')
 
 #: Width reserved for the status readout, mirrored on the left so the
 #: button group centres in the bar rather than sitting left of centre.
@@ -882,18 +882,19 @@ class ControlBarMixin:
         bar.set_enabled('quick', has_sequences, NO_SEQUENCES)
         bar.set_enabled('snapshot', has_sequences, NO_SEQUENCES)
 
-        # Target mapping. Simulation and Hardware both command locally, so
-        # the menus stay live; VR hands driving to the headset, so the
-        # command surface locks the same way the Teleop checkbox locks it.
+        # Target mapping. Every target commands this station's FIC controller:
+        # on VR it is the one driving the headset's arm (process_mixin._start_vr),
+        # so the menus stay live; only the headset's gripper is not reached.
         target = getattr(self, 'control_target', 'simulation')
         vr = (target == 'vr')
-        for key in ('joint', 'cart', 'gripper', 'home'):
+        for key in ('joint', 'cart', 'home'):
             if key == 'cart' and legged:
                 continue
-            bar.set_enabled(key, not vr, VR_DRIVEN)
+            bar.set_enabled(key, True)
+        bar.set_enabled('gripper', not vr, VR_NO_GRIPPER)
         area = getattr(self, '_rc_control_area', None)
         if area is not None:
-            area.setEnabled(not vr)
+            area.setEnabled(True)
 
         # The live contact readout is only meaningful while driving real
         # every target, matching the viewer launch button in the top

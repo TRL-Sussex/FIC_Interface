@@ -116,9 +116,8 @@ public:
             const T v = clampv(T(in[0]), T(0.4), T(0.9));
             for (int i = 0; i < N_S; ++i) S_Start[i] = v;
         } else {
-            // The original copies the input as-is (its length may differ from
-            // N_S; it then reads past the end — undefined behaviour we cannot
-            // reproduce). Unfilled slots keep their 0.9 default.
+            // Band by band; bands with no value keep their 0.9 default (FIC.cpp does the
+            // same since 18 Oct 2026; before, it read past the end of a short list).
             for (int i = 0; i < n; ++i) S_Start[i] = clampv(T(in[i]), T(0.4), T(0.9));
         }
         return true;
@@ -133,6 +132,9 @@ public:
     const T* get_x_b() const { return x_b; }
     int numSaturations() const { return N_S; }
 
+    // Restart on a stall, as FIC.cpp Controller::setRestartOnStall (off: the law before 5.11.0).
+    void setRestartOnStall(bool on) { restartOnStall_ = on; }
+
     T control(T error) {
         if (!isInitialised) {
             isInitialised = true;
@@ -146,11 +148,19 @@ public:
             effort = getEffort(error);
             error_max = error;
             effort_max = effort;
+            stallTicks_ = 0;
         } else {                                              // convergence
             // Reset effort_max with error_max (to the divergence-curve value at the
             // new error), as FIC.cpp: the old peak effort would give the full previous
             // peak at near-zero error, then a step down on the next divergence tick.
-            if (std::fabs(error_max) < std::fabs(error) || Sign(error_max) != Sign(error)) {
+            // A stall (the error unchanged for 50 ticks while the law pushes with under half
+            // its peak effort) restarts it too, as FIC.cpp.
+            const bool still = std::fabs(error - error_old) < T(1e-5)
+                            && std::fabs(effort_old) < T(0.5) * std::fabs(effort_max);
+            stallTicks_ = still ? stallTicks_ + 1 : 0;
+            const bool stalled = restartOnStall_ && stallTicks_ >= 50;
+            if (stalled) stallTicks_ = 0;
+            if (std::fabs(error_max) < std::fabs(error) || Sign(error_max) != Sign(error) || stalled) {
                 error_max = error;
                 effort_max = getEffort(error);
             }
@@ -171,6 +181,8 @@ private:
     T x_b[kMaxSat];
     T K0[2] = {T(0), T(0)};
 
+    bool restartOnStall_ = true;
+    int stallTicks_ = 0;
     bool isInitialised = false;
     T error_old{};
     T effort_old{};
@@ -264,7 +276,8 @@ public:
                 lastPosDesired_ = posDesired;   // small streamed steps accumulate to the next check
             }
             accPlanner_ = calculateAcceleration(error) - gainDamping_ * velPlanner_;
-            velPlanner_ = clampMinMax(velPlanner_ + dt * accPlanner_, -stateVelMax_, stateVelMax_);
+            const T velMax = speedLimit_ > T(0) ? std::fmin(stateVelMax_, speedLimit_) : stateVelMax_;
+            velPlanner_ = clampMinMax(velPlanner_ + dt * accPlanner_, -velMax, velMax);
             posPlanner_ += dt * velPlanner_;
         } else {
             posPlanner_ = posDesired;
@@ -281,10 +294,16 @@ public:
 
     void setStiffness(T s)    { stiffness_ = std::fmax(s, T(0.01)); }
     void setVelDesired(T v)   { velDesired_ = std::fmax(v, T(0.01)); }
-    void setAccMax(T a)       { accMax_ = std::fmax(a, T(0.01)); }
+    void setAccMax(T a)       { accMax_ = a > T(0) ? std::fmax(a, T(0.01)) : T(INFINITY); }   // 0: no cap
     void setDampingRatio(T d) { dampingRatio_ = std::fmax(d, T(0.0001)); }
     void setFrequency(T f)    { frequency_ = std::fmax(f, T(0.0001)); }
     void setWrapped(T w)      { wrapped_ = w; }
+    // The robot's frequency cap (Hz) and speed margin, as FIC.cpp Planner::setShape.
+    void setShape(T max_frequency_hz, T speed_margin) {
+        if (std::isfinite(max_frequency_hz) && max_frequency_hz > T(0)) maxFrequency_ = max_frequency_hz;
+        if (std::isfinite(speed_margin) && speed_margin > T(0)) speedMargin_ = speed_margin;
+    }
+    void setSpeedLimit(T v) { speedLimit_ = (std::isfinite(v) && v > T(0)) ? v : T(0); }
     void setPosLimits(T lower, T upper) {
         if (lower > upper) { T t = lower; lower = upper; upper = t; }
         posLower_ = lower; posUpper_ = upper;
@@ -295,7 +314,9 @@ public:
 
 private:
     T stiffness_ = 15790.0, velDesired_ = 0.4, accMax_ = 5000.0;
-    T dampingRatio_ = 0.0005, frequency_ = 20.0;
+    T dampingRatio_ = 0.0005, frequency_ = 20.0;   // frequency_: stored, not read (FIC.cpp)
+    T maxFrequency_ = 8.75, speedMargin_ = 1.5708;
+    T speedLimit_ = 0;   // set-point speed cap, 0: none (FIC.cpp Planner::setSpeedLimit)
     T posLower_ = -M_PI, posUpper_ = M_PI;
     T wrapped_ = 0;
     bool isInitialized_ = false;
@@ -324,15 +345,15 @@ private:
         T dist = std::fabs(distanceToGoal);
         dist = std::fmax(T(0.0001), dist);
         if (dt <= T(1e-4)) fd_ = std::fmin(std::fabs(velDesired_ / dist), T(50.0));
-        else            fd_ = std::fmin(std::fabs(velDesired_ / dist), T(8.75));
+        else            fd_ = std::fmin(std::fabs(velDesired_ / dist), maxFrequency_);
         omega_n_ = fd_ * T(2.0) * T(M_PI);
         gainDamping_ = dampingRatio_ * T(2.0) * omega_n_;
         stiffness_ = omega_n_ * omega_n_;
         T vel_n = std::fmin(velDesired_, omega_n_ * dist);
-        stateVelMax_ = T(1.5708) * vel_n;
+        stateVelMax_ = speedMargin_ * vel_n;
         T a_max = stateVelMax_ * vel_n / dist;
         T An = omega_n_ * omega_n_ * dist;
-        stateAccMax_ = std::fmin(a_max, An);
+        stateAccMax_ = std::fmin(std::fmin(a_max, An), accMax_);   // acc_max on top (FIC.cpp)
     }
 
     T profileLinear(T error, T effortMax) const {
@@ -458,6 +479,17 @@ class JointCore {
 public:
     T dt = T(0.001);
     T deadband_joint_tau = T(1.5);
+    // The robot's FIC law options (robots_config.yaml fic_law), applied by initJoint.
+    bool restart_on_stall = true;
+    T planner_max_hz = T(8.75);
+    T planner_speed_margin = T(1.5708);
+    // The robot's max joint speed, the joint planners' speed cap (rad/s; 0: none). Applied by
+    // initJoint and, while running, by setJointSpeedLimit.
+    T joint_speed_limit = T(0);
+    void setJointSpeedLimit(T v) {
+        joint_speed_limit = v;
+        for (int i = 0; i < kMaxCoreJoints; ++i) plan_[i].setSpeedLimit(v);
+    }
 
     void setJointLimits(int i, T lower, T upper) { lower_[i] = lower; upper_[i] = upper; }
     void setJointContinuous(int i, bool c) { continuous_[i] = c; }
@@ -485,6 +517,7 @@ public:
             ok &= c.setS_Start(&d, 1);
         }
         ok &= c.setStiffness(p.stiffness);
+        c.setRestartOnStall(restart_on_stall);
 
         Planner<T>& pl = plan_[i];
         pl.resetState(q_current);
@@ -493,6 +526,8 @@ public:
         pl.setAccMax(p.acc_max);
         pl.setDampingRatio(p.damping_ratio);
         pl.setFrequency(p.frequency);
+        pl.setShape(planner_max_hz, planner_speed_margin);
+        pl.setSpeedLimit(joint_speed_limit);
         pl.setWrapped(continuous_[i] ? 1 : 0);
         pl.setPosLimits(lower_[i], upper_[i]);
 
@@ -545,6 +580,8 @@ public:
         } else if (std::fabs(ext_tau) < deadband_joint_tau) {
             ext_tau = T(0);
         }
+        // No restart on a stall while the admittance moves the target (fic_control.h NoRestart).
+        ctrl_[i].setRestartOnStall(false);
         a.setDesiredEffort(T(0));   // driven by the interaction torque alone (see fic_control.h)
         a.setCurrentEffort(-ext_tau);
         T adm_delta = a.computeDeltaPose(dt);
@@ -555,7 +592,11 @@ public:
         T q_target_adm;
         T stable = wrapToPi(q_target);
         if (adm_mode == 1) {
-            a.setMinMax_Pose(lower_[i], upper_[i]);
+            // Push-and-stay: the admittance integrates a change of angle, so it is bounded by the
+            // joint's span, not its limits (a range leaving out zero made it jump at the start).
+            // As fic_control.h (fixed there and here on 18 Oct 2026).
+            const T span = upper_[i] - lower_[i];
+            a.setMinMax_Pose(-span, span);
             offset_[i] += step_size;
             q_target_adm = stable + offset_[i];
         } else {
@@ -577,6 +618,7 @@ public:
         d.q_target_adm = q_target_adm;
         d.desired_effort = desired_effort;
         d.current_effort = current_effort;
+        ctrl_[i].setRestartOnStall(restart_on_stall);
         return effort;
     }
 

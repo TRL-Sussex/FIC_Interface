@@ -258,14 +258,26 @@ def test_dashboard_section_follows_the_classic_tabs(studio):
     assert d['ee']['pose'][:3] == [0.4, 0.0, 0.5]
     assert d['wrench']['force'] == [1.0, 2.0, 2.0] and d['wrench']['force_mag'] == pytest.approx(3.0)
     assert d['wrench']['contact'] is False
-    assert set(d['safety']) == {'joints', 'velocity', 'torque'} and d['safety']['torque'] is True
+    assert set(d['safety']) == {'joints', 'velocity', 'torque'} and d['safety']['torque'] == 'ok'
     assert d['robot']['model'] == 'Kinova Gen3 7DOF' and d['robot']['gripper'] == 'none' or d['robot']['gripper']
     assert 'joint states' in d['channels'] and d['channels']['joint effort'] == '7 values'
 
 
 def test_dashboard_flags_a_torque_near_its_limit(studio):
     studio.joint_effort_for = lambda rid: [38.0] + [0.0] * 6
-    assert build_snapshot(studio)['dashboard']['safety']['torque'] is False
+    assert build_snapshot(studio)['dashboard']['safety']['torque'] == 'warn'
+
+
+def test_dashboard_safety_is_unknown_without_fresh_data(studio):
+    studio.joint_update_time = lambda rid: None                      # never heard from the robot
+    assert set(build_snapshot(studio)['dashboard']['safety'].values()) == {'unknown'}
+    import time as _t
+    studio.joint_update_time = lambda rid: _t.monotonic() - 5.0      # 5 s old
+    assert set(build_snapshot(studio)['dashboard']['safety'].values()) == {'unknown'}
+    studio.joint_update_time = lambda rid: _t.monotonic()
+    studio.robot_configs[ROBOT]['joint_limits_deg'] = {'lower': [-10] * 7, 'upper': [10] * 7}
+    studio.joint_positions_for = lambda rid: [0.5] + [0.0] * 6       # 28.6 deg: past the 10 deg limit
+    assert build_snapshot(studio)['dashboard']['safety']['joints'] == 'violation'
 
 
 def test_live_section_has_what_the_tuning_page_needs(studio):
@@ -466,7 +478,10 @@ def test_build_needs_confirm_and_reports_output(studio, tmp_path, monkeypatch):
 def test_settings_get_describes_every_classic_card(studio):
     reply = run(studio, 'settings_get')
     titles = [c['title'] for c in reply['cards']]
-    assert titles == ['Appearance', 'Startup', 'Network', 'Simulation', 'Playback tolerances', 'Shortcuts', 'Developer']
+    # Data (where recordings go) is the web page's own; the rest are the classic window's cards.
+    from fic_studio import features
+    vr = ['VR'] if features.headset() else []      # the public build has no headset support
+    assert titles == ['Appearance', 'Startup', 'Network', 'Data', 'Simulation'] + vr + ['Playback tolerances', 'Shortcuts', 'Developer']
     assert [c['restart'] for c in reply['cards'] if c['title'] == 'Network'] == [True]
     keys = {f['key'] for c in reply['cards'] for f in c['fields']}
     assert {'general.default_robot', 'network.ros_domain_id', 'tolerances.timeout_seconds', 'shortcuts.estop',

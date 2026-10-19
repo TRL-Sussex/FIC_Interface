@@ -711,6 +711,7 @@ class GamepadMixin:
             self.log_message("INFO", f"{source} -> Home on {rid}", "Gamepad")
         elif action == "e_stop":
             if hasattr(self, "_emergency_stop"):
+                self._estop_source = f"Gamepad ({source})"
                 self._emergency_stop()
             else:
                 self._gp_broadcast_stop()
@@ -862,11 +863,6 @@ class GamepadMixin:
         pub = pubs.get("mode_select")
         if pub is not None:
             pub.publish(StringMsg(data=mode))
-
-    def _gp_publish_gripper(self, pubs: dict, width: float) -> None:
-        pub = pubs.get("gripper_width")
-        if pub is not None:
-            pub.publish(Float32(data=float(width)))
 
     def _gp_broadcast_stop(self) -> None:
         for n in getattr(self.node, "active_robots", []):

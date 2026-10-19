@@ -4,7 +4,7 @@ package_name = 'fic_studio'
 
 setup(
     name=package_name,
-    version='5.10.0',
+    version='5.11.0',
     packages=find_packages(),
     # The web remote's page. Without this a copy-install (macOS) ships only
     # the .py files and the server has nothing to serve.
@@ -23,7 +23,6 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'fic_studio = fic_studio.main:main',
             'fic_studio_pro = fic_studio.entry_pro:main',
             'fic_dev = fic_studio.entry_dev:main',
         ],

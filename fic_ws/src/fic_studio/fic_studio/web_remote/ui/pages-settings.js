@@ -55,7 +55,7 @@ window.FIC.pages.settings = function buildSettings(root) {
         h('div', { class: 'fgrid' }, ...c.fields.map(fieldEl))));
     }
     body.prepend(procCard());
-    body.append(extCard(), gamepadCard(), webCard(), buildCard());
+    body.append(extCard(), gamepadCard(), webCard(), vrCard(), buildCard());
     const q = new URLSearchParams((location.hash.split('?')[1] || '')).get('build');
     if (q && !st.opened) { st.opened = true; const sec = $('#st-build'); if (sec) { if (sec.csec) sec.csec.set(true, false); sec.scrollIntoView(); if (q === 'workspace' || q === 'clean') startBuild(q); } }
   }
@@ -156,6 +156,32 @@ window.FIC.pages.settings = function buildSettings(root) {
       h('p', { class: 'faint', style: 'font-size:var(--fs-m);margin-top:var(--s3)' }, 'Open a URL above on a phone on the same network. Anyone who can reach this port can command the robot, one browser at a time; any browser can E-stop. Turn it off on networks you do not trust. Resetting the admin password is done from the desktop window.'));
   }
 
+  // ── VR headset pairing ──
+  const vrBox = h('div');
+  let vrSec = null;
+  function vrCard() {
+    // hidden in a build without the VR headset support (the command is refused there)
+    cmd('settings_vr', { op: 'state' }, true).then(r => { if (vrSec) vrSec.hidden = !r.ok; if (r.ok) { st.vr = r.vr; drawVr(); } });
+    if (!vrSec) { vrSec = section('VR headset pairing', null, vrBox); vrSec.hidden = true; }
+    return vrSec;
+  }
+  function drawVr() {
+    const v = st.vr; vrBox.textContent = '';
+    if (!v) return;
+    vrBox.append(
+      h('p', { class: 'faint', style: 'font-size:var(--fs-m)' }, v.require_key
+        ? 'Packets between this Studio and the headset are signed with key ' + (v.fingerprint || '(made when first needed)') + '. A headset without it is ignored.'
+        : 'Packets are not signed: any headset on this network can drive the VR robots. Turn on Require a pairing key in the VR card above, save, then pair.'),
+      h('div', { class: 'btn-row' },
+        h('button', { class: 'btn btn-primary', type: 'button', text: 'Pair headset (USB)', title: 'Restarts the headset app with this Studio\'s key and address',
+          onclick: () => inlineConfirm(askHost, { title: 'Pair the headset on USB?', lines: ['The headset app restarts with ' + (v.require_key ? 'this Studio\'s pairing key and ' : '') + 'this PC\'s address on its network.', 'Connect it with the cable and allow USB debugging first.'], label: 'Pair',
+            onConfirm: async () => { const r = await cmd('settings_vr', { op: 'pair', confirm: true }); if (r.ok) { st.vr = r.vr; drawVr(); toast(r.message); } } }) }),
+        v.require_key ? h('button', { class: 'btn btn-danger', type: 'button', text: 'New key',
+          onclick: () => inlineConfirm(askHost, { title: 'Make a new pairing key?', lines: ['Every headset paired with the old key is ignored until it is paired again.'], label: 'New key', danger: true,
+            onConfirm: async () => { const r = await cmd('settings_vr', { op: 'new_key', confirm: true }); if (r.ok) { st.vr = r.vr; drawVr(); toast('New key ' + r.vr.fingerprint + ': pair each headset again'); } } }) }) : null),
+      h('p', { class: 'faint', style: 'font-size:var(--fs-m);margin-top:var(--s3)' }, 'The key never goes over the network: only over the USB cable. Pairing also gives the headset this PC\'s address, so it reaches the relay where broadcasts do not.'));
+  }
+
   // ── Build ──
   const out = h('pre', { class: 'xlog', id: 'st-buildout', text: '' }), pkgSel = h('select', { class: 'select', 'aria-label': 'Package' });
   let timer = null;
@@ -189,13 +215,13 @@ window.FIC.pages.settings = function buildSettings(root) {
 
   async function save() {
     if (!dirty()) { toast('No changes to save'); return; }
-    const restart = Object.keys(st.edits).some(k => k.startsWith('network.'));
+    const restart = Object.keys(st.edits).some(k => k.startsWith('network.') || k === 'paths.experiments');
     const go = async confirm => {
       const r = await cmd('settings_set', { values: st.edits, confirm }, true);
-      if (r.ok) { toast(r.restart ? 'Saved. Restart the Studio for the network settings.' : 'Settings saved'); st.edits = {}; setText(err, ''); load(); }
+      if (r.ok) { toast(r.restart ? 'Saved. Restart the Studio for these to apply.' : 'Settings saved'); st.edits = {}; setText(err, ''); load(); if (st.vr) vrCard(); }
       else setText(err, r.message || 'Refused');
     };
-    if (restart) inlineConfirm(askHost, { title: 'Save network settings?', lines: Object.keys(st.edits).map(k => k + ' -> ' + JSON.stringify(st.edits[k])).concat(['They take effect after a restart.']), label: 'Save', onConfirm: () => go(true) });
+    if (restart) inlineConfirm(askHost, { title: 'Save settings that need a restart?', lines: Object.keys(st.edits).map(k => k + ' -> ' + JSON.stringify(st.edits[k])).concat(['They take effect after a restart.']), label: 'Save', onConfirm: () => go(true) });
     else go(false);
   }
   const gpTimer = setInterval(async () => {

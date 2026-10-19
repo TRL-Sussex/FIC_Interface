@@ -61,7 +61,8 @@ case "$FIC_BOARD" in uno-q|ventuno-q|arduino) FIC_HAS_MCU=1 ;; esac
 # so FIC_SKIP_PACKAGES is empty; it stays as the hook for any future
 # architecture-specific package. The Kinova C++ API ships an x86-64 static
 # library only; on other architectures the inner-loop MCU, when there is one,
-# drives the arm.
+# drives the arm, so no Linux-side driver is needed.
+# (Kinova does publish ARM builds of the API, should one ever be wanted.)
 FIC_SKIP_PACKAGES=""
 FIC_KINOVA_DRIVER=0
 if [ "$FIC_ARCH" = "amd64" ]; then
@@ -125,7 +126,7 @@ fic_system_report() {
     fi
     [ "$FIC_NVIDIA" -eq 1 ] && echo "GPU:           $FIC_GPU_NAME (Newton backend available)"
     [ -n "$FIC_SKIP_PACKAGES" ] && echo "Not built:     $FIC_SKIP_PACKAGES"
-    [ "$FIC_KINOVA_DRIVER" -eq 0 ] && echo "Kinova driver: x86-64 only (the Kortex library is built for x86-64)"
+    [ "$FIC_KINOVA_DRIVER" -eq 0 ] && echo "Kinova driver: x86-64 only (the Kortex library is built for x86-64); the inner-loop MCU drives the arm"
     echo "Build jobs:    $FIC_BUILD_JOBS"
     echo "Privileges:    ${FIC_SUDO:-root}"
 }

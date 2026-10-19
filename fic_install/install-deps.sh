@@ -176,7 +176,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 KINOVA_EX="$REPO_ROOT/robot_library/Kinova/api_cpp/examples"
 if [ -d "$KINOVA_EX" ] && [ "$FIC_KINOVA_DRIVER" -eq 0 ]; then
     echo "[optional] Kinova vendor driver: x86-64 only, skipped on $FIC_ARCH."
-    echo "  -> The Kortex library is x86-64 only."
+    echo "  -> The Kortex library is x86-64 only; the inner-loop MCU drives the arm, no Linux driver is needed."
     echo ""
 elif [ -d "$KINOVA_EX" ]; then
     echo "[optional] Building the Kinova vendor driver..."

@@ -17,6 +17,20 @@
 </div>
 
 <div class="admonition tip" style="margin-top:24px">
+  <div class="adm-title">What's new in v5.11.0</div>
+  <ul style="margin:6px 0 4px 0">
+    <li><strong>Whole-arm safety zones</strong> &mdash; draw boxes, spheres, cylinders and outlines on the 3D view of the
+      <a href="#safety" onclick="showPage('safety')">Safety</a> page and keep the arm in or out of them along its whole
+      length; a warning drops down when it touches one. Sliders for every limit.</li>
+    <li><strong>A safer operator interface</strong> &mdash; E-STOP latched until Reset, notices kept until cleared, an audit
+      log, roles, a hardware band, Resume after Pause.</li>
+    <li><strong>FIC library</strong> &mdash; a joint no longer stops short of its target (restart on a stall), the planner's
+      acceleration cap and the max joint speed act, and Joint Admittance no longer moves a Franka by itself. See
+      <a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a> (<em>FIC law</em>).</li>
+  </ul>
+</div>
+
+<div class="admonition tip" style="margin-top:24px">
   <div class="adm-title">What's new in v5.10.0</div>
   <ul style="margin:6px 0 4px 0">
     <li><strong>Joint target speed</strong> &mdash; in joint impedance a far target is approached at a speed you choose on

@@ -4,7 +4,7 @@
    every column. Other pages keep their own layout. Re-applied whenever a page adds or removes content. */
 (function () {
   'use strict';
-  const WIDE = 'table, canvas, iframe, .live-3d, .plots, .stage, .tuning-grid, .xtable, .logview, .two, .tm-grid, .rc-body, .help-grid';
+  const WIDE = 'table, canvas, iframe, .live-3d, .plots, .stage, .xtable, .logview, .two, .tm-grid, .rc-body, .help-grid';
 
   function apply(root) {
     for (const p of root.querySelectorAll('.flow-auto')) {
@@ -29,6 +29,4 @@
     schedule(main);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
-  window.FIC = window.FIC || {};
-  window.FIC.flow = { apply };
 })();

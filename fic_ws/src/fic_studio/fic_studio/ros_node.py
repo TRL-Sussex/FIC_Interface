@@ -337,7 +337,9 @@ class FicStudioNode(Node):
 
     def publish_joints(self, num_joints: int, robot_id=None):
         rid = self._resolve_rid(robot_id)
-        self.pubs[rid]["number_of_joints"].publish(Int32(data=num_joints))
+        pubs = self.pubs.get(rid)
+        if pubs and "number_of_joints" in pubs:
+            pubs["number_of_joints"].publish(Int32(data=num_joints))
 
     def publish_param_update(self, robot_id, param_type, updated_param):
         rid = self._resolve_rid(robot_id)
@@ -351,9 +353,4 @@ class FicStudioNode(Node):
         if pubs and "selected_robot" in pubs:
             pubs["selected_robot"].publish(String(data=robot_name))
 
-    # Legacy wrappers (kept so older call sites still import cleanly).
-    def init_real_robot_publishers(self):
-        pass
 
-    def init_ros(self):
-        pass

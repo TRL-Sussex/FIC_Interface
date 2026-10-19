@@ -98,8 +98,9 @@ window.FIC.pages.robot_config = function buildRobots(root) {
     o[ks[ks.length - 1]] = v; drawHead();
   }
   const text = (path, label, extra) => row(label, h('input', { class: 'input', type: 'text', value: get(path) == null ? '' : String(get(path)), oninput: e => put(path, e.target.value), 'aria-label': label }), extra);
-  const number = (path, label, step, unit) => row(label, h('input', { class: 'input num', type: 'number', step: step || 'any', value: get(path) == null ? '' : String(get(path)), oninput: e => { if (e.target.value !== '') put(path, parseFloat(e.target.value)); }, 'aria-label': label }), unit);
-  const toggle = (path, label) => h('div', { class: 'frow' }, h('label', { class: 'toggle' }, h('input', { type: 'checkbox', checked: !!get(path), onchange: e => put(path, e.target.checked) }), h('span', { class: 'track' }), h('span', { text: label })));
+  const number = (path, label, step, unit, placeholder) => row(label, h('input', { class: 'input num', type: 'number', step: step || 'any', placeholder: placeholder || null, value: get(path) == null ? '' : String(get(path)), oninput: e => { if (e.target.value !== '') put(path, parseFloat(e.target.value)); }, 'aria-label': label }), unit);
+  // dflt: what an absent value means (off unless given).
+  const toggle = (path, label, dflt) => h('div', { class: 'frow' }, h('label', { class: 'toggle' }, h('input', { type: 'checkbox', checked: get(path) == null ? !!dflt : !!get(path), onchange: e => put(path, e.target.checked) }), h('span', { class: 'track' }), h('span', { text: label })));
   const row = (label, ctl, unit) => h('div', { class: 'frow' }, h('label', { text: label }), ctl, h('span', { class: 'unit faint', text: unit || '' }));
   const listField = (path, label, unit) => row(label, h('input', { class: 'input', type: 'text', value: (get(path) || []).join(', '), oninput: e => put(path, e.target.value.split(/[,\s]+/).filter(Boolean).map(Number)), 'aria-label': label }), unit);
 
@@ -139,6 +140,14 @@ window.FIC.pages.robot_config = function buildRobots(root) {
           row('Torque sign', (() => { const s = h('select', { class: 'select' }, h('option', { value: '1', text: 'Positive (+1)' }), h('option', { value: '-1', text: 'Negative (-1)' })); s.value = String(c.torque_sign >= 0 ? 1 : -1); s.addEventListener('change', () => put('torque_sign', Number(s.value))); return s; })()),
           toggle('gravity_compensated', 'Joint torques are gravity-compensated'), toggle('wrench_gravity_compensated', 'Wrench is gravity-compensated'), toggle('wrench_from_api', 'Wrench from the driver API'))),
         section('Sensor deadbands', null, h('div', { class: 'fgrid' }, number('admittance_deadbands.joint_tau', 'Joint torque', 'any', 'N·m'), number('admittance_deadbands.cart_force', 'Cartesian force', 'any', 'N'), number('admittance_deadbands.cart_torque', 'Cartesian torque', 'any', 'N·m'))),
+        section('Cartesian admittance push limits', null,
+          h('p', { class: 'faint', style: 'font-size:var(--fs-m)' }, 'How far a push may move the goal in Cartesian Admittance (push-and-stay) and Cartesian HAP-FIC (haptic), per axis. Empty: the defaults shown. The controller reads them when it starts.'),
+          h('div', { class: 'fgrid' }, number('admittance_limits.push_and_stay_m', 'Push-and-stay, translation', 'any', 'm', '0.30'), number('admittance_limits.push_and_stay_deg', 'Push-and-stay, rotation', 'any', 'deg', '30'),
+            number('admittance_limits.haptic_m', 'Haptic, translation', 'any', 'm', '0.05'), number('admittance_limits.haptic_deg', 'Haptic, rotation', 'any', 'deg', '5'))),
+        section('FIC law', null,
+          h('p', { class: 'faint', style: 'font-size:var(--fs-m)' }, 'Restart on a stall (tracking modes 1, 2, 5, 6): a joint (or axis) whose error stops changing on its way back is pushed on again instead of resting short of its target, at half the largest error it reached. Off gives the law before FIC 5.11.0, for repeating older runs. The planner frequency cap and speed margin shape how a planned move ends; empty: the defaults shown. The controller reads them when it starts.'),
+          h('div', { class: 'fgrid' }, toggle('fic_law.restart_on_stall', 'Restart on a stall', true),
+            number('fic_law.planner_max_frequency_hz', 'Planner frequency cap', 'any', 'Hz', '8.75'), number('fic_law.planner_speed_margin', 'Planner speed margin', 'any', '× desired speed', '1.5708'))),
         section('Simulate like the real robot', null,
           h('p', { class: 'faint', style: 'font-size:var(--fs-m)' }, 'When on, the simulator gives the arm these joint friction, damping and rotor-inertia values and this torque-sensor noise and command delay, and measures torque as on the robot: filtered at the robot’s cutoff, H-PMP’s push estimated from the joint torques, the deadbands above. Tunes made in simulation then carry over. Off, or left empty, the simulator is ideal. Measure the values on the arm with fic_studio.hardware_model (fic_docs: Simulation vs. Hardware).'),
           h('div', { class: 'fgrid' }, toggle('hardware_model.enabled', 'Simulate like the real robot'),

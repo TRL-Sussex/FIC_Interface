@@ -44,6 +44,23 @@ if(Eigen3_FOUND AND TINYXML2_INCLUDE AND TINYXML2_LIB)
   target_link_libraries(test_haptic_admittance PRIVATE Eigen3::Eigen ${TINYXML2_LIB})
   target_compile_options(test_haptic_admittance PRIVATE -ffp-contract=off)
   add_test(NAME haptic_admittance COMMAND test_haptic_admittance)
+  # The fixes of 18 Oct 2026: admittance offset on a range without zero, short band-start lists,
+  # independent instances, per-robot Cartesian admittance bounds.
+  add_executable(test_admittance_fixes test_admittance_fixes.cpp)
+  target_include_directories(test_admittance_fixes PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})
+  target_link_libraries(test_admittance_fixes PRIVATE Eigen3::Eigen ${TINYXML2_LIB})
+  add_test(NAME admittance_fixes COMMAND test_admittance_fixes)
+
+  add_executable(test_law_options test_law_options.cpp)
+  target_include_directories(test_law_options PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})
+  target_link_libraries(test_law_options PRIVATE Eigen3::Eigen ${TINYXML2_LIB})
+  add_test(NAME law_options COMMAND test_law_options)
+  # Not a test: every control path's outputs, exactly, to compare two copies of the library
+  # (see the file).
+  add_executable(test_golden_dump test_golden_dump.cpp)
+  target_include_directories(test_golden_dump PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})
+  target_link_libraries(test_golden_dump PRIVATE Eigen3::Eigen ${TINYXML2_LIB})
+  target_compile_options(test_golden_dump PRIVATE -ffp-contract=off)
 
   add_executable(test_hpmp_caps test_hpmp_caps.cpp)
   target_include_directories(test_hpmp_caps PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})
@@ -59,6 +76,11 @@ if(Eigen3_FOUND AND TINYXML2_INCLUDE AND TINYXML2_LIB)
   target_include_directories(test_joint_target_slew PRIVATE ${FIC_INCLUDE})
   target_link_libraries(test_joint_target_slew PRIVATE Eigen3::Eigen)
   add_test(NAME joint_target_slew COMMAND test_joint_target_slew)
+
+  add_executable(test_safety_zones test_safety_zones.cpp)
+  target_include_directories(test_safety_zones PRIVATE ${FIC_INCLUDE})
+  target_link_libraries(test_safety_zones PRIVATE Eigen3::Eigen)
+  add_test(NAME safety_zones COMMAND test_safety_zones)
   # H-PMP's split admittance drive: a task-space deadband on the end-effector part of the torque gap.
   add_executable(test_hpmp_split_drive test_hpmp_split_drive.cpp)
   target_include_directories(test_hpmp_split_drive PRIVATE ${FIC_INCLUDE} ${TINYXML2_INCLUDE})

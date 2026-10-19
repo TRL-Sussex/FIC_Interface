@@ -725,10 +725,6 @@ class TestPageRender:
         ext._script_traj_raw = []
         ext._script_traj_parsed = None
         ext._script_traj_sub = None
-        ext._script_joint_pub = None
-        ext._script_pose_pub = None
-        ext._script_gripper_pub = None
-        ext._script_mode_pub = None
         ext._page = None
         from Extensions.script_editor.robot_api import MainThreadProxy
         ext._main_thread_proxy = MainThreadProxy()

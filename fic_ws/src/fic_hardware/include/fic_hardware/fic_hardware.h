@@ -2,6 +2,7 @@
 #pragma once
 
 #include "fic/joint_target_slew.h"
+#include "fic/safety_zones.h"
 #include <cmath>
 
 #include <filesystem>
@@ -243,6 +244,19 @@ private:
         bool x_enabled = true, y_enabled = true, z_enabled = true;
     } cart_safety_limits_;
 
+    // Whole-arm safety zones from robotN_safety/zones (own lock: read in the target callbacks, which do not all
+    // take data_mutex_). zone_tau_ is their wall torque, worked out with the kinematics in the control loop and
+    // added in every mode; zone_worst_ the arm's worst clearance, reported to the Studio.
+    fic::safety::ZoneSet zones_;
+    std::mutex zones_mutex_;
+    bool zones_active_ = false;
+    Eigen::VectorXd zone_tau_;
+    fic::safety::ZoneSet::BodyHit zone_worst_;
+    Eigen::Vector3d zone_worst_point_ = Eigen::Vector3d::Zero();
+    bool zone_target_safe_ = false;
+    Eigen::Vector3d zone_safe_target_ = Eigen::Vector3d::Zero();
+    double zone_state_last_s_ = 0.0;
+
     std::vector<double> joint_safety_lower_;
     std::vector<double> joint_safety_upper_;
     bool joint_safety_enabled_ = true;
@@ -308,6 +322,8 @@ private:
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr cart_safety_sub_;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr joint_safety_sub_;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr vel_safety_sub_;
+    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr zones_sub_;
+    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr zone_state_pub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr postural_enable_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr elbow_enable_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr hpmp_enable_sub_;
@@ -431,6 +447,11 @@ private:
     void cartesianSafetyCallback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
     void jointSafetyCallback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
     void velocitySafetyCallback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
+    void zonesCallback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
+    // Whole-arm safety zones (fic/safety_zones.h)
+    std::vector<std::string> zoneBodyFrames(int from_joint) const;
+    void updateZoneWall(const Eigen::VectorXd& q);
+    bool bodyTargetClear(const Eigen::VectorXd& q_joints);
 
     // ── Safety Clamping ──
     double clamp(double value, double min_val, double max_val);

@@ -79,8 +79,6 @@ def is_joint_mode(mode: int) -> bool:
 def is_cartesian_mode(mode: int) -> bool:
     return get_mode_info(mode)["type"] == "cartesian"
 
-def mode_has_damping(mode: int) -> bool:
-    return get_mode_info(mode)["has_damping"]
 
 def mode_uses_planner(mode: int) -> bool:
     return get_mode_info(mode)["has_planner"]
@@ -622,10 +620,6 @@ class XMLManager:
 
         return params
 
-    def load_all_joint_params(self, robot_name: str, num_joints: int, mode: int,
-                              profile: str = "default") -> List[JointParams]:
-        return [self.load_joint_params(robot_name, j, mode, profile) for j in range(num_joints)]
-
     # ─────────────────────────────────────────────────────────────────────────
     #  LOADING - CARTESIAN PARAMETERS
     # ─────────────────────────────────────────────────────────────────────────
@@ -1128,30 +1122,6 @@ class XMLManager:
                 robot.remove(old)
         return len(src)
 
-    def delete_profile(self, robot_name: str, mode: int, profile: str):
-        """Remove a <mode id=N profile=P> block. Refuses to delete the last
-        remaining block for a given mode."""
-        robot = self._find_robot(robot_name)
-        if robot is None:
-            return False
-        matching = []
-        target = None
-        for m in robot.findall("mode"):
-            try:
-                if int(m.get("id", -1)) != mode:
-                    continue
-            except ValueError:
-                continue
-            matching.append(m)
-            if (m.get("profile", "default") or "default") == profile:
-                target = m
-        if target is None:
-            return False
-        if len(matching) <= 1:
-            raise ValueError(f"Cannot delete the only profile for mode {mode}")
-        robot.remove(target)
-        return True
-
     def get_num_joints(self, robot_name: str, mode: int = 1, profile: str = "default") -> int:
         robot = self._find_robot(robot_name)
         if robot is None:
@@ -1166,52 +1136,4 @@ class XMLManager:
 #  CONVENIENCE FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def load_robot_parameters(robot_name: str, param_type: str = "Joint", mode: int = 1,
-                          profile: str = "default"):
-    mgr = XMLManager()
-    if param_type == "Joint":
-        return [mgr.load_joint_params(robot_name, j, mode, profile) for j in range(7)]
-    elif param_type == "Cartesian":
-        return mgr.load_cartesian_params(robot_name, mode, profile)
-    return None
 
-
-def save_parameters_to_xml(robot_name: str, joint_id: int, params: dict, mode: int = 2,
-                           profile: str = "default"):
-    mgr = XMLManager()
-    jp = JointParams()
-    jp.stiffness       = float(params.get('stiffness', jp.stiffness))
-    jp.diff_effort_max = float(params.get('diff_effort_max', jp.diff_effort_max))
-    if 'error_max' in params:
-        jp.error_max = [float(x) for x in str(params['error_max']).split(',')]
-    if 'force_max' in params:
-        jp.force_max = [float(x) for x in str(params['force_max']).split(',')]
-    if 'planner' in params:
-        pl = params['planner']
-        jp.planner_stiffness    = float(pl.get('stiffness',    jp.planner_stiffness))
-        jp.planner_vel_desired  = float(pl.get('vel_desired',  jp.planner_vel_desired))
-        jp.planner_damping_ratio= float(pl.get('damping_ratio',jp.planner_damping_ratio))
-    if 'admittance' in params:
-        ad = params['admittance']
-        jp.admittance_inv_m  = float(ad.get('InvM',    jp.admittance_inv_m))
-        jp.admittance_damping= float(ad.get('Damping', jp.admittance_damping))
-    mgr.save_joint_params(robot_name, joint_id, mode, jp, profile)
-    mgr.save()
-
-
-def save_cartesian_parameters_to_xml(robot_name: str, axis: str, params: dict, mode: int = 6,
-                                     profile: str = "default"):
-    mgr = XMLManager()
-    cp = CartesianAxisParams()
-    cp.stiffness = float(params.get('stiffness', cp.stiffness))
-    if 'planner' in params:
-        pl = params['planner']
-        cp.planner_stiffness_p  = float(pl.get('stiffness_P',  cp.planner_stiffness_p))
-        cp.planner_vel_desired  = float(pl.get('vel_desired',   cp.planner_vel_desired))
-        cp.planner_damping_ratio= float(pl.get('damping_ratio', cp.planner_damping_ratio))
-    if 'admittance' in params:
-        ad = params['admittance']
-        cp.admittance_inv_m  = float(ad.get('InvM',    cp.admittance_inv_m))
-        cp.admittance_damping= float(ad.get('Damping', cp.admittance_damping))
-    mgr.save_cartesian_axis(robot_name, mode, axis, cp, profile)
-    mgr.save()

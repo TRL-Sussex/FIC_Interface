@@ -334,38 +334,6 @@ def _create_postural_element(postural_id: int, params: dict) -> ET.Element:
     return postural
 
 
-def create_robot_element(robot_name: str, num_joints: int) -> ET.Element:
-    """
-    Create a complete robot XML element with default tuning parameters.
-    
-    Args:
-        robot_name: Name of the robot
-        num_joints: Number of joints
-        
-    Returns:
-        ET.Element: Complete robot element with joints, cartesian, and postural
-    """
-    robot = ET.Element('robot', {'name': robot_name})
-    
-    # Add joint elements
-    for i in range(num_joints):
-        joint_params = get_default_joint_params(i, num_joints)
-        robot.append(_create_joint_element(i, joint_params))
-    
-    # Add cartesian element
-    cartesian = ET.SubElement(robot, 'cartesian')
-    cart_params = get_default_cartesian_params()
-    for axis in ['x', 'y', 'z', 'q']:
-        cartesian.append(_create_cartesian_axis_element(axis, cart_params[axis]))
-    
-    # Add postural elements
-    postural_params = get_default_postural_params()
-    for i, params in enumerate(postural_params):
-        robot.append(_create_postural_element(i, params))
-    
-    return robot
-
-
 def prettify_xml(elem: ET.Element) -> str:
     """Return a pretty-printed XML string."""
     rough_string = ET.tostring(elem, encoding='unicode')
@@ -405,40 +373,6 @@ def add_robot_to_config_xml(config_path: str, robot_name: str, num_joints: int) 
         return False
     mgr.ensure_robot(robot_name, num_joints)  # ensure_robot saves to disk
     return True
-
-
-def remove_robot_from_config_xml(config_path: str, robot_name: str) -> bool:
-    """
-    Remove a robot from config.xml.
-    
-    Args:
-        config_path: Path to config.xml
-        robot_name: Name of the robot to remove
-        
-    Returns:
-        bool: True if robot was removed, False if not found
-    """
-    if not os.path.exists(config_path):
-        return False
-    
-    tree = ET.parse(config_path)
-    root = tree.getroot()
-    
-    for robot in root.findall('robot'):
-        if robot.get('name') == robot_name:
-            root.remove(robot)
-            
-            # Write back
-            xml_str = prettify_xml(root)
-            lines = xml_str.split('\n')
-            lines[0] = "<?xml version='1.0' encoding='utf-8'?>"
-            xml_str = '\n'.join(lines)
-            
-            from fic_studio.xml_manager import write_atomic
-            write_atomic(config_path, xml_str)   # the controllers may be reading it
-            return True
-    
-    return False
 
 
 def get_robots_in_config_xml(config_path: str) -> list:

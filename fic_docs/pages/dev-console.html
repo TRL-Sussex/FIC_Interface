@@ -409,6 +409,5 @@ measured wrenches for force feedback.</p>
   <tr><td>Joint fields show for Cartesian mode</td><td>Ensure mode was sent (click <strong>Send</strong> after selecting)</td></tr>
   <tr><td>Live readout stuck at 0</td><td>Verify the FIC controller is running and publishing to <code>robot{N}_trajectory_data</code> (or <code>robot{N}_q_current</code>). Check the station id in settings matches the controller's.</td></tr>
   <tr><td>Teleop not connecting</td><td>Check both machines have the same <code>ROS_DOMAIN_ID</code> and can <code>ros2 topic list</code> each other</td></tr>
-  <tr><td>VR relay won't start</td><td>The relay script must exist at <code>VRAPK/tools/vr_relay_node.py</code> next to the FIC_Interface directory; relay output is logged to <code>/tmp/fic_vr_relay_&lt;timestamp&gt;.log</code></td></tr>
   <tr><td>E-STOP doesn't stop everything</td><td>Check process names. E-STOP also runs <code>pkill -9 -f cartesian_impedance_control</code> as a fallback.</td></tr>
 </table>

@@ -19,6 +19,7 @@ from PyQt5.QtWidgets import (
     QDoubleSpinBox, QScrollArea, QListView,
 )
 
+from fic_studio import version
 from fic_studio.ros_node import FicStudioNode
 from fic_studio.widgets import StatusLED
 from fic_studio import theme
@@ -57,12 +58,12 @@ class FICDevConsole(
     SettingsMixin, RobotConfigMixin, SafetyMixin,
 ):
     APP_NAME = "FIC Dev Console"
-    APP_VERSION = "5.10.0"
+    APP_VERSION = version.RELEASE
 
     def __init__(self, node: FicStudioNode):
         super().__init__()
         self.node = node
-        self.setWindowTitle(f"{self.APP_NAME} — {self.APP_VERSION}")
+        self.setWindowTitle(f"{self.APP_NAME} — {version.display()}")
         self.resize(1100, 700)
         self.setMinimumSize(800, 450)
 
@@ -74,7 +75,6 @@ class FICDevConsole(
         self.controller_process = None
         self.fic_process = None
         self.vr_relay_process = None
-        self.vr_fic_process = None
         self.bags_process = None
         self.plotter_process = None
         self.driver_process = None
@@ -806,11 +806,7 @@ class FICDevConsole(
             "color: %s; font-weight: 600;" % theme.current()["accent_red"]
         )
 
-        try:
-            subprocess.run(["pkill", "-9", "-f", "cartesian_impedance_control"],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception:
-            pass
+        self._kill_all_processes(reason="E-STOP")   # this Studio's processes only
 
     # ══════════════════════════════════════════════════════════════════════════
     #  NAVIGATION STUBS (mixins may call these)
@@ -826,10 +822,7 @@ class FICDevConsole(
     # Stubs for methods mixins may reference
     def show_dashboard(self): pass
     def show_robot_control_panel(self): pass
-    def show_autotuning_panel(self): pass
     def show_sequence_panel(self): pass
-    def show_script_editor_panel(self): pass
-    def show_teach_mode_panel(self): pass
     def show_experiment_panel(self): pass
     def show_robot_config_panel(self): pass
     def show_topic_monitor_panel(self): pass

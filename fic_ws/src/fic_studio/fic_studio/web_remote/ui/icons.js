@@ -18,6 +18,12 @@ const P = {
   'chevron-up': 'M6 14.5l6-6l6 6', 'chevron-down': 'M6 9.5l6 6l6-6', 'chevron-right': 'M9.5 6l6 6l-6 6', diamond: 'M12 4.5l7.5 7.5L12 19.5L4.5 12z',
   check: 'M5 12.5l4.5 4.5L19 7.5', x: 'M6.5 6.5l11 11M17.5 6.5l-11 11',
   warn: 'M12 4.5l9 15.5H3zM12 10v4.2M12 16.8v.2', camera: 'M4 8h3.5l1.5-2.5h6L16.5 8H20v11H4zM12 10.5a3 3 0 1 0 0 6a3 3 0 0 0 0-6z',
+  cursor: 'M6.5 4.5l11 6.5l-5 1.4l-2.6 4.8z', cube: 'M12 3.5l7.5 4v9l-7.5 4l-7.5-4v-9zM4.5 7.5l7.5 4l7.5-4M12 11.5v9',
+  sphere: 'M12 4.5a7.5 7.5 0 1 0 0 15a7.5 7.5 0 0 0 0-15zM4.5 12c0 1.8 3.4 3.2 7.5 3.2s7.5-1.4 7.5-3.2',
+  cylinder: 'M5.5 6.5c0-1.4 2.9-2.5 6.5-2.5s6.5 1.1 6.5 2.5s-2.9 2.5-6.5 2.5s-6.5-1.1-6.5-2.5zM5.5 6.5v11c0 1.4 2.9 2.5 6.5 2.5s6.5-1.1 6.5-2.5v-11',
+  pen: 'M4.5 19.5l1-4l10-10l3 3l-10 10zM13.5 7.5l3 3', table: 'M3.5 15.5h17M6 15.5v4M18 15.5v4M12 4.5v7.5M9.5 9.5l2.5 2.5l2.5-2.5',
+  wall: 'M18.5 3.5v17M4.5 12h10M11.5 9l3 3l-3 3', target: 'M12 3.5v4M12 16.5v4M3.5 12h4M16.5 12h4M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6z',
+  trash: 'M5 7h14M9.5 7V5h5v2M7 7l1 12.5h8L17 7', plus: 'M12 5v14M5 12h14',
 };
 const FILLED = new Set(['dot']);
 function icon(name, cls) {
@@ -79,7 +85,6 @@ function start() {
     }
   }).observe(document.body, { childList: true, subtree: true, characterData: true });
 }
-window.FICIcons = { icon, tidyLabel, walk, MAP };
 if (window.FIC) Object.assign(window.FIC, { icon, tidyLabel });
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();

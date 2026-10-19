@@ -13,6 +13,7 @@ from PyQt5.QtWidgets import (
 )
 
 # Local imports
+from fic_studio import version
 from fic_studio.ros_node import FicStudioNode
 from fic_studio.fleet.stations import all_stations, picker_value, station_label
 from fic_studio.theme.stylesheet import build_stylesheet, scale_overlay_qss
@@ -71,12 +72,12 @@ class ProfessionalRobotGUI(
     GamepadMixin, KeyboardMixin, HelpMixin, WebRemoteMixin, WebUIMixin, InnerLoopMixin,
 ):
     APP_NAME = "FIC Control Studio"
-    APP_VERSION = "5.10.0"
+    APP_VERSION = version.RELEASE
     
     def __init__(self, node: FicStudioNode):
         super().__init__()
         self.node = node
-        self.setWindowTitle(f"{self.APP_NAME} - {self.APP_VERSION}")
+        self.setWindowTitle(f"{self.APP_NAME} - {version.display()}")
         self.resize(1500, 800)
         self.setMinimumSize(1000, 500)
         
@@ -86,17 +87,11 @@ class ProfessionalRobotGUI(
         # Apply saved theme (dark/light from settings)
         self.apply_theme(self.current_theme)
 
-        # First-launch wizard (before UI is built)
-        self._wizard_first_action = None
-        if not self.settings.get('general', {}).get('wizard_completed', False):
-            self._run_first_launch_wizard()
-
         # Process handles
         self.simulation_process = None
         self.controller_process = None
         self.fic_process = None
         self.vr_relay_process = None
-        self.vr_fic_process = None
         self.bags_process = None
         self.plotter_process = None
         self.driver_process = None
@@ -112,6 +107,12 @@ class ProfessionalRobotGUI(
         self.plotter_running = False
         self.driver_running = False
         self.locomotion_running = False
+
+        # First-launch wizard (before the UI is built, after the process state: its test launch
+        # reads and sets it)
+        self._wizard_first_action = None
+        if not self.settings.get('general', {}).get('wizard_completed', False):
+            self._run_first_launch_wizard()
         
         self.robots = {
             "Franka_FR3": 7, "KinovaGen3_7DOF": 7,
@@ -183,6 +184,13 @@ class ProfessionalRobotGUI(
         self._init_web_remote()
         self._init_web_ui()     # --web-ui: the redesigned interface, opt-in
         self._init_fleet()
+        # Settings > VR: the background relay, so headsets find this Studio without VR > Start
+        self._vr_settings_ready = True
+        QTimer.singleShot(1500, self._apply_vr_settings)
+        # ...and back after an E-STOP (it drives no robot) or if it stops by itself
+        self._vr_bg_timer = QTimer(self)
+        self._vr_bg_timer.timeout.connect(self._vr_bg_watchdog)
+        self._vr_bg_timer.start(5000)
 
         # Navigate to wizard-chosen first action (deferred so window is shown)
         if self._wizard_first_action:
@@ -724,7 +732,6 @@ class ProfessionalRobotGUI(
         self._tb_sink_btn = QPushButton()
         self._tb_sink_btn.setVisible(False)
 
-
         # === TOOLS SECTION ===
         # Toolbar EXP button — visible only when the experiments extension is
         # enabled (toggleable in Settings → Extensions).
@@ -1201,7 +1208,6 @@ class ProfessionalRobotGUI(
             btn.setStyleSheet(styles[key])
         self._refresh_toolbar_launch()
 
-
     def _restyle_btn(self, btn: QPushButton, text: str, running: bool, kind: str):
         """Apply inline style to a toolbar button (only way that sticks in QToolBar)."""
         style_key = f'{kind}_run' if running else kind
@@ -1307,7 +1313,6 @@ class ProfessionalRobotGUI(
         self._save_settings()
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
-
     def _update_status(self):
         self.fic_led.set_status('connected' if self.fic_running else 'idle')
         self.sim_led.set_status('connected' if self.simulation_running else 'idle')
@@ -1319,7 +1324,6 @@ class ProfessionalRobotGUI(
             if hasattr(self, '_poll_vr_mode'):
                 self._poll_vr_mode()
         self._refresh_toolbar_launch()
-
 
         # Toolbar EXP button: state from the experiments extension if loaded.
         exp_ext = self.get_extension("experiments")
@@ -1423,8 +1427,6 @@ class ProfessionalRobotGUI(
         if bar is not None:
             bar.open_panel('joint')
         self._rc_refresh_joint_count()
-    def launch_robot_node(self):
-        self.show_robot_control_panel()
     def show_tuning_panel(self):
         self._show_page('tuning')
         self._load_tuning_parameters()
@@ -1557,15 +1559,12 @@ class ProfessionalRobotGUI(
         for action in self._mode_action_group.actions():
             action.setChecked(action.text().startswith(f"{mode}:"))
 
-    def _send_mode_from_toolbar(self):
-        mode_idx = self.tb_mode_dropdown.currentIndex() + 1
-        self._send_hpmp_for_mode(mode_idx)
-        self.node.publish_mode(mode_idx)
-        self.log_message("INFO", f"Sent mode: {mode_idx} - {self.tb_mode_dropdown.currentText()}", "Control")
-        self._sync_mode_menu_check()
-
     def _emergency_stop(self):
         self.log_message("ERROR", "E-STOP ACTIVATED! HALTING ALL SYSTEMS AND PROCESSES.", "Safety")
+        # latched until Reset (who fired it: set by the web, fleet and gamepad paths)
+        if hasattr(self, '_estop_latch_set'):
+            self._estop_latch_set(getattr(self, '_estop_source', '') or 'Studio window')
+        self._estop_source = ''
         # Fan out E-stop to every loaded extension (sequences, teach_mode,
         # script_editor, experiments, autotuning, teleop, tracker, ...).
         # Each extension's on_emergency_stop() halts its own activity.
@@ -1622,8 +1621,10 @@ class ProfessionalRobotGUI(
             time.sleep(0.01)
 
     def _estop_kill_processes(self):
-        """Hard teardown backstop: stop every Studio-launched process and
-        OS-level pkill the controllers. Runs after the graceful ramp window."""
+        """Hard teardown backstop: stop every process this Studio started, then SIGKILL whatever is
+        left in their sessions. Runs after the graceful ramp window. Only this Studio's processes:
+        other users' simulators and launches on the same PC are left alone."""
+        sessions = self._owned_sessions()
         if hasattr(self, 'controller_running') and self.controller_running:
             if hasattr(self, '_stop_controller'):
                 self._stop_controller()
@@ -1647,13 +1648,14 @@ class ProfessionalRobotGUI(
             self.robot_status_label.setObjectName("EStopLabel")
             self.robot_status_label.style().unpolish(self.robot_status_label)
             self.robot_status_label.style().polish(self.robot_status_label)
-        import subprocess
-        try:
-            subprocess.run(["pkill", "-9", "-f", "ros2 launch"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            subprocess.run(["pkill", "-9", "-f", "cartesian_impedance_control"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            self.log_message("WARN", "Executed OS-level pkill for ros2 launch and hardware controllers", "Safety")
-        except Exception as e:
-            self.log_message("ERROR", f"OS-level pkill failed: {e}", "Safety")
+        from fic_studio.mixins.process_mixin import _kill_session
+        self._kill_all_processes(reason="E-STOP")
+        left = sum(_kill_session(sid) for sid in sessions)
+        # the background VR relay drives no robot: headsets keep finding this Studio
+        if hasattr(self, '_vr_bg_watchdog'):
+            QTimer.singleShot(1000, self._vr_bg_watchdog)
+        self.log_message("WARN", "E-STOP: this Studio's processes stopped"
+                         + (f" ({left} left over were killed)" if left else ""), "Safety")
 
     def _move_home(self):
         robot_name = self.robot_dropdown.currentText()
@@ -1668,13 +1670,6 @@ class ProfessionalRobotGUI(
         deg = ", ".join(f"{math.degrees(a):.1f}°" for a in radians)
         self.log_message("INFO", f"Moving to home: [{deg}]", "Control")
     
-    def _toggle_log_panel(self, checked: bool = True):
-        """Open the Logs page.
-
-        Kept because Settings and older callers still reach for it; the log
-        viewer is a page now, so there is no strip left to collapse.
-        """
-        self.show_logs_panel()
     def _toggle_sidebar(self, checked: bool):
         self._sidebar_expanded = checked
         self._sidebar_content.setVisible(checked)
@@ -1801,7 +1796,7 @@ class ProfessionalRobotGUI(
     
     def _show_about(self):
         QMessageBox.about(self, f"About {self.APP_NAME}",
-            f"<h2>{self.APP_NAME}</h2><p>Version {self.APP_VERSION}</p>"
+            f"<h2>{self.APP_NAME}</h2><p>Version {version.display()}</p>"
             f"<p>Professional Robot Control Interface</p><p>Built with PyQt5 and ROS2</p>")
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -2215,6 +2210,8 @@ class ProfessionalRobotGUI(
             self._extension_loader.teardown_all()
         if hasattr(self, "_teardown_gamepad"):
             self._teardown_gamepad()
+        if hasattr(self, "_teardown_keyboard"):
+            self._teardown_keyboard()
         srv = getattr(self, "_help_docs_server", None)
         if srv:
             srv.kill()

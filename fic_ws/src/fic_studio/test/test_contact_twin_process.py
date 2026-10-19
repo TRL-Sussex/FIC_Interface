@@ -111,14 +111,18 @@ def test_start_uses_python3_on_linux(monkeypatch):
 
 
 def test_stop_terminates_the_process_and_clears_state(monkeypatch, tmp_path):
-    """Stop tears down the process, the pkill net, and the log handle."""
+    """Stop tears down the process, its session, and the log handle, with no pkill (which would also
+    stop another user's twin on the same PC)."""
     h = _Host()
     fake = _FakePopen()
+    fake.pid = 4242
     h.contact_twin_process = fake
     h.contact_twin_running = True
     h._twin_log_fh = open(str(tmp_path / 'twin.log'), 'w')
-    pkill_calls = []
+    pkill_calls, sessions = [], []
     monkeypatch.setattr(subprocess, 'run', lambda *a, **kw: pkill_calls.append(a))
+    import fic_studio.mixins.process_mixin as pm
+    monkeypatch.setattr(pm, '_kill_session', lambda sid, *a: sessions.append(sid) or 0)
 
     ProcessMixin._stop_contact_twin(h)
 
@@ -126,7 +130,8 @@ def test_stop_terminates_the_process_and_clears_state(monkeypatch, tmp_path):
     assert h.contact_twin_process is None
     assert h.contact_twin_running is False
     assert h._twin_log_fh is None
-    assert pkill_calls and 'fic_contact.twin' in pkill_calls[0][0]
+    assert not pkill_calls
+    assert sessions == [fake.pid]
 
 
 def test_stop_is_safe_when_nothing_is_running(monkeypatch):

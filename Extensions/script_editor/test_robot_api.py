@@ -677,25 +677,12 @@ class TestMoveJointsVelocityCompat:
             f'move_joints blocked for {elapsed:.2f}s — velocity kwarg set wait=True'
         )
 
-    def test_api_reference_html_shows_new_signature(self):
-        """The HTML API reference does not contain the obsolete velocity parameter."""
-        import sys as _sys
-        import types as _types
-        # Test the source text of extension.py directly — no import needed.
-        for mod in ('std_msgs', 'std_msgs.msg', 'geometry_msgs', 'geometry_msgs.msg',
-                    'rclpy', 'rclpy.node', 'scipy', 'scipy.spatial',
-                    'scipy.spatial.transform'):
-            if mod not in _sys.modules:
-                _sys.modules[mod] = _types.ModuleType(mod)
-        ext_path = _os.path.join(_os.path.dirname(__file__), 'extension.py')
-        with open(ext_path, encoding='utf-8') as fh:
-            source = fh.read()
-        # Old positional signature must not appear in the HTML reference block
-        assert 'move_joints(angles, velocity=0.5)' not in source, (
-            'HTML API reference still shows the old move_joints(angles, velocity=0.5) signature'
-        )
-        # New signature must be present
-        assert 'move_joints(angles_deg, wait=False' in source, (
-            'HTML API reference does not show the new '
-            'move_joints(angles_deg, wait=False, ...) signature'
-        )
+    def test_api_reference_shows_new_signature(self):
+        """The API reference the editor shows does not carry the obsolete velocity parameter."""
+        import json as _json
+        import os as _os
+        ref = _os.path.join(_os.path.dirname(__file__), 'web', 'api_reference.json')
+        with open(ref, encoding='utf-8') as fh:
+            entries = {e['name']: e['signature'] for e in _json.load(fh)['entries']}
+        assert 'velocity=0.5' not in entries['robot.motion.move_joints']
+        assert entries['robot.motion.move_joints'].startswith('(angles_deg, wait=False')

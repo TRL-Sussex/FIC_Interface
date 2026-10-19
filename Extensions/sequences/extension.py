@@ -78,10 +78,6 @@ class Extension(ExtensionBase):
         """Return the saved sequence names, sorted."""
         return sorted(self.sequences.keys())
 
-    def waypoint_count(self, name: str) -> int:
-        """Return how many waypoints a sequence holds."""
-        return len(self.sequences.get(name, []))
-
     def play(self, name: str, loop: bool = False) -> None:
         """Select ``name`` and start playing it."""
         if name not in self.sequences:

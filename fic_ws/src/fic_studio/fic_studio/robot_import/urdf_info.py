@@ -271,9 +271,6 @@ class UrdfInfo:
     def movable_chain_to(self, link):
         return [j for j in self.chain_to(link) if j.movable]
 
-    def leaves(self):
-        return [link for link in self.links if not self.child_joints.get(link)]
-
     def descendants(self, link):
         out, stack = [], [link]
         while stack:

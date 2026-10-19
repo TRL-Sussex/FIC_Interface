@@ -4,6 +4,14 @@ import math
 from PyQt5.QtCore import QTimer, pyqtSignal, QObject
 from PyQt5.QtWidgets import QMessageBox
 
+#: How far past a limit a robot must be before "Stop on violation" stops it. Closer than
+#: this the controller holds it at the limit by itself (the joint modes' virtual wall is
+#: 2000 N/m: 60 N at 3 cm).
+STOP_PAST_M = 0.03
+STOP_PAST_DEG = 2.0
+#: Closer than this to a Cartesian limit or a safety zone, the robot is touching it: a warning in Notices.
+TOUCH_M = 0.005
+
 
 class SafetySignals(QObject):
     """Signals for safety zone violations."""
@@ -13,6 +21,42 @@ class SafetySignals(QObject):
 
 class SafetyMixin:
     """Mixin for safety zone management and enforcement."""
+
+    # ── E-STOP latch ─────────────────────────────────────────────────────
+    # An E-STOP stays in force until someone resets it: the web UI shows a red
+    # banner with when and by whom, and refuses Start, processes, teleop and
+    # motion until Reset. Resetting starts nothing.
+    def _estop_latch_set(self, by=''):
+        import time
+        from fic_studio import audit
+        by = by or 'Studio window'
+        self._estop_latch = {'at': time.time(), 'by': by}
+        audit.record('estop', by, 'E-STOP', target=getattr(self, 'control_target', ''),
+                     station=getattr(getattr(self, 'node', None), 'station_id', None))
+        from fic_studio import notices
+        notices.alert(self, 'error', 'E-STOP pressed by %s' % by,
+                      'The controllers were told to ramp down and hold, and this Studio\'s processes stopped. '
+                      'Start, motion and teleoperation are refused until Reset.', 'Safety', window_box=False)
+
+    def _estop_latch_reset(self, by=''):
+        from fic_studio import audit
+        latch = getattr(self, '_estop_latch', None)
+        if latch is None:
+            return False
+        self._estop_latch = None
+        audit.record('estop_reset', by or 'Studio window', 'E-STOP of %s reset' % latch.get('by', '?'))
+        from fic_studio import notices
+        notices.alert(self, 'info', 'E-STOP reset by %s' % (by or 'Studio window'),
+                      'Nothing was started; start the controllers again to move.', 'Safety', window_box=False)
+        return True
+
+    def estop_latch_state(self):
+        """{'latched': bool, 'at': epoch s, 'by': str} for the web UI."""
+        latch = getattr(self, '_estop_latch', None)
+        if latch is None:
+            return {'latched': False}
+        return {'latched': True, 'at': latch['at'], 'by': latch['by']}
+
     
     def _init_safety(self):
         """Initialize safety system."""
@@ -57,6 +101,10 @@ class SafetyMixin:
         if rid in self.safety_pubs:
             return
         try:
+            from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+            # The zones are latched: a controller started later gets them on connecting.
+            latched = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                                 durability=DurabilityPolicy.TRANSIENT_LOCAL)
             self.safety_pubs[rid] = {
                 'cart': self.node.create_publisher(
                     Float64MultiArray, f'{rid}_safety/cartesian_limits', 10),
@@ -64,12 +112,25 @@ class SafetyMixin:
                     Float64MultiArray, f'{rid}_safety/joint_limits', 10),
                 'vel': self.node.create_publisher(
                     Float64MultiArray, f'{rid}_safety/velocity_limits', 10),
+                'zones': self.node.create_publisher(
+                    Float64MultiArray, f'{rid}_safety/zones', latched),
             }
+            if not hasattr(self, 'safety_subs'):
+                self.safety_subs = {}
+            self.safety_subs[rid] = self.node.create_subscription(
+                Float64MultiArray, f'{rid}_safety/zone_state',
+                lambda msg, rid=rid: self._on_zone_state(rid, msg), 10)
         except Exception as e:
             print(f"Could not setup safety publishers for {rid}: {e}")
 
     def _remove_robot_safety_publishers(self, n: int):
         rid = f'robot{n}'
+        sub = getattr(self, 'safety_subs', {}).pop(rid, None)
+        if sub is not None:
+            try:
+                self.node.destroy_subscription(sub)
+            except Exception:
+                pass
         pubs = getattr(self, 'safety_pubs', {}).pop(rid, None)
         if not pubs:
             return
@@ -103,7 +164,10 @@ class SafetyMixin:
     
     def _get_default_safety_limits(self) -> dict:
         """Return default safety limits."""
+        from fic_studio.safety_zones import DEFAULT_BODY
         return {
+            'zones': [],
+            'body': dict(DEFAULT_BODY),
             'cartesian': {
                 'x': {'min': -1.0, 'max': 1.0, 'enabled': True},
                 'y': {'min': -1.0, 'max': 1.0, 'enabled': True},
@@ -172,23 +236,90 @@ class SafetyMixin:
                     msg.data.append(float(vel['joint_target_speed']))
                 return msg
 
+            from fic_studio.safety_zones import encode
+            zones_msg = Float64MultiArray()
+            zones_msg.data = encode(self.safety_limits.get('zones') or [], self.safety_limits.get('body'))
+
             for rid, pubs in getattr(self, 'safety_pubs', {}).items():
                 pubs['cart'].publish(cart_msg)
                 pubs['joint'].publish(joint_msg)
                 pubs['vel'].publish(vel_msg_for(rid))
+                if 'zones' in pubs:
+                    pubs['zones'].publish(zones_msg)
 
         except Exception as e:
             if hasattr(self, 'log_message'):
                 self.log_message("ERROR", f"Failed to publish safety limits: {e}", "Safety")
     
+    def _on_zone_state(self, rid, msg):
+        """robotN_safety/zone_state: the arm's worst clearance against the safety zones (from its controller)."""
+        import time
+        if not hasattr(self, '_zone_state_by_robot'):
+            self._zone_state_by_robot = {}
+        self._zone_state_by_robot[rid] = (list(msg.data), time.monotonic())
+
+    def zone_state_for(self, rid):
+        """Where robot ``rid`` is against the safety zones (fic_studio.safety_zones.zone_state), or None."""
+        import time
+        from fic_studio.safety_zones import zone_state
+        data, stamp = (getattr(self, '_zone_state_by_robot', None) or {}).get(rid, (None, None))
+        return zone_state(data, (self.safety_limits or {}).get('zones') or [], stamp, time.monotonic())
+
+    def _warn_safety_contacts(self):
+        """A warning in Notices when a robot touches a safety limit (within TOUCH_M) or goes past it.
+
+        The box workspace is checked at the tool point, the safety zones along the arm (their clearance comes
+        from the robot's controller). Each robot and limit warns once as it touches and once more if it then
+        goes past; it warns again only after it has been clear of it by 2 cm."""
+        from fic_studio import notices
+        lim = self.safety_limits or {}
+        armed = getattr(self, '_safety_contact', None)
+        if armed is None:
+            armed = self._safety_contact = {}
+        for rid, pose, _joints in self._safety_robots():
+            seen = []      # (key, distance from the limit in m, negative past it, what)
+            if pose is not None and hasattr(pose, 'position'):
+                for axis in ('x', 'y', 'z'):
+                    zone = (lim.get('cartesian') or {}).get(axis) or {}
+                    if not zone.get('enabled', False):
+                        continue
+                    v = getattr(pose.position, axis)
+                    for side, d in (('min', v - zone.get('min', -math.inf)), ('max', zone.get('max', math.inf) - v)):
+                        seen.append(((axis, side), d, 'the workspace %s %s (%.3f m)' % (axis.upper(), side, zone[side])))
+            zs = self.zone_state_for(rid) if hasattr(self, 'zone_state_for') else None
+            if zs is not None:
+                seen.append((('zone', zs['zone']), zs['clearance'],
+                             "safety zone %d '%s'" % (zs['zone'] + 1, zs['name'])))
+            for key, d, what in seen:
+                k = (rid,) + key
+                level = 2 if d < 0 else 1 if d < TOUCH_M else 0
+                if level == 0:
+                    if d > 0.02:
+                        armed.pop(k, None)
+                    continue
+                if level <= armed.get(k, 0):
+                    continue
+                armed[k] = level
+                who = rid or 'The robot'
+                if level == 2:
+                    notices.alert(self, 'warn', '%s is past %s' % (who, what),
+                                  '%.0f mm past it. The controller pushes it back; past %.0f mm, Stop on violation '
+                                  'stops it.' % (-1000 * d, 1000 * STOP_PAST_M), 'Safety', passing=True)
+                else:
+                    notices.alert(self, 'warn', '%s is touching %s' % (who, what),
+                                  'Within %.0f mm of it.' % (1000 * TOUCH_M), 'Safety', passing=True)
+
     def _check_safety_limits(self):
         """Check current robot state against safety limits."""
         if (getattr(self, '_safety_page', None) is not None
                 and getattr(self, 'main_stack', None) is not None
                 and self.main_stack.currentWidget() is self._safety_page):
             self._refresh_safety_panel()
+        if self.safety_limits:
+            self._enforce_safety_limits()
         if not self.safety_enabled or not self.safety_limits:
             return
+        self._warn_safety_contacts()
         
         # Check Cartesian limits
         cart_limits = self.safety_limits.get('cartesian', {})
@@ -256,7 +387,8 @@ class SafetyMixin:
 
         The C++ control loop enforces Cartesian boundaries via a virtual wall
         (restoring J^T force) and joint-limit clamping, so the robot is bounded
-        at the limit rather than faulted.  The GUI only logs a warning here.
+        at the limit rather than faulted.  This only logs; a robot clearly past
+        a limit is stopped by ``_enforce_safety_limits``.
         """
         if hasattr(self, 'log_message'):
             self.log_message("WARN",
@@ -264,42 +396,121 @@ class SafetyMixin:
                 "Safety"
             )
 
-    def _enforce_safety_stop(self, reason: str):
+    def _safety_robots(self):
+        """(rid, EE pose, joint positions in rad) for every robot the Studio has state for."""
+        poses = getattr(self, 'current_ee_pose_by_robot', None) or {}
+        joints = getattr(self, 'current_joint_positions_by_robot', None) or {}
+        rids = sorted(set(poses) | set(joints))
+        if rids:
+            return [(r, poses.get(r), list(joints.get(r) or [])) for r in rids]
+        rid = getattr(getattr(self, 'node', None), 'station_robot_id', None)
+        return [(rid, getattr(self, 'current_ee_pose', None),
+                 list(getattr(self, 'current_joint_positions', None) or []))]
+
+    def _safety_past(self, pose, joints_rad, rid=None):
+        """Every enabled limit the robot is past: (what, how far past, stop distance).
+
+        Distances are metres for the Cartesian zones and degrees for the joints. The safety zones are
+        checked along the arm by the robot's controller, which reports how far past the worst point is."""
+        out = []
+        lim = self.safety_limits or {}
+        zs = self.zone_state_for(rid) if rid is not None and hasattr(self, 'zone_state_for') else None
+        if zs is not None and zs['clearance'] < 0:
+            out.append(("safety zone %d '%s'" % (zs['zone'] + 1, zs['name']), -zs['clearance'], STOP_PAST_M))
+        if pose is not None and hasattr(pose, 'position'):
+            for axis in ('x', 'y', 'z'):
+                zone = (lim.get('cartesian') or {}).get(axis) or {}
+                if not zone.get('enabled', False):
+                    continue
+                v = getattr(pose.position, axis)
+                if v < zone.get('min', -math.inf):
+                    out.append(('%s min %.3f m' % (axis.upper(), zone['min']), zone['min'] - v, STOP_PAST_M))
+                elif v > zone.get('max', math.inf):
+                    out.append(('%s max %.3f m' % (axis.upper(), zone['max']), v - zone['max'], STOP_PAST_M))
+        joint = lim.get('joint_safety_deg') or {}
+        if joint.get('enabled', False):
+            lower, upper = joint.get('lower') or [], joint.get('upper') or []
+            for i, q in enumerate(joints_rad or []):
+                if i >= len(lower) or i >= len(upper) or q is None:
+                    continue
+                d = math.degrees(q)
+                if d < lower[i]:
+                    out.append(('Joint %d lower %.1f deg' % (i + 1, lower[i]), lower[i] - d, STOP_PAST_DEG))
+                elif d > upper[i]:
+                    out.append(('Joint %d upper %.1f deg' % (i + 1, upper[i]), d - upper[i], STOP_PAST_DEG))
+        return out
+
+    def _enforce_safety_limits(self):
+        """Stop a robot that is clearly past a limit: once per episode.
+
+        Inside STOP_PAST_M / STOP_PAST_DEG the controller holds the arm at the limit by
+        itself (target clamping, and a 2000 N/m virtual wall in the joint modes), so a
+        robot pressed against a limit is not stopped. Past that, something is pushing
+        the arm through the limit and the robot is given the graceful stop. It is not
+        stopped again until it has come back within half that distance, so the operator
+        can restart the controller and move the arm back in.
+        """
+        if not getattr(self, 'safety_enforce', True):
+            return
+        latched = getattr(self, '_safety_stop_latched', None)
+        if latched is None:
+            latched = self._safety_stop_latched = set()
+        for rid, pose, joints in self._safety_robots():
+            past = self._safety_past(pose, joints, rid)
+            worst = max(past, key=lambda p: p[1] / p[2], default=None)
+            if worst is None or worst[1] < 0.5 * worst[2]:
+                latched.discard(rid)
+                continue
+            if worst[1] <= worst[2] or rid in latched:
+                continue
+            unit = 'm' if worst[2] == STOP_PAST_M else 'deg'
+            latched.add(rid)
+            self._enforce_safety_stop('%s: %.3g %s past %s' % (rid or 'robot', worst[1], unit, worst[0]), rid)
+
+    def _enforce_safety_stop(self, reason: str, rid=None):
         """Command a debounced graceful controller stop on a zone violation.
 
         A runtime backstop to the C++ target clamping: if the robot is actually
-        past a safety limit, ramp the controller down to a safe hold. Debounced
-        (one stop per episode) so the 10 Hz check cannot spam stop commands, and
+        past a safety limit, ramp the controller down to a safe hold. The stop is
+        E-STOP's first step without its process kill: 'Stop Controller' to the
+        robot (all robots when ``rid`` is None), then its joint target set to
+        where it is, so a restart does not drive it back to an old target.
+        Debounced per robot so the 10 Hz check cannot spam stop commands, and
         skipped when ``safety_enforce`` is False.
         """
         if not getattr(self, 'safety_enforce', True):
             return
         import time
         now = time.monotonic()
-        if now < getattr(self, '_safety_stop_until', 0.0):
-            return
-        self._safety_stop_until = now + 3.0
+        if rid is None or not hasattr(self, 'stop_for'):
+            if now < getattr(self, '_safety_stop_until', 0.0):
+                return
+            self._safety_stop_until = now + 3.0
+        else:
+            until = getattr(self, '_safety_stop_until_by_robot', None)
+            if until is None:
+                until = self._safety_stop_until_by_robot = {}
+            if now < until.get(rid, 0.0):
+                return
+            until[rid] = now + 3.0
         if hasattr(self, 'log_message'):
             self.log_message(
                 "ERROR", f"SAFETY VIOLATION \u2014 stopping robot: {reason}", "Safety")
-        if hasattr(self, 'broadcast_stop'):
-            self.broadcast_stop()
-    
-    def toggle_safety(self, enabled: bool):
-        """Enable or disable safety checking."""
-        self.safety_enabled = enabled
-        if hasattr(self, 'log_message'):
-            status = "enabled" if enabled else "disabled"
-            self.log_message("INFO", f"Safety system {status}", "Safety")
-    
-    def get_safety_status(self) -> dict:
-        """Get current safety status."""
-        return {
-            'enabled': self.safety_enabled,
-            'limits': self.safety_limits,
-            'warnings': [],  # Could track active warnings
-            'violations': []  # Could track active violations
-        }
+        if rid is None or not hasattr(self, 'stop_for'):
+            if hasattr(self, 'broadcast_stop'):
+                self.broadcast_stop()
+            return
+        try:
+            self.stop_for(rid)
+        except Exception as e:
+            if hasattr(self, 'log_message'):
+                self.log_message("ERROR", f"Safety stop failed: {e}", "Safety")
+            return
+        pos = (getattr(self, 'current_joint_positions_by_robot', None) or {}).get(rid)
+        pub = (getattr(getattr(self, 'node', None), 'real_joint_publishers', None) or {}).get(rid)
+        if pos and pub is not None:
+            from std_msgs.msg import Float32MultiArray
+            pub.publish(Float32MultiArray(data=[float(j) for j in pos]))
 
     # ── Live Safety Zones page (joint + Cartesian) ───────────────────────────
     def _safety_joint_count(self):
@@ -352,7 +563,12 @@ class SafetyMixin:
         panel = getattr(self, '_safety_panel', None)
         if panel is None:
             return
-        self.safety_limits = panel.to_config()
+        new = panel.to_config()
+        # the panel has no widgets for the whole-arm zones: keep them
+        for key in ('zones', 'body'):
+            if key in (self.safety_limits or {}) and key not in new:
+                new[key] = self.safety_limits[key]
+        self.safety_limits = new
         self._publish_safety_limits()
 
     def _refresh_safety_panel(self):

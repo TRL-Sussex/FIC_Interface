@@ -1,4 +1,4 @@
-"""Lab-wide commands from any Studio: E-STOP ALL, PAUSE ALL, and starting a robot.
+"""Lab-wide commands from any Studio: E-STOP ALL, PAUSE ALL / RESUME ALL, and starting a robot.
 
 A command names the stations it is for (or 'all'). Every Studio listens,
 and one whose own station is named runs it through its normal local path
@@ -18,7 +18,7 @@ import time
 import uuid
 
 TOPIC = '/fic/fleet/command'
-COMMANDS = ('estop', 'pause', 'session')
+COMMANDS = ('estop', 'pause', 'resume', 'session')
 SESSION_OPS = ('start', 'stop')
 TARGETS = ('simulation', 'hardware')
 #: Remember this many command ids, to act on each command once.

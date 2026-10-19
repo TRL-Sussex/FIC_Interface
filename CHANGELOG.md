@@ -7,19 +7,78 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Versioning
 
-Every big change bumps the version: a new **minor** version (x.Y.0) for
-significant features or fixes, a new **major** version (X.0.0) for breaking or
-architectural changes. The number is updated everywhere together — `APP_VERSION`
-in the Studio (`main_window_pro.py`) and the Dev Console (`main_window_dev.py`),
-both splash screens (`entry_pro.py`, `entry_dev.py`), the Help page
-(`help_mixin.py`), `fic_studio`'s `package.xml` and `setup.py`, `fic_hardware`'s
-`package.xml`, and the docs badge, "What's new" box and Settings subtitle — with
-an entry here.
+Version numbers are given at release only. When Development is released, the release takes the
+next number: a new **minor** version (x.Y.0) for features, a **patch** version (x.y.Z) for fixes
+only, a new **major** version (X.0.0) for breaking or architectural changes. It is written
+everywhere at once.
+Between releases nothing is bumped: changes are recorded under **Unreleased**, and a development
+build shows the last release and the commit it was built from (`5.11.0 · dev 85617ecb`). The
+FIC-link protocol keep their own version numbers.
 
 ### Releases
 
 Development happens in a separate repository. Each release of FIC Control
 Studio is published here as one commit, with its entry below.
+
+---
+
+## [Unreleased]
+
+## [5.11.0] — 2026-10-19 — Whole-arm safety zones, a safer operator interface, FIC library fixes
+
+### Added
+- **Whole-arm safety zones** (`fic_library/include/fic/safety_zones.h`): boxes (turned about the
+  vertical), spheres, upright cylinders and outlines drawn on the floor and raised between two heights,
+  each keep-in (the arm stays inside one of them) or keep-out (it stays out of every one). They are
+  checked along the whole arm, from a chosen joint to the tool (each link a capsule, the tool a ball),
+  not only at the tool point as the workspace box is. Both controller nodes enforce them in every mode:
+  a virtual wall on each link past a boundary, joint targets that take the arm further in refused,
+  Cartesian tool targets moved out of the zones; the arm's worst clearance is published on
+  `robot{N}_safety/zone_state`, and Stop on violation stops a robot more than 30 mm into one.
+- **The Safety page reworked**: the zones and the workspace box drawn live in 3D, with a toolbar on the
+  view to place a box, sphere or cylinder with a click, draw an outline corner by corner, set a workspace
+  limit where the tool is (Table here, Wall here, Set here) and delete the selected zone; handles to move,
+  lift, resize and turn a zone; sliders next to every number, two-thumb sliders for the joint limits.
+  What it applies is saved with the robot.
+- **Warnings in Notices** when a robot touches a safety zone or a workspace face (within 5 mm) or goes
+  past it: they drop down and go after six seconds, and stay in Notices.
+- **Latched E-STOP**: a red banner says when and by whom; Start, motion, processes and teleoperation are
+  refused until someone resets it. The E-STOP and its reset go into Notices and the audit log.
+- **Notices**: failures and warnings, shown wherever the operator is and kept until Clear all.
+- **Audit log** (`~/.fic_studio/audit.log`) and an **Audit** tab on the Log page.
+- **Roles** on the Users page: Observer, Simulation operator, Operator, Admin.
+- A **hardware band** under the toolbar on the hardware target, and **Resume** after a Pause.
+- **Settings > Data**: experiments and bags can be recorded outside the checkout (`$FIC_EXPERIMENTS_DIR`).
+- **Robot Config**: Cartesian admittance push limits per robot (`admittance_limits`) and the FIC law
+  options (`fic_law`: restart on a stall, the planner's frequency cap and speed margin).
+
+### Changed
+- **The FIC law restarts a stalled convergence** in the tracking modes (1, 2, 5, 6; on by default,
+  `fic_law.restart_on_stall`): a damped joint no longer comes to rest at half its largest error with no
+  torque. Stepped moves in the Kinova simulation end 0.17° short instead of 2.64°.
+- **The planner's `acc_max` caps its acceleration**, and joint planners never plan faster than the robot's
+  max joint speed. The Tuning pages no longer offer the planner's stiffness and frequency, which do nothing.
+- **Stop on violation** stops a robot clearly past a limit (30 mm past the workspace or into a safety zone,
+  2° past a joint limit): the graceful stop, that robot only, once per episode. It did nothing before.
+- E-STOP and the Studio's stops end only this Studio's processes (they used `pkill`, which also stopped
+  other users' simulators on a shared PC). E-STOP no longer takes control away from the web UI's holder.
+- Esc no longer fires E-STOP (Space still does); Home on hardware asks first; the Dashboard's safety lights
+  turn grey without fresh data; self sign-up on the web remote is off by default; Session is under System
+  in the side list.
+- The FIC library and the workspace build with no compiler warnings; unused code was removed.
+
+### Fixed
+- **Joint Admittance moved the arm by itself** on joints whose range leaves out zero (the Franka's joints
+  4 and 6).
+- A profile with fewer `saturation_ratios` than bands read past the end of its list; two controllers in
+  one process shared their joint limits and admittance state; Cartesian Admittance sent its moved goal to
+  the Studio as zeros.
+- KUKA iiwa 14: modes 3 and 4 had no planner, so a push barely moved the arm.
+- **The 3D views turned a simulated arm over or made it jump** (in H-PMP, and when the mode was changed
+  elsewhere than the Studio's selector): a simulated robot's joints now come from the simulator by name.
+  The Dashboard's Cartesian error was read from the wrong place.
+- The first-run wizard's test launch always failed.
+
 
 ---
 

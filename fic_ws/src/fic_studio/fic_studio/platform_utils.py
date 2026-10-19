@@ -54,12 +54,6 @@ def open_path(path: str) -> None:
         subprocess.Popen(['xdg-open', path])
 
 
-def open_url(url: str) -> None:
-    """Open a URL in the default browser (works on all platforms)."""
-    import webbrowser
-    webbrowser.open(url)
-
-
 # Every workspace package builds on every supported platform (Linux x86-64 and
 # arm64, macOS). Until v4.5.0 the C++ `mujoco` simulator had to be skipped on
 # macOS (it linked `rt`) and off x86-64 (it vendored an x86-64 libmujoco.so);
@@ -94,10 +88,3 @@ def colcon_build_command(packages=None) -> str:
     return 'colcon build --symlink-install' + scope
 
 
-def nproc_expr() -> str:
-    """Shell expression that expands to the CPU count on macOS and Linux.
-
-    ``nproc`` doesn't exist on macOS (use ``sysctl -n hw.ncpu``); fall back to
-    ``nproc`` on Linux and 4 if neither is available.
-    """
-    return '$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)'

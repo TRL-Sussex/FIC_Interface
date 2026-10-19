@@ -697,10 +697,6 @@ class Extension(ExtensionBase):
         self._script_traj_parsed = None
         self._script_traj_sub = None
 
-        self._script_joint_pub = None
-        self._script_pose_pub = None
-        self._script_gripper_pub = None
-        self._script_mode_pub = None
         self._page = None
 
         # MainThreadProxy created HERE on the GUI thread
@@ -779,15 +775,6 @@ class Extension(ExtensionBase):
         self._script_output_timer.stop()
         # Stop the telemetry timer
         self._telemetry_timer.stop()
-        for attr in ('_script_joint_pub', '_script_pose_pub',
-                     '_script_gripper_pub', '_script_mode_pub'):
-            pub = getattr(self, attr, None)
-            if pub is not None:
-                try:
-                    self.host.node.destroy_publisher(pub)
-                except Exception:
-                    pass
-                setattr(self, attr, None)
 
     def on_emergency_stop(self) -> None:
         """Handle an emergency stop: set the cooperative stop event and estop."""
@@ -1357,24 +1344,6 @@ print(f"GUI joint positions (deg): {[f'{j:.1f}' for j in joints]}")
 print("Script completed!")
 '''
 
-    def _get_api_reference_html(self):
-        """Return legacy HTML API reference (kept for backward compat)."""
-        return (
-            '<h3>Movement</h3>'
-            '<p>move_joints(angles_deg, wait=False, timeout=10.0, tolerance=None)'
-            ' / move_cartesian(x,y,z,rx,ry,rz) / home()</p>'
-            '<h3>State</h3>'
-            '<p>get_joint_positions() / get_cartesian_pose() / get_ee_position()'
-            ' / get_force_torque()</p>'
-            '<h3>Gripper</h3>'
-            '<p>set_gripper(width) / open_gripper() / close_gripper()</p>'
-            '<h3>Mode</h3>'
-            '<p>set_mode(mode) / robot.mode.postural(bool) / robot.mode.hapfic(bool)</p>'
-            '<h3>Process</h3>'
-            '<p>robot.process.start_sim() / stop_sim() / start_fic() / stop_fic()</p>'
-            '<h3>Utility</h3>'
-            '<p>sleep(s) / wait(s) / is_stopped() / stop()</p>'
-        )
 
     # ── Telemetry updater ──────────────────────────────────────
     def _update_telemetry(self):
@@ -1559,16 +1528,6 @@ print("Script completed!")
         self._script_topic_subs[topic_name] = sub
         self._script_print(f"Subscribed to {topic_name} [{type_str}]")
 
-    def _script_unsubscribe_topic(self, topic_name):
-        sub = self._script_topic_subs.pop(topic_name, None)
-        if sub is not None:
-            try:
-                self.host.node.destroy_subscription(sub)
-            except Exception:
-                pass
-            with self._script_topic_lock:
-                self._script_topic_cache.pop(topic_name, None)
-
     def _script_cleanup_all_topic_subs(self):
         for sub in self._script_topic_subs.values():
             try:
@@ -1586,18 +1545,6 @@ print("Script completed!")
             self._script_traj_sub = None
             self._script_traj_raw = []
             self._script_traj_parsed = None
-
-    def _script_get_topic(self, topic_name):
-        """Return the latest cached message for *topic_name*, thread-safely."""
-        with self._script_topic_lock:
-            return self._script_topic_cache.get(topic_name)
-
-    def _script_list_topics(self):
-        try:
-            return [(n, t[0] if t else 'unknown')
-                    for n, t in self.host.node.get_topic_names_and_types()]
-        except Exception:
-            return []
 
     # ── Robot API ─────────────────────────────────────────────────────
     def _create_robot_api(self, target=None):
@@ -1743,25 +1690,6 @@ print("Script completed!")
         # Restore the 'robot' key to the RobotAPI (not the extension self)
         ns['robot'] = api
         return ns
-
-    def _setup_script_publishers(self, topics):
-        from std_msgs.msg import Float32MultiArray, Float32, Int32, String
-        from geometry_msgs.msg import Pose
-        node = self.host.node
-        for attr in ('_script_joint_pub', '_script_pose_pub',
-                     '_script_gripper_pub', '_script_mode_pub'):
-            pub = getattr(self, attr, None)
-            if pub is not None:
-                try:
-                    node.destroy_publisher(pub)
-                except Exception:
-                    pass
-                setattr(self, attr, None)
-        self._script_joint_pub = node.create_publisher(Float32MultiArray, topics['desired_joints'], 10)
-        self._script_pose_pub = node.create_publisher(Pose, topics['target_pose'], 10)
-        self._script_gripper_pub = node.create_publisher(Float32, topics['gripper'], 10)
-        cls = Int32 if topics['control_mode_type'] == 'int' else String
-        self._script_mode_pub = node.create_publisher(cls, topics['control_mode'], 10)
 
     # ── Output helpers ────────────────────────────────────────────────
     def _script_print(self, message):

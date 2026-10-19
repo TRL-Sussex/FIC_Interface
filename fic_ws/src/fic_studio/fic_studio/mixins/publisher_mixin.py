@@ -82,40 +82,37 @@ class PublisherMixin:
         rid = _resolve_rid(self.node, robot_id)
         self.send_mode_for(rid, "Stop Controller")
         self.log_message("WARN", "STOP command sent", rid)
+        self.paused_robots().discard(rid)
 
     def pause_for(self, robot_id):
+        """Pause: the controller ramps down and holds (mode 0, as Stop), and the robot is marked
+        paused until resume_for sends its mode again."""
         rid = _resolve_rid(self.node, robot_id)
         self.send_mode_for(rid, "Pause Controller")
+        self.paused_robots().add(rid)
 
-    def broadcast_mode(self, mode_text: str):
-        """Publish a mode to every active robot. Used by safety/global ops."""
-        for n in self.node.active_robots:
-            self.send_mode_for(n, mode_text)
+    def paused_robots(self):
+        paused = getattr(self, '_paused_rids', None)
+        if paused is None:
+            paused = self._paused_rids = set()
+        return paused
+
+    def resume_for(self, robot_id):
+        """Undo a pause: send the robot the mode it was in (the one this Studio last chose for
+        it). Returns False when it was not paused."""
+        rid = _resolve_rid(self.node, robot_id)
+        if rid not in self.paused_robots():
+            return False
+        modes = getattr(self, '_web_modes', None) or {}
+        index = modes.get(rid, getattr(self, '_rc_selected_mode_idx', 0))
+        self.node.publish_mode(int(index) + 1, rid)
+        self.paused_robots().discard(rid)
+        self.log_message("INFO", "Resumed (mode %d)" % (int(index) + 1), rid)
+        return True
 
     def broadcast_stop(self):
         for n in self.node.active_robots:
             self.stop_for(n)
-
-    # ================================================================== Mode publishers (legacy per-card)
-    def send_robot_1_mode(self):
-        dd = getattr(self, 'robot_1_mode_dropdown', None)
-        if dd:
-            self._publish_mode_string(self.node.robot_1_mode_publisher, dd.currentText(), "robot1")
-
-    def send_robot_2_mode(self):
-        dd = getattr(self, 'robot_2_mode_dropdown', None)
-        if dd:
-            self._publish_mode_string(self.node.robot_2_mode_publisher, dd.currentText(), "robot2")
-
-    def send_robot_3_mode(self):
-        dd = getattr(self, 'robot_3_mode_dropdown', None)
-        if dd:
-            self._publish_mode_string(self.node.robot_3_mode_publisher, dd.currentText(), "robot3")
-
-    def send_robot_4_mode(self):
-        dd = getattr(self, 'robot_4_mode_dropdown', None)
-        if dd:
-            self._publish_mode_string(self.node.robot_4_mode_publisher, dd.currentText(), "robot4")
 
     # ================================================================== Pose publishers
     def send_pose_for(self, robot_id, pose=None):
@@ -148,9 +145,6 @@ class PublisherMixin:
 
     # Legacy per-card pose helpers kept for not-yet-migrated UI wiring.
     def send_robot_1_pose(self, pose=None): self.send_pose_for("robot1", pose)
-    def send_robot_2_pose(self, pose=None): self.send_pose_for("robot2", pose)
-    def send_robot_3_pose(self, pose=None): self.send_pose_for("robot3", pose)
-    def send_robot_4_pose(self, pose=None): self.send_pose_for("robot4", pose)
 
     def _log_pose_publish(self, robot_id: str, pose: Pose):
         """Log a pose publish to the log viewer."""
@@ -161,12 +155,6 @@ class PublisherMixin:
     # ================================================================== Stop/Pause (legacy)
     def stop_robot_1(self): self.stop_for("robot1")
     def pause_robot_1(self): self.pause_for("robot1")
-    def stop_robot_2(self): self.stop_for("robot2")
-    def pause_robot_2(self): self.pause_for("robot2")
-    def stop_robot_3(self): self.stop_for("robot3")
-    def pause_robot_3(self): self.pause_for("robot3")
-    def stop_robot_4(self): self.stop_for("robot4")
-    def pause_robot_4(self): self.pause_for("robot4")
 
     def publish_mode(self, publisher, mode, robot_id: str = ""):
         from std_msgs.msg import String
@@ -217,39 +205,4 @@ class PublisherMixin:
         pose.orientation.w = qw
         return pose
 
-    # ================================================================== Axis-angle conversion
-    def convert_axis_angle_to_quat_fields(self, robot_id: str):
-        """Convert axis-angle inputs to quaternion and populate fields."""
-        from fic_studio.math_helpers import _axis_angle_to_quat
 
-        try:
-            ax = float(getattr(self, f'{robot_id}_axis_x').text())
-            ay = float(getattr(self, f'{robot_id}_axis_y').text())
-            az = float(getattr(self, f'{robot_id}_axis_z').text())
-            ang = float(getattr(self, f'{robot_id}_angle').text())
-            units = getattr(self, f'{robot_id}_angle_units').currentText()
-        except ValueError:
-            QMessageBox.warning(self, "Input Error", f"[{robot_id}] Please enter valid axis and angle values.")
-            return
-
-        qx, qy, qz, qw = _axis_angle_to_quat(ax, ay, az, ang, units)
-        getattr(self, f'{robot_id}_orient_x').setText(f"{qx:.6f}")
-        getattr(self, f'{robot_id}_orient_y').setText(f"{qy:.6f}")
-        getattr(self, f'{robot_id}_orient_z').setText(f"{qz:.6f}")
-        getattr(self, f'{robot_id}_orient_w').setText(f"{qw:.6f}")
-        self.node.get_logger().info(
-            f'[{robot_id}] Axis–Angle converted to quat: ({qx:.6f},{qy:.6f},{qz:.6f},{qw:.6f})'
-        )
-
-    # ================================================================== Send pose to target
-    def _send_pose_to_target_position(self, robot_id: str):
-        """Send current pose inputs to the given robot's target position publisher."""
-        rid = _resolve_rid(self.node, robot_id)
-        pose = self.get_pose_from_inputs(_widget_prefix(rid))
-        if pose is None:
-            return
-        pubs = self.node.pubs.get(rid)
-        if not pubs:
-            return
-        pubs["position"].publish(pose)
-        self.node.get_logger().info(f"[{rid}] Sent pose to target")

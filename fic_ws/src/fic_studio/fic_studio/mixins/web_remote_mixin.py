@@ -27,6 +27,7 @@ from fic_studio.config import WS_PATH
 from fic_studio.fleet.stations import station_label
 from fic_studio.web_remote import tls
 from fic_studio.web_remote.accounts import Accounts
+from fic_studio import paths as _paths
 from fic_studio.web_remote.actions import build_snapshot, handle_command
 from fic_studio.web_remote.auth import Auth
 from fic_studio.web_remote.discovery import ANNOUNCE_S
@@ -40,12 +41,13 @@ from PyQt5.QtWidgets import (
     QPushButton, QSpinBox, QVBoxLayout, QWidget,
 )
 
+# Sign-up is off unless an admin turns it on: a visitor cannot make an account by themselves.
 WEB_REMOTE_DEFAULTS = {'enabled': True, 'port': 8088,
-                       'accounts': True, 'https': True, 'signup': True}
+                       'accounts': True, 'https': True, 'signup': False}
 
 #: Where the user list and this machine's certificate live. Outside the
 #: repository: they are this machine's, not the software's.
-WEB_STATE_DIR = os.path.expanduser('~/.fic_studio')
+WEB_STATE_DIR = _paths.state_dir()
 ACCOUNTS_FILE = os.path.join(WEB_STATE_DIR, 'accounts.json')
 #: How long a Studio with no user list waits for the lab's before making its
 #: own first admin. Without it, four robots switched on together would each
@@ -134,7 +136,7 @@ class WebRemoteMixin:
                                  panels=self._web_panels_provider,
                                  extensions=(self._web_ext_file, self._web_ext_state_provider),
                                  auth=auth, tls_files=tls_files,
-                                 allow_signup=bool(settings.get('signup', True)))
+                                 allow_signup=bool(settings.get('signup', False)))
         server.on_accounts_changed = self._web_accounts_changed
         try:
             bound = server.start(port)
@@ -542,10 +544,10 @@ class WebRemoteMixin:
         run = lambda: handle_command(self, action, args, client)  # noqa: E731
         timeout = COMMAND_TIMEOUT_S.get(action, DEFAULT_COMMAND_TIMEOUT_S)
         if action == 'estop':
-            # Nobody keeps control through an E-stop: commanding again needs a
-            # deliberate Take control. Revoked here, on the request thread,
-            # so commands already on their way are refused at once.
-            self._web_lease.revoke()
+            # Whoever holds control keeps it: the E-stop latch refuses motion,
+            # processes and teleop until Reset (stamped first in actions._estop,
+            # so commands already on their way are refused too), and the holder
+            # is the one who checks the robot and resets.
             return self._web_invoker.call(run, timeout=timeout, expire=False)
         return self._web_invoker.call(run, timeout=timeout)
 

@@ -10,7 +10,7 @@ const { $, h, store, icon } = window.FIC;
 // Config change the Studio's own configuration, so a remote client never sees them.
 const NEEDS = { dashboard: 'dashboard', topic_monitor: 'dashboard', multi_robot: 'control', locomotion: 'control', tuning: 'control',
   safety: 'control', view3d: 'view3d', session: 'session', log: 'log', extensions: 'extensions', help: null, users: 'admin' };
-const R = { auth: null, signup: false, accounts: true };
+const R = { auth: null, signup: false };
 
 R.allows = id => {
   if (!(id in NEEDS)) return false;

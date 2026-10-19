@@ -131,6 +131,12 @@ FicHardwareNode<T>::FicHardwareNode(int default_num_joints)
         rid + "_safety/velocity_limits", 10,
         std::bind(&FicHardwareNode::velocitySafetyCallback, this, std::placeholders::_1));
 
+    // Whole-arm safety zones (the Studio latches them, so a node started later still gets them)
+    zones_sub_ = this->create_subscription<std_msgs::msg::Float64MultiArray>(
+        rid + "_safety/zones", rclcpp::QoS(1).reliable().transient_local(),
+        std::bind(&FicHardwareNode::zonesCallback, this, std::placeholders::_1));
+    zone_state_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(rid + "_safety/zone_state", 10);
+
     postural_enable_sub_ = this->create_subscription<std_msgs::msg::Bool>(
         rid + "_postural_enable", 10,
         std::bind(&FicHardwareNode::posturalEnableCallback, this, std::placeholders::_1));
@@ -702,6 +708,16 @@ void FicHardwareNode<T>::loadRobotModel(const std::string& robot_name) {
     // enough for the joint-torque sensors' bias (the simulation keeps the library's narrower default).
     fic_ctrl_.setHpmpSplitDrive(true, current_robot_config_.cartForceDeadbandOnArm(),
                                   current_robot_config_.cartTorqueDeadbandOnArm());
+    // How far a push may move the goal in the Cartesian admittance modes (robots_config.yaml
+    // admittance_limits; the library's defaults when the block is absent).
+    fic_ctrl_.setCartesianAdmittanceLimits(
+        current_robot_config_.cart_adm_push_m, current_robot_config_.cart_adm_push_rad,
+        current_robot_config_.cart_adm_haptic_m, current_robot_config_.cart_adm_haptic_rad);
+    // The FIC law options (robots_config.yaml fic_law; the library's defaults when absent).
+    fic_ctrl_.setLawOptions(current_robot_config_.restart_on_stall,
+                            current_robot_config_.planner_max_hz, current_robot_config_.planner_speed_margin);
+    // The joint planners never plan faster than the max joint speed (when velocity limits are on).
+    fic_ctrl_.setJointSpeedLimit(velocity_limits_enabled_ ? max_joint_velocity_ : 0.0);
     RCLCPP_INFO(this->get_logger(),
         "H-PMP admittance drive: split, task deadband %.2f N / %.3f N m, joint deadband %.2f N m; "
         "Cartesian admittance deadband %.2f N / %.2f N m",
@@ -716,6 +732,7 @@ void FicHardwareNode<T>::loadRobotModel(const std::string& robot_name) {
     mcu_limits_.deadband_joint_tau = current_robot_config_.deadband_joint_tau;
     mcu_limits_.torque_sign = current_robot_config_.torque_sign;
     mcu_limits_.damping_alpha = damping_alpha_;
+    mcu_limits_.joint_speed_limit = velocity_limits_enabled_ ? max_joint_velocity_ : 0.0;
     mcu_limits_.torque_cutoff_hz = kTorqueCutoffHz;
     mcu_limits_.state_cutoff_hz = kStateCutoffHz;
     mcu_limits_.dt = kControlPeriodS;
@@ -1464,7 +1481,7 @@ void FicHardwareNode<T>::desiredJointCallback(const std_msgs::msg::Float32MultiA
     applyJointSafetyLimits(q_candidate);
     // Workspace guard (joint mode): reject a target that would take the EE
     // outside the enabled Cartesian zone; otherwise accept it.
-    if (eeTargetInsideZone(q_candidate)) q_target_ = q_candidate;
+    if (eeTargetInsideZone(q_candidate) && bodyTargetClear(q_candidate)) q_target_ = q_candidate;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1489,6 +1506,121 @@ void FicHardwareNode<T>::cartesianSafetyCallback(const std_msgs::msg::Float64Mul
             cart_safety_limits_.y_min, cart_safety_limits_.y_max,
             cart_safety_limits_.z_min, cart_safety_limits_.z_max);
     }
+}
+
+template <typename T>
+void FicHardwareNode<T>::zonesCallback(const std_msgs::msg::Float64MultiArray::SharedPtr msg) {
+    fic::safety::ZoneSet z;
+    std::string why;
+    if (!z.parse(msg->data, &why)) {
+        RCLCPP_ERROR(this->get_logger(), "Safety zones refused (%s); keeping the ones in force", why.c_str());
+        return;
+    }
+    std::lock_guard<std::mutex> lock(zones_mutex_);
+    zones_ = z;
+    zones_active_ = z.active();
+    zone_target_safe_ = false;
+    int enabled = 0;
+    for (const auto& zone : z.zones) enabled += zone.enabled ? 1 : 0;
+    RCLCPP_INFO(this->get_logger(), "Safety zones: %d of %zu on, the arm checked from joint %d (radius %.0f mm)",
+                enabled, z.zones.size(), z.body.from_joint + 1, 1000.0 * z.body.radius);
+}
+
+// The frames along the arm the zones are checked at: the joints from from_joint, then the tool.
+template <typename T>
+std::vector<std::string> FicHardwareNode<T>::zoneBodyFrames(int from_joint) const {
+    std::vector<std::string> frames;
+    if (!solver_ || !solver_->isLoaded()) return frames;
+    const auto& names = current_robot_config_.joint_names;
+    for (size_t i = static_cast<size_t>(std::max(from_joint, 0)); i < names.size(); ++i)
+        if (solver_->hasFrame(names[i])) frames.push_back(names[i]);
+    if (solver_->hasFrame(ee_frame_name_)) frames.push_back(ee_frame_name_);
+    return frames;
+}
+
+// With the kinematics just updated at q (control loop, data_mutex_ held): where the arm is against the zones,
+// the wall torque that pushes back every segment past one (2000 N/m, as the box workspace's wall), and the
+// arm's worst clearance for the Studio.
+template <typename T>
+void FicHardwareNode<T>::updateZoneWall(const Eigen::VectorXd& q) {
+    fic::safety::ZoneSet zs;
+    {
+        std::lock_guard<std::mutex> lock(zones_mutex_);
+        if (!zones_active_) {
+            zone_tau_.resize(0);
+            zone_worst_ = fic::safety::ZoneSet::BodyHit{};
+            return;
+        }
+        zs = zones_;
+    }
+    const std::vector<std::string> frames = zoneBodyFrames(zs.body.from_joint);
+    std::vector<Eigen::Vector3d> pts;
+    for (const auto& f : frames) {
+        Eigen::Isometry3d tf;
+        if (solver_->cachedFramePose(f, tf)) pts.push_back(tf.translation());
+    }
+    if (pts.empty()) return;
+    fic::safety::ZoneSet::BodyHit worst;
+    const auto past = zs.check(pts, &worst);
+    Eigen::VectorXd tau = Eigen::VectorXd::Zero(num_joints_);
+    if (!past.empty()) {
+        std::vector<Eigen::MatrixXd> cache(pts.size());
+        auto jac = [&](int i) -> const Eigen::MatrixXd& {
+            if (cache[i].size() == 0) {
+                fic::KinematicsSolver::Matrix6x J(6, num_joints_);
+                J.setZero();
+                solver_->frameJacobian(q, frames[i], fic::KinematicsSolver::JacobianFrame::LocalWorldAligned, J);
+                cache[i] = J.topRows(3);
+            }
+            return cache[i];
+        };
+        tau = zs.wallTorque(past, jac, static_cast<int>(num_joints_), 2000.0);
+    }
+    zone_tau_ = tau;
+    {
+        std::lock_guard<std::mutex> lock(zones_mutex_);
+        zone_worst_ = worst;
+    }
+    const int seg = std::max(worst.segment, 0);
+    zone_worst_point_ = pts.size() == 1 ? pts[0]
+        : (1.0 - worst.t) * pts[seg] + worst.t * pts[std::min<size_t>(seg + 1, pts.size() - 1)];
+    const double now_s = this->now().seconds();
+    if (zone_state_pub_ && now_s - zone_state_last_s_ >= 0.05) {
+        zone_state_last_s_ = now_s;
+        std_msgs::msg::Float64MultiArray m;
+        // clearance (m, negative: past), zone, segment, segments past, the worst point x y z
+        m.data = {worst.hit.clearance, static_cast<double>(worst.hit.zone), static_cast<double>(worst.segment),
+                  static_cast<double>(past.size()), zone_worst_point_.x(), zone_worst_point_.y(), zone_worst_point_.z()};
+        zone_state_pub_->publish(m);
+    }
+}
+
+// A joint target is refused when it would put the arm further past a zone than it is now.
+template <typename T>
+bool FicHardwareNode<T>::bodyTargetClear(const Eigen::VectorXd& q) {
+    fic::safety::ZoneSet zs;
+    double now_clearance;
+    {
+        std::lock_guard<std::mutex> lock(zones_mutex_);
+        if (!zones_active_) return true;
+        zs = zones_;
+        now_clearance = zone_worst_.hit.clearance;
+    }
+    if (!solver_ || !solver_->isLoaded()) return true;   // fail-open as the workspace guard (joint limits still hold)
+    if (q.size() != solver_->nq()) return true;          // as the workspace guard
+    std::vector<Eigen::Vector3d> pts;
+    for (const auto& f : zoneBodyFrames(zs.body.from_joint)) {
+        Eigen::Isometry3d tf;
+        if (solver_->framePose(q, f, tf)) pts.push_back(tf.translation());
+    }
+    if (pts.empty()) return true;
+    fic::safety::ZoneSet::BodyHit worst;
+    zs.check(pts, &worst);
+    if (worst.hit.clearance >= 0.0 || worst.hit.clearance >= now_clearance - 1e-4) return true;
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+        "Joint target refused: it would take the arm %.0f mm into safety zone %d", -1000.0 * worst.hit.clearance,
+        worst.hit.zone + 1);
+    return false;
 }
 
 template <typename T>
@@ -1518,6 +1650,10 @@ void FicHardwareNode<T>::velocitySafetyCallback(const std_msgs::msg::Float64Mult
         velocity_limits_enabled_ = msg->data[2] > 0.5;
         // optional 4th value: the joint target speed of the joint modes (rad/s, 0: off)
         if (msg->data.size() >= 4 && std::isfinite(msg->data[3])) joint_slew_.speed = std::max(0.0, msg->data[3]);
+        fic_ctrl_.setJointSpeedLimit(velocity_limits_enabled_ ? max_joint_velocity_ : 0.0);
+        // The MCU takes it with its next CONFIG (a CONFIG resets the MCU, E-STOP latch included,
+        // so a speed change does not send one).
+        mcu_limits_.joint_speed_limit = velocity_limits_enabled_ ? max_joint_velocity_ : 0.0;
 
         RCLCPP_INFO(this->get_logger(), "Updated velocity limits: joint=%.2f rad/s, cart=%.2f m/s (enabled: %s), "
             "joint target speed %.2f rad/s%s",
@@ -1543,6 +1679,26 @@ void FicHardwareNode<T>::applyCartesianSafetyLimits(geometry_msgs::msg::Pose& ta
         target_pose.position.y = clamp(target_pose.position.y, cart_safety_limits_.y_min, cart_safety_limits_.y_max);
     if (cart_safety_limits_.z_enabled)
         target_pose.position.z = clamp(target_pose.position.z, cart_safety_limits_.z_min, cart_safety_limits_.z_max);
+
+    // Whole-arm safety zones: the tool target kept clear of them; where no clear place is found nearby, the
+    // last target that was (or, before any, the tool where it is).
+    std::lock_guard<std::mutex> lock(zones_mutex_);
+    if (!zones_active_) return;
+    const Eigen::Vector3d p(target_pose.position.x, target_pose.position.y, target_pose.position.z);
+    Eigen::Vector3d out;
+    if (zones_.project(p, zones_.body.tool_radius, &out)) {
+        zone_safe_target_ = out;
+        zone_target_safe_ = true;
+    } else {
+        out = zone_target_safe_ ? zone_safe_target_
+            : Eigen::Vector3d(ee_current.position.x, ee_current.position.y, ee_current.position.z);
+    }
+    if ((out - p).norm() > 1e-4)
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+            "Tool target moved %.0f mm to keep it out of the safety zones", 1000.0 * (out - p).norm());
+    target_pose.position.x = out.x();
+    target_pose.position.y = out.y();
+    target_pose.position.z = out.z();
 }
 
 template <typename T>
@@ -1751,6 +1907,7 @@ void FicHardwareNode<T>::controlLoop() {
         }
 
         gravity_torques_ = solver_->gravity(q_current_);
+        updateZoneWall(q_current_);
     } else {
         // Degraded mode: joint-space only. gravity_torques_ stays zero (no
         // feedforward), EE pose / Jacobians are never updated or published.
@@ -1832,6 +1989,8 @@ void FicHardwareNode<T>::controlLoop() {
 
     int param_mode = current_control_mode_;
     const bool hpmp_active = fic::hpmpActive(param_mode, hpmp_enabled_);
+    // No restart on a stall in the modes where an admittance moves the goal (fic_control.h).
+    fic_ctrl_.setRestartAllowed(fic::ficControl<T>::restartAllowedInMode(param_mode, hpmp_active));
     // The blocks fic_simulation reads for the same mode (fic::tuningKeyFor): H-PMP its own,
     // and on the MCU path every Cartesian mode mode 4's joints.
     const fic::TuningKey tuning_want = fic::tuningKeyFor(selected_robot_, num_joints_, param_mode,
@@ -2068,6 +2227,10 @@ void FicHardwareNode<T>::controlLoop() {
             }
         }
     }
+    // Whole-arm safety zones: their wall torque (updateZoneWall), in every mode.
+    if (solver_ok && zone_tau_.size() == static_cast<Eigen::Index>(num_joints_))
+        for (size_t i = 0; i < num_joints_; ++i) torque_data[i] += zone_tau_[i];
+
     if (hard_fault_) {
         for (size_t i = 0; i < num_joints_; ++i)
             torque_data[i] = current_robot_config_.gravity_compensated ? 0.0 : gravity_torques_[i];

@@ -29,6 +29,7 @@
     </a>
     <nav class="menus" id="menus" aria-label="Menu bar"></nav>
     <div class="spacer"></div>
+    <button id="notices-btn" class="btn notices-btn" type="button" aria-expanded="false" aria-controls="notices-panel" title="Notices: failures and warnings, kept until Clear all">Notices</button>
     <button id="theme" class="btn" type="button" title="Switch light / dark / auto [T]">Theme: auto</button>
   </div>
   <div class="toolbar-row" id="toolbar" aria-label="Toolbar">
@@ -37,21 +38,25 @@
       <div id="target" class="seg" role="group" aria-label="Target"></div>
       <button id="sess" class="btn btn-go" type="button" title="Start or stop (S)">Start</button>
       <span id="sess-dot" class="dot"></span><span id="sess-state" class="state-text">Idle</span>
+      <a id="tb-requests" class="req-badge" href="#/session" hidden></a>
     </div>
     <div class="tb-group tb-tools">
-      <button id="tb-exp" class="btn" type="button" title="Quick-start experiment recording (needs the Experiments extension)">EXP</button>
-      <button id="tb-bags" class="btn" type="button" title="Manual ROS bag record, independent of experiments">BAG</button>
-      <button id="tb-plot" class="btn" type="button" title="Start or stop the plotter">PLT</button>
-      <button id="tb-view" class="btn" type="button" title="Start or stop the contact viewer">VIEW</button>
+      <button id="tb-exp" class="btn" type="button" title="Quick-start experiment recording (needs the Experiments extension)">Experiment</button>
+      <button id="tb-bags" class="btn" type="button" title="Record a ROS bag, independent of experiments">Record bag</button>
+      <button id="tb-plot" class="btn" type="button" title="Start or stop the live plotter">Plotter</button>
+      <button id="tb-view" class="btn" type="button" title="Start or stop the contact viewer">Contact viewer</button>
     </div>
     <div class="tb-group">
-      <span class="tb-label">Robot</span>
-      <select id="station" class="select" aria-label="Station"></select>
-      <select id="robot" class="select" aria-label="Robot"></select>
+      <span class="tb-label" title="Which station this Studio is: its robot{N}_* topics">Station</span>
+      <select id="station" class="select" aria-label="Station" title="Which station this Studio is (Robot 1-4, Master). Changing it restarts the Studio."></select>
+      <span class="tb-label" title="The robot model this Studio drives">Model</span>
+      <select id="robot" class="select" aria-label="Robot model" title="The robot model this Studio drives"></select>
     </div>
     <div class="spacer"></div>
-    <div class="estop-wrap"><button id="estop" class="estop" type="button" aria-label="Emergency stop">E-STOP</button><span class="kbd hide-s">Space</span></div>
+    <div class="estop-wrap"><button id="estop" class="estop" type="button" aria-label="Emergency stop (software)" title="Software emergency stop: tells the controllers to ramp down and hold, then stops this Studio's processes. It is not a substitute for the robot's physical stop. [Space]">E-STOP</button><span class="kbd hide-s" id="estop-note">Space</span></div>
   </div>
+  <div class="hw-band" id="hw-band" role="status" hidden></div>
+  <div class="estop-banner" id="estop-banner" role="alert" hidden></div>
   <div class="topconfirm" id="topconfirm"></div>
   <div class="rnote" id="rnote" role="status" hidden></div>
 </header>
@@ -60,6 +65,8 @@
 <footer class="dock" id="dock" aria-label="Control bar"></footer>
 <footer class="statusbar" id="statusbar" aria-label="Status bar"></footer>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="notices" id="notices" role="log" aria-live="assertive" aria-label="New notices"></div>
+<section class="notices-panel" id="notices-panel" aria-label="Notice history" hidden></section>
 <script src="/ui/app.js"></script>
 <script src="/ui/icons.js"></script>
 <script src="/ui/kit.js"></script>

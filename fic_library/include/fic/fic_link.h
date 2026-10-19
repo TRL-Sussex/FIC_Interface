@@ -34,7 +34,9 @@ namespace fic {
 namespace link {
 
 inline constexpr uint32_t kMagic = 0x4C434946u;   // "FICL"
-inline constexpr uint16_t kVersion = 1;
+// 2 (FIC 5.11.0): CONFIG carries the robot's FIC law options. A board on another version
+// does not answer, and fic_hardware then runs the joint layer itself.
+inline constexpr uint16_t kVersion = 2;
 // Below 7400: ROS 2's DDS owns 7400 (domain-0 discovery) and every port from
 // there up (7400 + 250*domain + participant offsets). FIC-link shares hosts and
 // networks with ROS, so it must never land in that range.
@@ -148,6 +150,11 @@ struct Config {
     float torque_cutoff_hz;  // measured-torque Butterworth (fic_hardware: 200)
     float state_cutoff_hz;   // position Butterworth (fic_hardware: 10)
     float damping_alpha;     // first-order lag on the damping velocity
+    // The robot's FIC law options (robots_config.yaml fic_law, fic::core::JointCore).
+    uint8_t restart_on_stall;
+    float planner_max_hz;
+    float planner_speed_margin;
+    float joint_speed_limit;  // joint planners' speed cap (rad/s, 0: none), as at CONFIG time
     char robot_name[32];
     // Per joint (n_joints entries each, fixed arrays for simplicity)
     float lower[kLinkMaxJoints];              // controller clamp limits (URDF)

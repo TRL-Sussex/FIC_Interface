@@ -73,7 +73,7 @@ def test_a_job_that_waited_too_long_is_dropped_not_run_late():
     assert ran == []
 
 
-def test_estop_revokes_control_before_running():
+def test_estop_keeps_control_with_its_holder():
     host = types.SimpleNamespace()
     host._web_lease = ControlLease()
     host._web_lease.take('phone')
@@ -93,5 +93,6 @@ def test_estop_revokes_control_before_running():
     host.robot_dropdown = types.SimpleNamespace(currentText=lambda: 'X')
     reply = WebRemoteMixin._web_dispatch(host, 'estop', {}, {'client': 'other'})
     assert reply == {'ok': True}
-    assert seen['stopped'] and seen['holder_when_run'] is None
+    assert seen['stopped'] and seen['holder_when_run']['client'] == 'phone'
+    assert host._web_lease.holds('phone')         # no Take control needed after Reset
     assert seen['expire'] is False                # an E-stop is never dropped

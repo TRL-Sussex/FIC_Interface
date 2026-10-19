@@ -602,20 +602,6 @@ class DashboardMixin:
         self._dash_contact_lbl.setText(
             '● contact' if fmag >= CONTACT_FORCE_N else '○ free')
 
-    def _refresh_dash_wrench_source(self):
-        """Report which wrench source and compensation flags are active."""
-        rid = self.node.station_robot_id if hasattr(self, 'node') else 'robot1'
-        target = self.robot_target(rid) if hasattr(self, 'robot_target') else '--'
-        flags = []
-        for attr, name in (('_wrench_gravity_comp', 'gravity-compensated'),
-                           ('_wrench_from_api', 'from API')):
-            if getattr(self, attr, False):
-                flags.append(name)
-        text = str(target)
-        if flags:
-            text += ' · ' + ' · '.join(flags)
-        self._dash_wrench_source_lbl.setText(text)
-
     def _refresh_dash_session(self):
         """Reflect process running flags in the Base card."""
         state_map = {
@@ -874,14 +860,6 @@ class DashboardMixin:
     #  calls from the Help menu; renders nothing but keeps the attribute alive)
     # ──────────────────────────────────────────────────────────────────────────
 
-    def _dash_dismiss_getting_started(self):
-        """Dismiss the getting-started card (no-op in new hub layout)."""
-        self.settings.setdefault('general', {})['hide_getting_started'] = True
-        try:
-            self._save_settings()
-        except Exception:
-            pass
-
     def _dash_show_getting_started(self):
         """Re-show the getting-started card (no-op in new hub layout)."""
         self.settings.setdefault('general', {})['hide_getting_started'] = False
@@ -896,10 +874,6 @@ class DashboardMixin:
 
     def _dash_on_autotune_completed(self, score):
         """Record the last auto-tune score (hook called by autotuning mixin)."""
-        pass  # the refresh timer draws the telemetry
-
-    def _dash_on_experiment_completed(self, summary):
-        """Record the last experiment summary (hook called by experiments mixin)."""
         pass  # the refresh timer draws the telemetry
 
     def _dash_scan_recent_experiments(self):

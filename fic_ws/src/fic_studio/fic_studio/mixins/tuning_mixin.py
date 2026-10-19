@@ -52,11 +52,6 @@ def _tanh_interp(S, F_sat, F_0, xb, xb0, x):
     return (F_sat - F_0) / 2.0 * (1.0 + math.tanh(arg)) + F_0
 
 
-def fic_force(x, k0, xb1, xb2, f1, f2, sr):
-    """2-breakpoint symmetric FIC force (legacy wrapper)."""
-    return fic_force_multi(x, k0, [xb1, xb2], [f1, f2], [sr])
-
-
 def fic_force_multi(x, k0, xbs, fs, srs):
     """
     Compute FIC nonlinear force profile for arbitrary breakpoints.
@@ -174,10 +169,6 @@ class FICCanvas(QWidget):
         self.fs  = [float(v) for v in fs]
         self.srs = [float(v) for v in srs]
         self.update()
-
-    def set_params_legacy(self, k0, xb1, xb2, f1, f2, sr):
-        """Legacy 2-breakpoint API for backward compatibility."""
-        self.set_params(k0, [xb1, xb2], [f1, f2], [sr])
 
     def set_operating_point(self, x, y, valid):
         """Set the live operating point (displacement x, force y).
@@ -642,10 +633,6 @@ class FICStatsBar(QWidget):
         self._cards["sr"].set_value(sr_str)
         self._cards["kc"].set_value(f"{k_conv:.1f}")
 
-    def update_stats(self, k0, xb1, xb2, f1, f2, sr):
-        """Legacy 2-breakpoint API."""
-        self.update_stats_multi(k0, [xb1, xb2], [f1, f2], [sr])
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  LIVE FEEDBACK STRIP
@@ -1018,13 +1005,18 @@ class TuningMixin:
         self.planner_group = CollapsibleSection('PLANNER')
         plan_lay = self.planner_group.body_layout()
 
+        # The planner's stiffness and frequency stay in config.xml but do nothing (FIC.cpp
+        # Planner derives its stiffness and does not read the frequency), so they are not shown
+        # and a save keeps what is stored. The widgets remain for the code that fills them.
         pg1 = QHBoxLayout()
-        pg1.addWidget(QLabel('Stiffness P:'))
+        stiffness_p_label = QLabel('Stiffness P:')
+        pg1.addWidget(stiffness_p_label)
         self.tuning_planner_stiffness = MetricField(
             'Kp', 100.0, 0.0, 5000.0, unit='Nm/rad', decimals=1,
         )
         pg1.addWidget(self.tuning_planner_stiffness, 1)
-        pg1.addSpacing(10)
+        stiffness_p_label.setVisible(False)
+        self.tuning_planner_stiffness.setVisible(False)
         pg1.addWidget(QLabel('Vel Desired:'))
         self.tuning_vel_desired = MetricField(
             'Vd', 0.5, 0.0, 10.0, unit='rad/s', decimals=4,
@@ -1034,8 +1026,10 @@ class TuningMixin:
 
         pg2 = QHBoxLayout()
         pg2.addWidget(QLabel('Acc Max:'))
+        # A cap on the planner's acceleration (0: none). The shipped 5000 is never reached; the
+        # range takes it whole (a 0-50 range clamped it to 50 on save).
         self.tuning_acc_max = MetricField(
-            'Am', 1.0, 0.0, 50.0, unit='rad/s²', decimals=1,
+            'Am', 5000.0, 0.0, 10000.0, unit='rad/s²', decimals=1,
         )
         pg2.addWidget(self.tuning_acc_max, 1)
         pg2.addSpacing(10)
@@ -1047,12 +1041,14 @@ class TuningMixin:
         plan_lay.addLayout(pg2)
 
         pg3 = QHBoxLayout()
-        pg3.addWidget(QLabel('Frequency:'))
+        frequency_label = QLabel('Frequency:')
+        pg3.addWidget(frequency_label)
         self.tuning_frequency = MetricField(
             'Hz', 1.0, 0.01, 100.0, unit='Hz', decimals=1,
         )
         pg3.addWidget(self.tuning_frequency, 1)
-        pg3.addSpacing(10)
+        frequency_label.setVisible(False)
+        self.tuning_frequency.setVisible(False)
         self.tuning_wrapped_label = QLabel('Wrapped:')
         pg3.addWidget(self.tuning_wrapped_label)
         self.tuning_wrapped = QComboBox()
@@ -1168,7 +1164,6 @@ class TuningMixin:
 
         self._on_control_mode_changed()
         return scroll
-
 
     # ── bidirectional sync ───────────────────────────────────────────────────
 
@@ -1924,11 +1919,13 @@ class TuningMixin:
                 p.asymmetric        = self.tuning_asymmetric.isChecked()
                 p.n_neg_sat         = self.tuning_n_neg_sat.value()
                 p.velocity          = self.tuning_velocity.value()
-                p.planner_stiffness     = self.tuning_planner_stiffness.value()
+                # not on the page (the planner does not use them): keep what is stored
+                stored = mgr.load_joint_params(robot_name, joint_id, mode, profile)
+                p.planner_stiffness     = stored.planner_stiffness
                 p.planner_vel_desired   = self.tuning_vel_desired.value()
                 p.planner_acc_max       = self.tuning_acc_max.value()
                 p.planner_damping_ratio = self.tuning_damping_ratio.value()
-                p.planner_frequency     = self.tuning_frequency.value()
+                p.planner_frequency     = stored.planner_frequency
                 p.planner_wrapped       = int(self.tuning_wrapped.currentText())
                 p.planner_pos_lower     = self.tuning_pos_limits_lower.value()
                 p.planner_pos_upper     = self.tuning_pos_limits_upper.value()
@@ -1981,11 +1978,12 @@ class TuningMixin:
                     p.n_neg_sat         = self.tuning_n_neg_sat.value()
                     # Planner fields are persisted for round-tripping even
                     # though the postural path doesn't run the planner at runtime.
-                    p.planner_stiffness     = self.tuning_planner_stiffness.value()
+                    stored = mgr.load_postural_params(robot_name)
+                    p.planner_stiffness     = stored.planner_stiffness
                     p.planner_vel_desired   = self.tuning_vel_desired.value()
                     p.planner_acc_max       = self.tuning_acc_max.value()
                     p.planner_damping_ratio = self.tuning_damping_ratio.value()
-                    p.planner_frequency     = self.tuning_frequency.value()
+                    p.planner_frequency     = stored.planner_frequency
 
                     mgr.save_postural_params(robot_name, p)
                     mgr.save()
@@ -2006,11 +2004,12 @@ class TuningMixin:
                     p.n_saturations     = self.tuning_n_sat.value()
                     p.asymmetric        = self.tuning_asymmetric.isChecked()
                     p.n_neg_sat         = self.tuning_n_neg_sat.value()
-                    p.planner_stiffness_p  = self.tuning_planner_stiffness.value()
+                    stored = mgr.load_cartesian_axis(robot_name, mode, axis, profile)
+                    p.planner_stiffness_p  = stored.planner_stiffness_p
                     p.planner_vel_desired  = self.tuning_vel_desired.value()
                     p.planner_acc_max      = self.tuning_acc_max.value()
                     p.planner_damping_ratio = self.tuning_damping_ratio.value()
-                    p.planner_frequency    = self.tuning_frequency.value()
+                    p.planner_frequency    = stored.planner_frequency
                     p.admittance_inv_m      = self.tuning_inv_m.value()
                     p.admittance_damping    = self.tuning_damping.value()
                     p.admittance_dflow      = [self.tuning_dflow_0.value(), self.tuning_dflow_1.value()]
@@ -2050,7 +2049,3 @@ class TuningMixin:
         dlg.exec_()
 
     # ── stubs kept for compat ────────────────────────────────────────────────
-
-    def _on_tuning_mode_changed(self): pass
-    def load_parameters(self): pass
-    def save_parameters_to_joint(self): pass

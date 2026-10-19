@@ -21,7 +21,14 @@ import threading
 import time
 from urllib.parse import parse_qs, urlparse
 
+from fic_studio.web_remote.common import _who
 from fic_studio.web_remote.lease import ControlLease
+
+#: Commands anyone who can see the page may send, without control: E-STOP, and reading the
+#: notice history.
+NO_LEASE = ('estop', 'notices_list', 'log_read', 'audit_read')
+#: Reads that need no control, but do need the page they belong to.
+READ_PAGES = {'log_read': 'log', 'audit_read': 'log'}
 
 STATIC_DIR = Path(__file__).resolve().parent / 'static'
 #: The redesigned web UI (served under /ui/). Plain files, no build step.
@@ -47,12 +54,12 @@ UI_PAGES = (
     ('robot_config', 'Robot Config', 'System', True, 'system'),
     ('topic_monitor', 'Topic Monitor', 'System', True, 'system'),
     ('safety', 'Safety', 'System', True, 'system'),
+    ('session', 'Session', 'System', True, 'system'),
     ('users', 'Users', '', True, 'bottom'),
     ('settings', 'Settings', '', True, 'bottom'),
     ('log', 'Logs', '', True, 'bottom'),
     ('help', 'Help', '', True, 'bottom'),
     ('extensions', 'Extensions', '', True, 'hidden'),
-    ('session', 'Processes', '', True, 'hidden'),
     ('view3d', '3D view', '', True, 'hidden'),
 )
 
@@ -561,11 +568,17 @@ class _Handler(BaseHTTPRequestHandler):
         # Commanding the robot needs the control page; E-STOP never does.
         auth, user = self.remote.auth, self._user()
         if auth and not auth.accounts.may_control(user):
-            if url.path != '/api/command' or str(body.get('action') or '') != 'estop':
+            if url.path != '/api/command' or str(body.get('action') or '') not in NO_LEASE:
                 self._json(403, {'ok': False, 'error': 'not_allowed'})
                 return
+        page = READ_PAGES.get(str(body.get('action') or '')) if url.path == '/api/command' else None
+        if page and not self._may(page):
+            self._json(403, {'ok': False, 'error': 'not_allowed'})
+            return
         who = {'client': client, 'name': str(body.get('name') or '')[:48],
                'addr': self.client_address[0]}
+        if user is not None:
+            who['account'] = user['name']    # who it is, not what the browser calls itself
         if self.remote.local_token is not None:
             who['local'] = True              # the trusted desktop session (it carried the local token), not a phone
         if url.path == '/api/control':
@@ -578,12 +591,21 @@ class _Handler(BaseHTTPRequestHandler):
         lease, client = self.remote.lease, who['client']
         op = body.get('op')
         if op == 'take':
-            if body.get('force') and self.remote.local_token is not None:
-                lease.revoke()                # the desktop is the machine
+            # The desktop is the machine; an admin may take over from whoever holds it.
+            auth = self.remote.auth
+            forced = bool(body.get('force')) and (
+                self.remote.local_token is not None
+                or (auth is not None and auth.accounts.is_admin(self._user())))
             before = lease.holder()
-            granted, holder = lease.take(client, who['name'], who['addr'])
+            if forced:
+                lease.revoke()
+            granted, holder = lease.take(client, who.get('account') or who['name'], who['addr'])
             if granted and (before is None or before['client'] != client):
                 self.remote._event('control_taken', who)
+                from fic_studio import audit
+                audit.record('control_taken', _who(who),
+                             ('taken over from %s' if forced else 'from %s') % _who(before)
+                             if before else '')
             reply = {'ok': granted, 'control': self.remote.control_view(client)}
             if not granted:
                 reply['error'] = 'held'
@@ -607,7 +629,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         # A command from the holder is as good a sign of life as a heartbeat,
         # so it renews the lease; anyone else is refused.
-        if action != 'estop' and not self.remote.lease.heartbeat(who['client']):
+        if action not in NO_LEASE and not self.remote.lease.heartbeat(who['client']):
             self._json(403, {'ok': False, 'error': 'not_in_control',
                              'message': 'Take control first'})
             return
@@ -615,7 +637,9 @@ class _Handler(BaseHTTPRequestHandler):
         # without them, nothing is added and the Studio sees what it always did.
         auth = self.remote.auth
         if auth is not None:
-            who = dict(who, limits={'sim_only': auth.accounts.sim_only(self._user())})
+            user = self._user()
+            who = dict(who, limits={'sim_only': auth.accounts.sim_only(user),
+                                    'admin': auth.accounts.is_admin(user)})
         try:
             result = self.remote._dispatch(action, args, who)
         except TimeoutError as exc:
@@ -764,11 +788,16 @@ class _Handler(BaseHTTPRequestHandler):
         if not name:
             self._json(400, {'ok': False, 'error': 'name_required'})
             return
+        actor = '%s @ %s' % (self._user()['name'], self.client_address[0])   # before: they may remove themselves
         try:
             if body.get('remove'):
                 if not auth.accounts.remove(name):
                     self._json(404, {'ok': False, 'error': 'no_such_user'})
                     return
+            elif body.get('preset'):
+                auth.accounts.apply_preset(
+                    name, str(body['preset']),
+                    password=(str(body['password']) if body.get('password') else None))
             else:
                 pages = body.get('pages')
                 sim_only = body.get('sim_only')
@@ -781,6 +810,11 @@ class _Handler(BaseHTTPRequestHandler):
         except ValueError as exc:
             self._json(400, {'ok': False, 'error': 'refused', 'message': str(exc)})
             return
+        from fic_studio import audit
+        changed = {k: body[k] for k in ('preset', 'role', 'pages', 'sim_only', 'remove') if k in body}
+        if body.get('password'):
+            changed['password'] = 'set'
+        audit.record('user_changed', actor, name, **changed)
         self.remote._on_accounts_changed()
         self._json(200, {'ok': True, 'users': auth.accounts.public()})
 

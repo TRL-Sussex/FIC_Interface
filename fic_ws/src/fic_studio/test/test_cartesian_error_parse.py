@@ -1,7 +1,7 @@
 """
 Tests for parse_cartesian_error: extracting the Cartesian error block.
 
-trajectory_data layout: N*5 joint floats, then a >=16-float Cartesian block
+trajectory_data layout: N*8 joint floats, then a >=16-float Cartesian block
 whose error x/y/z are at offsets 6,7,8 and orientation angle at offset 15.
 """
 from fic_studio.mixins.joint_state_mixin import parse_cartesian_error
@@ -9,7 +9,7 @@ from fic_studio.mixins.joint_state_mixin import parse_cartesian_error
 
 def test_extracts_error_xyz_and_angle():
     n = 7
-    data = [0.0] * (n * 5)
+    data = [0.0] * (n * 8)
     cart = [0.0] * 16
     cart[6], cart[7], cart[8], cart[15] = 0.011, -0.022, 0.033, 0.044
     data += cart
@@ -18,7 +18,7 @@ def test_extracts_error_xyz_and_angle():
 
 def test_returns_none_when_no_cartesian_block():
     n = 7
-    assert parse_cartesian_error([0.0] * (n * 5), n) is None
+    assert parse_cartesian_error([0.0] * (n * 8), n) is None      # the joint modes: 8 blocks of n
 
 
 def test_returns_none_on_empty_or_short():

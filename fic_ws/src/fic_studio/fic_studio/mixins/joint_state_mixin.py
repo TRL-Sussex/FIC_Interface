@@ -65,11 +65,13 @@ def parse_trajectory_positions(data, n, mode):
 def parse_cartesian_error(data, n):
     """Return (ex, ey, ez, e_angle) from the trajectory_data Cartesian block.
 
-    The Cartesian block starts at index ``n * 5``; within it the position
-    error x/y/z sit at offsets 6,7,8 (metres) and the orientation-angle error
-    at offset 15 (radians). Returns ``None`` when the block is absent.
+    The Cartesian block starts at index ``n * 8``, after the 8 values per joint
+    the task-space modes write (fic_control.h); within it the position error
+    x/y/z sit at offsets 6,7,8 (metres) and the orientation-angle error at
+    offset 15 (radians). Returns ``None`` when the block is absent (the joint
+    modes write 8 blocks of n and nothing after them).
     """
-    base = n * 5
+    base = n * 8
     if n <= 0 or len(data) < base + 16:
         return None
     return (data[base + 6], data[base + 7], data[base + 8], data[base + 15])
@@ -113,6 +115,12 @@ class JointStateMixin:
         # Track which robots have received a q_current message so that
         # trajectory_data doesn't overwrite with potentially stale values.
         self._q_current_received: set = set()
+        # Simulated robots publish no q_current: their joints come from the
+        # simulator's joint_states by name (rid -> monotonic time of the last),
+        # not from trajectory_data, whose layout depends on the mode the
+        # controller is in (H-PMP writes the joint layout in a Cartesian mode).
+        self._sim_q_time: dict = {}
+        self._sim_order_cache: dict = {}
         # Subscription bookkeeping: subs_by_robot[rid] = {key: subscription}
         self._js_subs_by_robot: dict[str, dict] = {}
         self._setup_joint_state_subscribers()
@@ -325,6 +333,55 @@ class JointStateMixin:
             nm: (float(pos[i]), float(vel[i]), float(eff[i]))
             for i, nm in enumerate(msg.name)
         }
+        # The robot's actuated joints, in controller order, as the robot's
+        # position (what a real arm's q_current gives).
+        if rid in self._q_current_received:
+            return
+        order = self._sim_joint_order(rid, tuple(msg.name))
+        if order is None:
+            return
+        q = [float(pos[k]) for k in order]
+        self.current_joint_positions_by_robot[rid] = q
+        now = time.monotonic()
+        self._sim_q_time[rid] = now
+        self.current_joint_update_count_by_robot[rid] = (
+            self.current_joint_update_count_by_robot.get(rid, 0) + 1)
+        self.current_joint_update_time_by_robot[rid] = now
+        if rid == self.node.station_robot_id:
+            self.current_joint_positions = q
+
+    def _sim_joint_order(self, rid, names):
+        """Where each actuated joint of the robot is in the simulator's joint_states, or None.
+
+        The robot is the one whose configured ``joint_names`` are all found, the
+        toolbar's first; a multi-robot scene prefixes the simulator's names
+        (``r2_Actuator1``), so a name also matches after a prefix ending in '_'."""
+        key = (rid, names)
+        if key in self._sim_order_cache:
+            return self._sim_order_cache[key]
+        configs = getattr(self, 'robot_configs', {}) or {}
+        first = None
+        try:
+            first = self.robot_dropdown.currentText()
+        except Exception:
+            pass
+        order = None
+        for robot in ([first] if first in configs else []) + [r for r in configs if r != first]:
+            wanted = list((configs.get(robot) or {}).get('joint_names') or [])
+            if not wanted:
+                continue
+            found = []
+            for nm in wanted:
+                hits = [k for k, s in enumerate(names) if s == nm] or [
+                    k for k, s in enumerate(names) if s.endswith(nm) and s[:-len(nm)].endswith('_')]
+                if len(hits) != 1:
+                    break
+                found.append(hits[0])
+            if len(found) == len(wanted):
+                order = found
+                break
+        self._sim_order_cache[key] = order
+        return order
 
     def _on_ee_pose(self, rid: str, msg):
         self.current_ee_pose_by_robot[rid] = msg
@@ -359,8 +416,11 @@ class JointStateMixin:
         cart_err = parse_cartesian_error(raw, num_joints)
         if cart_err is not None:
             self.current_cartesian_error_by_robot[rid] = cart_err
-        # Position update: only when q_current is not providing fresh data.
+        # Position update: only when neither q_current nor the simulator's
+        # joint_states provide it.
         if rid in self._q_current_received:
+            return
+        if time.monotonic() - self._sim_q_time.get(rid, -1e9) < 0.5:
             return
         data = parse_trajectory_positions(raw, num_joints, mode)
         if data is None:

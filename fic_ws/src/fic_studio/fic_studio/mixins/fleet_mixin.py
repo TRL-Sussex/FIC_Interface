@@ -22,7 +22,7 @@ import os
 import time
 
 from fic_studio import theme
-from fic_studio.fleet.stations import is_master, station_label, station_rid
+from fic_studio.fleet.stations import is_master, is_vr, station_label, station_rid
 from PyQt5.QtCore import Qt, QTimer, QUrl
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import (
@@ -241,6 +241,7 @@ class FleetMixin:
             self.log_message('ERROR', 'E-STOP from %s%s' % (
                 who, ': ' + info['reason'] if info.get('reason') else ''), 'Fleet')
             self._fleet_remote_estop = True
+            self._estop_source = 'Fleet: ' + who
             try:
                 self._emergency_stop()
             finally:
@@ -248,6 +249,9 @@ class FleetMixin:
         elif cmd == 'pause':
             self.log_message('WARN', 'PAUSE from %s' % who, 'Fleet')
             self.pause_for(self.node.station_robot_id)
+        elif cmd == 'resume':
+            if self.resume_for(self.node.station_robot_id):
+                self.log_message('INFO', 'RESUME from %s' % who, 'Fleet')
 
     def _fleet_on_session(self, info, who):
         """Start or stop this station's session for another Studio (web remote's checks)."""
@@ -307,6 +311,9 @@ class FleetMixin:
     def _fleet_pause_all(self):
         self._fleet_cmd.send('pause', 'all')
 
+    def _fleet_resume_all(self):
+        self._fleet_cmd.send('resume', 'all')
+
     def _fleet_on_local_estop(self):
         """Call from the E-stop path: end teleop, and stop the partner arms too."""
         self._fleet_estop_time = time.monotonic()
@@ -321,6 +328,13 @@ class FleetMixin:
 
     # ── Teleop requests addressed to us ──────────────────────────────────
     def _fleet_confirm_request(self, s):
+        from fic_studio import notices
+        if notices.web_ui(self):
+            # the web UI answers it: a badge in the toolbar, Accept / Refuse on the Session page
+            notices.alert(self, 'warn', 'Teleoperation request',
+                          '%s wants %s to lead this robot. Answer it on the Session page.'
+                          % (s.from_host or 'A Studio', station_label(s.leader)), 'Teleop')
+            return
         box = QMessageBox(self)
         box.setWindowTitle('Teleoperation request')
         box.setIcon(QMessageBox.Warning)
@@ -604,10 +618,11 @@ class FleetMixin:
                                                ' (holding)' if p.get('holding') else ''))
         frame._line3.setText('Teleop: %s' % ', '.join(roles) if roles else '')
         frame._line3.setVisible(bool(roles))
-        by = self._fleet_commanded_by(n) if not is_master(n) else []
+        by = self._fleet_commanded_by(n) if not (is_master(n) or is_vr(n)) else []
         frame._cmdby.setText('Commanded by: %s' % ', '.join(by) if by else '')
         frame._cmdby.setVisible(bool(by))
-        remote_robot = not own and not is_master(n)
+        # A VR headset's robot has no Studio to start or drive; it only pairs.
+        remote_robot = not own and not is_master(n) and not is_vr(n)
         frame._drive.setVisible(remote_robot)
         frame._start.setVisible(remote_robot and not card.get('running'))
         frame._stop.setVisible(remote_robot and bool(card.get('running')))

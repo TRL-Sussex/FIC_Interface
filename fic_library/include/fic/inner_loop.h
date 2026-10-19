@@ -88,6 +88,10 @@ public:
         core_.reset();
         core_.dt = c.dt;
         core_.deadband_joint_tau = c.deadband_joint_tau;
+        core_.restart_on_stall = c.restart_on_stall != 0;
+        core_.planner_max_hz = c.planner_max_hz;
+        core_.planner_speed_margin = c.planner_speed_margin;
+        core_.joint_speed_limit = c.joint_speed_limit;
         for (int i = 0; i < n_; ++i) {
             core_.setJointLimits(i, c.lower[i], c.upper[i]);
             core_.setJointContinuous(i, c.continuous[i] != 0);

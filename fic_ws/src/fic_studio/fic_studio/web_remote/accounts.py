@@ -31,6 +31,22 @@ DEFAULT_PAGES = ('view3d', 'dashboard')
 #: only, until an admin says otherwise.
 SIGNUP_PAGES = ('control', 'view3d', 'dashboard', 'session')
 ROLES = ('admin', 'user')
+#: What an admin picks for a person, in place of ticking pages one by one. The
+#: store keeps role, pages and sim_only as before (older Studios of the lab read
+#: it unchanged); a preset only fills them in, and ``kind`` reads them back.
+#:   observer      watches: 3D view, dashboard and log; can never command a robot
+#:   sim_operator  commands robots in simulation only
+#:   operator      commands real arms too
+#:   admin         everything, and manages users
+PRESETS = {
+    'observer': {'role': 'user', 'pages': ('view3d', 'dashboard', 'log'), 'sim_only': True},
+    'sim_operator': {'role': 'user', 'pages': ('control', 'view3d', 'dashboard', 'session', 'log'),
+                     'sim_only': True},
+    'operator': {'role': 'user', 'pages': ('control', 'view3d', 'dashboard', 'session', 'log',
+                                           'extensions'), 'sim_only': False},
+    'admin': {'role': 'admin', 'pages': PAGES, 'sim_only': False},
+}
+KINDS = ('observer', 'sim_operator', 'operator', 'admin')
 #: scrypt parameters (interactive login, ~100 ms on a robot PC).
 _N, _R, _P = 2 ** 14, 8, 1
 
@@ -139,6 +155,18 @@ class Accounts:
         self._changed()
         return user
 
+    def apply_preset(self, name, preset, password=None):
+        """Give ``name`` one of :data:`PRESETS` (creating them when a password is given)."""
+        if preset not in PRESETS:
+            raise ValueError('preset must be one of %s' % (KINDS,))
+        p = PRESETS[preset]
+        user = self.get(name)
+        if (user is not None and user.get('role') == 'admin' and p['role'] != 'admin'
+                and len(self.admins()) <= 1):
+            raise ValueError('this is the only admin')
+        return self.set_user(name, password=password, role=p['role'], pages=list(p['pages']),
+                             sim_only=p['sim_only'])
+
     def set_hidden_extensions(self, name, ids):
         """Set which extensions ``name`` has hidden from their own page list.
 
@@ -246,6 +274,22 @@ class Accounts:
         return bool(user.get('sim_only'))
 
     @staticmethod
+    def kind(user):
+        """What this person amounts to: 'admin', 'operator', 'sim_operator' or 'observer'.
+
+        Read from what is stored, so an account whose pages were ticked by hand
+        still gets a name: without the control page it is an observer, with it
+        an operator (simulation only or not).
+        """
+        if not user:
+            return 'observer'
+        if user.get('role') == 'admin':
+            return 'admin'
+        if not Accounts.may_control(user):
+            return 'observer'
+        return 'sim_operator' if Accounts.sim_only(user) else 'operator'
+
+    @staticmethod
     def hidden_extensions(user):
         """Return the extension ids this user keeps out of their page list.
 
@@ -273,7 +317,8 @@ class Accounts:
                  'effective_pages': self.allowed_pages(u),
                  'sim_only': self.sim_only(u),
                  'stored_sim_only': bool(u.get('sim_only')),
-                 'ext_hidden': self.hidden_extensions(u)}
+                 'ext_hidden': self.hidden_extensions(u),
+                 'kind': self.kind(u)}
                 for u in sorted(self.users, key=lambda u: u['name'].lower())]
 
     # ── sharing between the Studios of one lab ───────────────────────────

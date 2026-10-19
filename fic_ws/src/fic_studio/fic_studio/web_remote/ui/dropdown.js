@@ -114,7 +114,4 @@
       open(sel);
     }
   }, true);
-
-  window.FIC = window.FIC || {};
-  window.FIC.dropdown = { open, close: () => close(false) };
 })();

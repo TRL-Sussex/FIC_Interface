@@ -128,6 +128,23 @@ struct RobotConfig {
         return deadband_cart_torque_hardware >= 0.0 ? deadband_cart_torque_hardware : deadband_cart_torque;
     }
 
+    // How far a push may move the goal under Cartesian admittance (modes 7 and 8), from
+    // robots_config.yaml `admittance_limits` (optional; absent: the values below, the library's
+    // own). Translation per axis in metres, rotation about each axis in degrees in the file
+    // (radians here). Push-and-stay is mode 7, haptic mode 8.
+    double cart_adm_push_m     = 0.30;
+    double cart_adm_push_rad   = M_PI / 6.0;
+    double cart_adm_haptic_m   = 0.05;
+    double cart_adm_haptic_rad = M_PI / 36.0;
+
+    // The FIC law options, from robots_config.yaml `fic_law` (optional; absent: the values
+    // below, the library's own): restart the convergence when the error stalls (FIC.cpp
+    // Controller; false gives the law before 5.11.0), the planners' cap on their natural
+    // frequency in Hz, and their speed margin (speed cap = margin x the planned speed).
+    bool   restart_on_stall      = true;
+    double planner_max_hz        = 8.75;
+    double planner_speed_margin  = 1.5708;
+
     // Reflected wrench from a teleoperation partner, arriving on
     // `robot{N}_wrench_external`. How hard a remote contact is allowed to push
     // this arm, per axis, and how small a value is treated as noise.
@@ -374,6 +391,25 @@ public:
                     config.deadband_cart_torque = db["cart_torque"].as<double>(0.2);
                     config.deadband_cart_force_hardware = db["cart_force_hardware"].as<double>(-1.0);
                     config.deadband_cart_torque_hardware = db["cart_torque_hardware"].as<double>(-1.0);
+                }
+
+                // Cartesian admittance bounds (optional; absent: the library's defaults).
+                if (robot_node["admittance_limits"]) {
+                    auto al = robot_node["admittance_limits"];
+                    // A key that is absent keeps the default exactly (no round trip through degrees).
+                    const double deg = M_PI / 180.0;
+                    if (al["push_and_stay_m"])   config.cart_adm_push_m     = al["push_and_stay_m"].as<double>();
+                    if (al["push_and_stay_deg"]) config.cart_adm_push_rad   = al["push_and_stay_deg"].as<double>() * deg;
+                    if (al["haptic_m"])          config.cart_adm_haptic_m   = al["haptic_m"].as<double>();
+                    if (al["haptic_deg"])        config.cart_adm_haptic_rad = al["haptic_deg"].as<double>() * deg;
+                }
+
+                // FIC law options (optional; a key that is absent keeps the default).
+                if (robot_node["fic_law"]) {
+                    auto fl = robot_node["fic_law"];
+                    if (fl["restart_on_stall"])         config.restart_on_stall     = fl["restart_on_stall"].as<bool>();
+                    if (fl["planner_max_frequency_hz"]) config.planner_max_hz       = fl["planner_max_frequency_hz"].as<double>();
+                    if (fl["planner_speed_margin"])     config.planner_speed_margin = fl["planner_speed_margin"].as<double>();
                 }
 
                 // Reflected-wrench limits for bilateral teleoperation (optional;

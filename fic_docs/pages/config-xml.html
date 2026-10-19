@@ -130,6 +130,15 @@ modes and fall back to <code>default</code> for others.</p></div>
 
   &lt;/robot&gt;
 &lt;/robots&gt;</code></pre>
+<div class="admonition note"><div class="adm-title">What the planner reads</div>
+<p>The planner's motion is set by <code>vel_desired</code> (how fast it moves toward the goal) and
+<code>damping_ratio</code>, and since v5.11.0 <code>acc_max</code> caps its acceleration (0: no cap; the shipped
+5000 is never reached, so the shipped profiles move as before). Its <code>stiffness</code> and
+<code>frequency</code> are read but have no effect: the planner derives its stiffness from the desired speed
+and the distance left each time the goal moves. The cap on that natural frequency (8.75&nbsp;Hz) and the speed
+margin (1.5708) are per robot, in <code>robots_config.yaml</code> <code>fic_law</code>. A mode with no
+<code>&lt;planner&gt;</code> block gets <code>vel_desired = 0</code>: in the admittance modes (3 and 4, with the
+planner on) the target then cannot move and the joint does not yield to a push.</p></div>
 <p>The <code>&lt;postural&gt;</code> and <code>&lt;elbow&gt;</code> blocks configure the null-space
 helper toggles available in Cartesian modes (see <a href="#control-modes" onclick="showPage('control-modes')">Control
 Modes</a> and <a href="#hpmp" onclick="showPage('hpmp')">H-PMP</a>). They sit directly under
@@ -294,11 +303,11 @@ runtime postural path only consumes the controller parameters.</p>
 <h3>Planner Sub-Element</h3>
 <table>
   <tr><th>XML Element</th><th>Type</th><th>Description</th></tr>
-  <tr><td><code>&lt;stiffness&gt;</code> (joint) / <code>&lt;stiffness_P&gt;</code> (Cartesian)</td><td>float</td><td>Planner-specific stiffness. <strong>Joint</strong> planner blocks use <code>&lt;stiffness&gt;</code>; <strong>Cartesian</strong> axis planner blocks use <code>&lt;stiffness_P&gt;</code> &mdash; the C++ loader only reads the tag matching the block type</td></tr>
+  <tr><td><code>&lt;stiffness&gt;</code> (joint) / <code>&lt;stiffness_P&gt;</code> (Cartesian)</td><td>float</td><td>Not used: the planner derives its stiffness from <code>vel_desired</code> and the distance left. <strong>Joint</strong> planner blocks carry <code>&lt;stiffness&gt;</code>, <strong>Cartesian</strong> axis blocks <code>&lt;stiffness_P&gt;</code>; kept so files load</td></tr>
   <tr><td><code>&lt;vel_desired&gt;</code></td><td>float</td><td>Desired trajectory velocity (shipped values range 0.3&ndash;3.0)</td></tr>
-  <tr><td><code>&lt;acc_max&gt;</code></td><td>float</td><td>Max acceleration</td></tr>
+  <tr><td><code>&lt;acc_max&gt;</code></td><td>float</td><td>Cap on the planner's acceleration (rad/s&sup2; or m/s&sup2;; 0: no cap). 5000.0 in the shipped file, which the planner never reaches</td></tr>
   <tr><td><code>&lt;damping_ratio&gt;</code></td><td>float</td><td>Velocity damping (shipped values 0.005&ndash;0.05)</td></tr>
-  <tr><td><code>&lt;frequency&gt;</code></td><td>float</td><td>Planner update rate (Hz; 150.0 everywhere in the shipped file)</td></tr>
+  <tr><td><code>&lt;frequency&gt;</code></td><td>float</td><td>Not used (150.0 everywhere in the shipped file; kept so files load). The planner's frequency cap is per robot: <code>fic_law.planner_max_frequency_hz</code> in <code>robots_config.yaml</code></td></tr>
   <tr><td><code>&lt;wrapped&gt;</code></td><td>int</td><td>Legacy. Present in some joint planner blocks and round-tripped by the GUI (<code>planner_wrapped</code>), but <strong>ignored by the C++ loader</strong> &mdash; at runtime joint wrapping is derived from the robot's continuous-joint flags (<code>setWrapped()</code> in <code>fic_control.h</code>)</td></tr>
 </table>
 
@@ -329,7 +338,6 @@ an optional <code>profile="default"</code> argument:</p>
   <tr><td><code>get_all_profiles(robot)</code></td><td>Union of profile names across every mode for the robot. <strong>Use this for UI selectors.</strong></td></tr>
   <tr><td><code>get_available_profiles(robot, mode)</code></td><td>Profiles that have a concrete block for this mode (used to compute the fallback indicator)</td></tr>
   <tr><td><code>clone_profile(robot, mode, src, dst)</code></td><td>Create a new <code>&lt;mode id=N profile=dst&gt;</code> by cloning from <code>(mode, src)</code></td></tr>
-  <tr><td><code>delete_profile(robot, mode, profile)</code></td><td>Remove a profile's block for one mode only</td></tr>
   <tr><td><code>delete_profile_everywhere(robot, profile)</code></td><td>Remove a profile from every mode it appears in; returns the count removed. Refuses <code>default</code>.</td></tr>
   <tr><td><code>load_postural_params(robot)</code> / <code>save_postural_params(robot, params)</code></td><td>Read/write the robot-scoped <code>&lt;postural&gt;</code> block (no mode, no profile)</td></tr>
   <tr><td><code>load_elbow_params(robot)</code> / <code>save_elbow_params(robot, params)</code></td><td>Read/write the robot-scoped <code>&lt;elbow&gt;</code> block</td></tr>

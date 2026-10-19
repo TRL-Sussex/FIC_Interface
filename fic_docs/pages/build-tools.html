@@ -198,9 +198,8 @@ name (<code>YYYY_MM_DD_session_NNN</code>):</p>
 <pre><code>source ~/FIC_Interface/fic_ws/install/setup.bash
 ros2 bag record -a -o ~/FIC_Interface/experiments/bags/$(date +%Y_%m_%d)_session_001</code></pre>
 
-<h3>Bag Replay (REP button)</h3>
-<p>Replays the bag recorded in this session, or the most recent bag in <code>experiments/bags</code>.
-Recording must be stopped first.</p>
+<h3>Bag replay</h3>
+<p>Play a recorded bag back from a terminal (stop recording first):</p>
 <pre><code>source ~/FIC_Interface/fic_ws/install/setup.bash
 ros2 bag play ~/FIC_Interface/experiments/bags/2026_04_12_session_001</code></pre>
 

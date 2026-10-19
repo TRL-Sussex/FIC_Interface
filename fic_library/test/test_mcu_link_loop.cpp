@@ -48,6 +48,7 @@ int main(int argc, char** argv) {
     c.deadband_joint_tau = 1.5f; c.dt = 0.001f;
     c.torque_cutoff_hz = 200; c.state_cutoff_hz = 10;
     c.damping_alpha = (float)std::exp(-2.0 * M_PI * 20.0 / 1000.0);
+    c.restart_on_stall = 1; c.planner_max_hz = 8.75f; c.planner_speed_margin = 1.5708f; c.joint_speed_limit = 0;
     for (int i = 0; i < N; ++i) {
         c.lower[i] = -3; c.upper[i] = 3; c.fault_lower[i] = -3; c.fault_upper[i] = 3;
         c.torque_limit[i] = 39; c.torque_rate_limit[i] = 2; c.torque_sign[i] = 1;

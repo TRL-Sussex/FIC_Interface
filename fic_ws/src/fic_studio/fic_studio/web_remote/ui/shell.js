@@ -34,7 +34,6 @@ const flip = key => () => { VIEW[key] = !VIEW[key]; if (key === 'minimal' && VIE
 
 // ── Menus ─────────────────────────────────────────────────────────────────
 const go = page => () => { location.hash = '#/' + page; };
-const need = (fn) => async () => { const r = await fn(); return r; };
 function download(name, mime, text) {
   const url = URL.createObjectURL(new Blob([text], { type: mime }));
   const a = h('a', { href: url, download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
@@ -115,7 +114,7 @@ const MENUS = [
     const s = state(), robots = (s.robots && s.robots.items) || [], modes = ((s.mode || {}).menus) || {};
     const all = Object.values(modes).flatMap(m => m.modes);
     return [
-      { label: 'Move to Home', run: () => cmd('home', {}), hint: '⇧H' },
+      { label: 'Move to Home', run: () => goHome(), hint: '⇧H' },
       { label: 'Emergency Stop', run: FIC.fireEstop, hint: 'Space' },
       { sep: true },
       { label: 'Select Robot', sub: robots.map(r => ({ label: r.label, checked: () => r.name === (state().robots || {}).current, run: () => cmd('set_robot', { name: r.name }) })) },
@@ -137,7 +136,7 @@ const MENUS = [
     { label: 'Quick Experiment…', run: () => cmd('toolbar', { op: 'exp', confirm: true }) },
     { label: 'Toggle Plotter', run: () => cmd('toolbar', { op: 'plotter', confirm: true }) },
     { sep: true },
-    { label: 'Processes…', run: go('session') },
+    { label: 'Session and processes…', run: go('session') },
   ]],
   ['Tools', () => [
     { label: 'Topic Monitor', run: go('topic_monitor') },
@@ -290,24 +289,153 @@ function updateToolbar(s) {
   $('#sess-dot').className = 'dot ' + view.cls;
   setText($('#sess-state'), view.text);
   $('#sess-state').title = (sess.process_list || []).filter(p => p.running).map(p => p.label).join(', ') || 'Nothing is running';
-  toolBtn('#tb-exp', 'EXP', tb.exp && tb.exp.running, tb.exp && tb.exp.visible);
-  toolBtn('#tb-bags', 'BAG', tb.bags, true);
-  toolBtn('#tb-plot', 'PLT', tb.plotter, true);
-  toolBtn('#tb-view', 'VIEW', tb.viewer, true);
+  toolBtn('#tb-exp', 'Experiment', tb.exp && tb.exp.running, tb.exp && tb.exp.visible);
+  toolBtn('#tb-bags', 'Record bag', tb.bags, true);
+  toolBtn('#tb-plot', 'Plotter', tb.plotter, true);
+  toolBtn('#tb-view', 'Contact viewer', tb.viewer, true);
+}
+
+// ── Hardware band, latched E-STOP, Home ───────────────────────────────────
+/** Home moves a real arm on hardware: ask first there; in simulation it just goes. */
+function goHome() {
+  const s = state(), sess = s.session || {};
+  if (sess.target !== 'hardware') { cmd('home', {}); return; }
+  const robot = ((s.studio || {}).robot_display) || 'the robot';
+  askTop({ title: 'Move ' + robot + ' to Home?', lines: ['This is the real arm. Check that the path to Home is clear.'], label: 'Move to Home',
+    onConfirm: () => cmd('home', { confirm: true }) });
+}
+FIC.goHome = goHome;
+const two = n => String(n).padStart(2, '0');
+const clock = t => { const d = new Date(t * 1000); return two(d.getHours()) + ':' + two(d.getMinutes()) + ':' + two(d.getSeconds()); };
+function resetEstop() {
+  askTop({ title: 'Reset the E-STOP?', lines: ['Check that the robot and the space around it are safe.', 'Reset starts nothing: start the session again yourself.'],
+    label: 'Reset E-STOP', danger: true,
+    onConfirm: async () => { const r = await cmd('estop_reset', { confirm: true }); if (r.ok !== false) toast('E-STOP reset'); } });
+}
+function updateSafetyChrome(s) {
+  const sess = s.session || {}, tb = s.toolbar || {}, st = s.studio || {};
+  const band = $('#hw-band'), hw = sess.target === 'hardware';
+  band.hidden = !hw;
+  document.body.classList.toggle('on-hardware', hw);
+  if (hw) {
+    const station = ((tb.stations || []).find(x => String(x.n) === String(tb.station)) || {}).label || ('Station ' + (st.station != null ? st.station : '?'));
+    const text = 'HARDWARE · ' + (st.robot_display || st.robot || 'robot') + ' · ' + station + ' · ' + (sess.running ? 'running: commands move the real arm' : 'idle');
+    if (band.textContent !== text) band.textContent = text;
+    band.classList.toggle('live', !!sess.running);
+  }
+  const e = s.estop || {}, banner = $('#estop-banner');
+  banner.hidden = !e.latched;
+  $('#estop').classList.toggle('latched', !!e.latched);
+  if (e.latched) {
+    const sig = e.at + '|' + e.by;
+    if (banner.__sig !== sig) {
+      banner.__sig = sig; banner.textContent = '';
+      banner.append(h('b', { text: 'E-STOP latched' }), h('span', { text: ' at ' + clock(e.at) + ' by ' + e.by + '. Controllers were told to ramp down and hold; this Studio\'s processes were stopped. Start, motion and teleoperation are refused until Reset.' }),
+        h('span', { class: 'spacer' }), h('button', { class: 'btn', type: 'button', text: 'Reset…', onclick: resetEstop }));
+    }
+  } else banner.__sig = '';
+  if (FIC.applyTitle) FIC.applyTitle();
+}
+
+// ── Notices: failures and requests the Studio has for its operator ────────
+// A new notice pops up (information goes by itself after 12 s; errors and warnings stay until
+// closed, except a passing one, as a robot touching a safety zone: it drops down and goes after 6 s). Closing a pop-up only hides it: every notice stays in the history under Notices in
+// the menu bar until someone presses Clear all, which clears it for every viewer.
+const NOTE = { popped: Number((() => { try { return sessionStorage.getItem('fic-notice-popped'); } catch (e) { return 0; } })() || 0), first: true, shown: new Map(), sig: '' };
+function hidePopup(id) {
+  const el = NOTE.shown.get(id); if (el) el.remove(); NOTE.shown.delete(id);
+}
+function fadePopup(id) {
+  const el = NOTE.shown.get(id); if (!el) return;
+  el.classList.add('going');
+  setTimeout(() => hidePopup(id), 400);
+}
+function noticeCard(n, onClose) {
+  return h('div', { class: 'notice ' + n.level, role: n.level === 'error' ? 'alert' : 'status' },
+    h('div', { class: 'notice-head' }, h('b', { text: n.title }), h('span', { class: 'faint num', text: clock(n.t) }),
+      onClose ? h('button', { class: 'btn btn-icon', type: 'button', 'aria-label': 'Close', title: 'Close (it stays under Notices)', onclick: onClose }, FIC.icon('x')) : null),
+    n.text ? h('div', { class: 'notice-text', text: n.text }) : null);
+}
+// Notices hang below the whole header (toolbar, hardware band, E-STOP banner): they never cover E-STOP.
+function placeNotices() {
+  const top = Math.round($('#topbar').getBoundingClientRect().bottom) + 8 + 'px';
+  for (const id of ['#notices', '#notices-panel']) { const el = $(id); if (el.style.top !== top) el.style.top = top; }
+}
+function toggleNoticePanel(open) {
+  const p = $('#notices-panel'), btn = $('#notices-btn');
+  p.hidden = open === undefined ? !p.hidden : !open;
+  btn.setAttribute('aria-expanded', String(!p.hidden));
+  if (!p.hidden) { for (const id of [...NOTE.shown.keys()]) hidePopup(id); placeNotices(); NOTE.sig = ''; refreshNoticePanel(); }
+}
+// The snapshot has only the latest few; the panel fetches the whole history when it changes.
+async function refreshNoticePanel() {
+  const p = $('#notices-panel'), rev = ((state().notices || {}).rev) || '';
+  if (p.hidden || rev === NOTE.sig) return;
+  NOTE.sig = rev;
+  const r = await cmd('notices_list', {}, true);
+  if (r.ok !== false) renderNoticePanel(r.items || []);
+}
+function renderNoticePanel(list) {
+  const p = $('#notices-panel');
+  p.textContent = '';
+  p.append(h('div', { class: 'np-head' }, h('b', { text: 'Notices' }), h('span', { class: 'faint', text: list.length ? list.length + ' kept until cleared' : '' }), h('span', { class: 'spacer' }),
+    h('button', { class: 'btn', type: 'button', text: 'Clear all', disabled: !list.length,
+      onclick: async () => { const r = await cmd('notices_clear', {}); if (r.ok !== false) { for (const id of [...NOTE.shown.keys()]) hidePopup(id); toast('Notices cleared'); } } }),
+    h('button', { class: 'btn btn-icon', type: 'button', 'aria-label': 'Close', onclick: () => toggleNoticePanel(false) }, FIC.icon('x'))));
+  if (!list.length) { p.append(h('p', { class: 'faint np-empty', text: 'No notices. Failures and warnings are kept here until Clear all.' })); return; }
+  const body = h('div', { class: 'np-list' });
+  for (const n of [...list].reverse()) body.append(noticeCard(n));
+  p.append(body);
+}
+function updateNotices(s) {
+  const ns = s.notices || {}, list = ns.recent || [], box = $('#notices');
+  if (NOTE.first) {                          // a reload: the history has them; pop up only what is new
+    NOTE.first = false;
+    const cutoff = Date.now() / 1000 - 120;
+    for (const n of list) if (n.t < cutoff) NOTE.popped = Math.max(NOTE.popped, n.id);
+  }
+  placeNotices();
+  const panelOpen = !$('#notices-panel').hidden;
+  for (const n of list) {
+    if (n.id <= NOTE.popped) continue;
+    NOTE.popped = n.id;
+    if (panelOpen) continue;                     // the open history shows it already
+    try { sessionStorage.setItem('fic-notice-popped', String(NOTE.popped)); } catch (e) { /* ignore */ }
+    const el = noticeCard(n, () => hidePopup(n.id));
+    if (n.passing) el.classList.add('passing');
+    box.append(el); NOTE.shown.set(n.id, el);
+    if (n.passing) setTimeout(() => fadePopup(n.id), 6000);
+    else if (n.level === 'info') setTimeout(() => hidePopup(n.id), 12000);
+  }
+  while (NOTE.shown.size > 4) hidePopup(NOTE.shown.keys().next().value);       // the rest are under Notices
+  if (!ns.count) for (const id of [...NOTE.shown.keys()]) hidePopup(id);        // cleared elsewhere
+  const bad = (ns.errors || 0) + (ns.warnings || 0), btn = $('#notices-btn');
+  setText(btn, bad ? 'Notices · ' + bad : 'Notices');
+  btn.classList.toggle('has-bad', !!ns.errors);
+  btn.classList.toggle('has-warn', !!bad);
+  refreshNoticePanel();
+  const req = ((s.teleop || {}).pending || []).length, badge = $('#tb-requests');
+  badge.hidden = !req;
+  if (req) setText(badge, req === 1 ? '1 teleop request' : req + ' teleop requests');
 }
 
 // ── Status bar ────────────────────────────────────────────────────────────
 const LED = { connected: 'ok', disconnected: 'bad', warning: 'warn', active: 'info', idle: '' };
-const SB_ITEMS = [['ros', 'ROS2'], ['fic', 'FIC'], ['sim', 'SIM'], ['bags', 'BAGS'], ['inner', 'INNER'], ['teleop', 'TELEOP'], ['gamepad', 'GAMEPAD'], ['web', 'WEB']];
+// [key, the label the Studio's text starts with, the label shown]
+const SB_ITEMS = [['ros', 'ROS2', 'ROS 2'], ['fic', 'FIC', 'Controller'], ['sim', 'SIM', 'Simulator'], ['bags', 'BAGS', 'Bag'], ['inner', 'INNER', 'Inner loop'],
+  ['teleop', 'TELEOP', 'Teleop'], ['gamepad', 'GAMEPAD', 'Gamepad'], ['web', 'WEB', 'Web']];
 function buildStatusbar() {
   const bar = $('#statusbar'); bar.textContent = '';
-  for (const [k, label] of SB_ITEMS) bar.append(h('span', { class: 'sb-item', id: 'sb-' + k }, h('span', { class: 'dot' }), h('span', { class: 'sb-l', text: label }), h('span', { class: 'sb-t faint' })));
-  bar.append(h('span', { class: 'spacer' }), h('span', { class: 'sb-item', id: 'sb-link' }, h('span', { class: 'dot' }), h('span', { class: 'sb-l', text: 'STUDIO' }), h('span', { class: 'sb-t faint' })),
+  for (const [k, , label] of SB_ITEMS) bar.append(h('span', { class: 'sb-item', id: 'sb-' + k }, h('span', { class: 'dot' }), h('span', { class: 'sb-l', text: label }), h('span', { class: 'sb-t faint' })));
+  bar.append(h('span', { class: 'spacer' }),
+    h('button', { class: 'sb-item sb-ctl', id: 'sb-ctl', type: 'button', hidden: true, title: 'You hold control of this Studio. Click to release it (you keep watching).',
+      onclick: () => FIC.releaseControl() }, h('span', { class: 'dot ok' }), h('span', { class: 'sb-l', text: 'In control · Release' })),
+    h('span', { class: 'sb-item', id: 'sb-link' }, h('span', { class: 'dot' }), h('span', { class: 'sb-l', text: 'STUDIO' }), h('span', { class: 'sb-t faint' })),
     h('span', { class: 'sb-robot', id: 'sb-robot' }));
 }
 function updateStatusbar(s) {
   const sb = s.statusbar || {};
-  for (const [k, label] of SB_ITEMS) {
+  for (const [k, label] of SB_ITEMS) {          // label: the prefix the Studio's text carries
     const el = $('#sb-' + k), v = sb[k] || { status: 'idle', text: '' };
     el.firstChild.className = 'dot ' + (LED[v.status] || '');
     const extra = (v.text || '').replace(new RegExp('^' + label + '\\s*'), '');
@@ -315,6 +443,8 @@ function updateStatusbar(s) {
     el.title = v.text || label;
   }
   setText($('#sb-robot'), sb.robot || '');
+  const c = FIC.control && FIC.control();
+  $('#sb-ctl').hidden = FIC.local || !(c && c.you);     // a remote holder can hand control back
   updateLink(s);
 }
 /** One glance: is the Studio talking to us, and is the robot talking to the Studio. */
@@ -326,6 +456,9 @@ function updateLink(s) {
   else if (hl.state === 'live') { cls = 'ok live'; text = fmt(hl.rate, 0) + ' Hz'; }
   else if (hl.state === 'stale') { cls = 'warn'; text = 'stale ' + (hl.age_ms != null ? fmt(hl.age_ms / 1000, 1) + ' s' : ''); }
   else { cls = ''; text = 'no robot data'; }
+  const es = $('#estop'), note = $('#estop-note');
+  es.classList.toggle('offline', !live);
+  if (note) { setText(note, live ? 'Space' : 'unavailable: use the physical stop'); note.classList.toggle('bad-text', !live); }
   const el = $('#sb-link');
   if (el) { el.firstChild.className = 'dot ' + cls; setText(el.lastChild, text); el.title = live ? 'Studio connected · robot telemetry: ' + (hl.state || 'offline') : 'The Studio is not answering'; }
 }
@@ -393,8 +526,8 @@ function onKey(e) {
     if (closeMenus()) return;
     if (FIC.dock && FIC.dock.close()) return;
     if (FIC.dismiss && FIC.dismiss()) return;
-    if (typing) { t.blur(); return; }
-    FIC.fireEstop(); return;
+    if (typing) t.blur();
+    return;                          // Esc closes things; it never E-STOPs (Space does)
   }
   if (typing) return;
   const onControl = tag === 'BUTTON' || tag === 'A';
@@ -402,6 +535,11 @@ function onKey(e) {
   const S = FIC.state();
   if (!S) return;
   const k = e.key, mode = S.mode || {}, av = S.availability || {};
+  const modeKey = k === 'j' || k === 'c' || /^[1-4]$/.test(k) || Object.values(OPTION_KEY).includes(k);
+  if (modeKey && !(S.toolbar || {}).keyboard) {     // a stray key must not change how a robot is driven
+    if (Date.now() - (onKey.hinted || 0) > 8000) { onKey.hinted = Date.now(); toast('Mode keys are off. Turn on View → Keyboard Control to use them.'); }
+    return;
+  }
   if (k === 'j' || k === 'c') {
     const kind = k === 'j' ? 'joint' : 'cart', m = (mode.menus || {})[kind];
     if (m && m.modes.length && (kind === 'joint' || av.cart)) cmd('set_mode', { index: m.modes[0].index });
@@ -409,7 +547,7 @@ function onKey(e) {
     const m = ((mode.menus || {})[mode.kind] || { modes: [] }).modes[Number(k) - 1];
     if (m && av.command) cmd('set_mode', { index: m.index });
   } else if (k === 'g') FIC.dock && FIC.dock.toggleGripper();
-  else if (k === 'H') cmd('home', {});
+  else if (k === 'H') goHome();
   else if (k === 's') onSessionClick();
   else if (k === 't') FIC.cycleTheme();
   else if (k === '[' || k === ']') {
@@ -427,6 +565,7 @@ function onKey(e) {
 function build() {
   buildMenus(); buildStatusbar(); buildSide(); applyView();
   $('#sess').addEventListener('click', onSessionClick);
+  $('#notices-btn').addEventListener('click', () => toggleNoticePanel());
   $('#nav-toggle').addEventListener('click', () => { VIEW.minimal = false; VIEW.side = !VIEW.side; applyView(); });
   for (const [id, op] of [['#tb-exp', 'exp'], ['#tb-bags', 'bags'], ['#tb-plot', 'plotter'], ['#tb-view', 'viewer']]) {
     const b = $(id);
@@ -438,9 +577,7 @@ function build() {
 }
 FIC.shell = {
   build,
-  update(s) { updateToolbar(s); updateStatusbar(s); updateNavVisibility(s); if (FIC.dock) FIC.dock.update(s); },
+  update(s) { updateToolbar(s); updateSafetyChrome(s); updateNotices(s); updateStatusbar(s); updateNavVisibility(s); if (FIC.dock) FIC.dock.update(s); },
   route(id) { markNav(); },
 };
-FIC.view = VIEW;
-FIC.reloadExtensions = loadExtensions;
 })();

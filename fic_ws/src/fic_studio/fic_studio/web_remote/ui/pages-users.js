@@ -18,6 +18,15 @@ const PAGE_LABELS = {
   session: 'Processes', log: 'Logs', extensions: 'Extensions',
 };
 
+//: What a person may do, in place of ticking pages one by one (accounts.PRESETS).
+const KINDS = [
+  ['observer', 'Observer', 'Watches: 3D view, dashboard and log. Never commands a robot.'],
+  ['sim_operator', 'Simulation operator', 'Commands robots in simulation only.'],
+  ['operator', 'Operator', 'Commands real arms too.'],
+  ['admin', 'Admin', 'Everything, including safety limits and users.'],
+];
+const KIND_LABEL = Object.fromEntries(KINDS.map(k => [k[0], k[1]]));
+
 window.FIC.pages.users = function buildUsers(root) {
   const askHost = h('div');                 // inlineConfirm opens the question in place
   const box = h('div', { class: 'users-box' });
@@ -56,13 +65,19 @@ window.FIC.pages.users = function buildUsers(root) {
     const isAdmin = u.role === 'admin';
     const rows = [];
 
-    const role = h('select', { class: 'select' },
-      h('option', { value: 'user', text: 'User' }),
-      h('option', { value: 'admin', text: 'Admin' }));
-    role.value = u.role;
-    role.addEventListener('change', () => save({ user: u.name, role: role.value },
-      u.name + ' is now ' + (role.value === 'admin' ? 'an admin' : 'a user')));
-    rows.push(h('div', { class: 'xrow' }, h('label', { text: 'Role' }), role));
+    // Access sets role, pages and simulation-only together; the ticks below fine-tune it.
+    const kind = h('select', { class: 'select', 'aria-label': 'Access for ' + u.name },
+      ...KINDS.map(([v, label]) => h('option', { value: v, text: label })));
+    kind.value = u.kind || (isAdmin ? 'admin' : 'observer');
+    const kindNote = h('div', { class: 'faint' });
+    const say = () => kindNote.textContent = (KINDS.find(k => k[0] === kind.value) || [])[2] || '';
+    say();
+    kind.addEventListener('change', async () => {
+      if (!(await save({ user: u.name, preset: kind.value }, u.name + ' is now ' + KIND_LABEL[kind.value]))) {
+        kind.value = u.kind; say();
+      }
+    });
+    rows.push(h('div', { class: 'xrow' }, h('label', { text: 'Access' }), h('div', {}, kind, kindNote)));
 
     // The ticks are always shown and always editable, for an admin too. The
     // role opens every page whatever is stored, but the stored list is what
@@ -127,7 +142,7 @@ window.FIC.pages.users = function buildUsers(root) {
     return h('section', { class: 'section users-card' },
       h('div', { class: 'xhead' },
         h('h2', { text: u.name }),
-        h('span', { class: 'chip', text: isAdmin ? 'admin' : (u.sim_only ? 'simulation only' : 'user') })),
+        h('span', { class: 'chip', text: KIND_LABEL[u.kind] || (isAdmin ? 'Admin' : 'User') })),
       h('div', { class: 'xbody' }, ...rows));
   }
 
@@ -135,17 +150,20 @@ window.FIC.pages.users = function buildUsers(root) {
   function addCard() {
     const name = h('input', { class: 'input', type: 'text', placeholder: 'Name', autocomplete: 'off' });
     const pw = h('input', { class: 'input', type: 'password', placeholder: 'Password', autocomplete: 'new-password' });
+    const kind = h('select', { class: 'select', 'aria-label': 'Access' },
+      ...KINDS.map(([v, label]) => h('option', { value: v, text: label })));
+    kind.value = 'sim_operator';
     const go = h('button', { class: 'btn btn-primary', type: 'button', text: 'Add user', onclick: async () => {
       if (!name.value.trim()) { toast('A name, please', true); return; }
       if (!pw.value) { toast('A password, please', true); return; }
-      if (await save({ user: name.value.trim(), password: pw.value, role: 'user', sim_only: true },
-                     'Added ' + name.value.trim())) { name.value = ''; pw.value = ''; }
+      if (await save({ user: name.value.trim(), password: pw.value, preset: kind.value },
+                     'Added ' + name.value.trim() + ' as ' + KIND_LABEL[kind.value])) { name.value = ''; pw.value = ''; }
     } });
     return h('section', { class: 'section' },
       h('div', { class: 'xhead' }, h('h2', { text: 'Add a user' })),
       h('div', { class: 'xbody' },
-        h('p', { class: 'faint', text: 'They start with the default pages, limited to simulation. Change that below once they exist.' }),
-        h('div', { class: 'btn-row' }, name, pw, go)));
+        h('p', { class: 'faint', text: 'Pick what they may do; the pages can be fine-tuned below once they exist.' }),
+        h('div', { class: 'btn-row' }, name, pw, kind, go)));
   }
 
   function render() {

@@ -10,11 +10,13 @@ Commands: ``settings_get``, ``settings_set``, ``settings_reset``,
 ``settings_extensions``, ``settings_gamepad``, ``settings_web``.
 """
 import copy
+import os
 
+from fic_studio import features
 from fic_studio.web_remote.common import Refused, _num, _who, need_confirm
 
 #: Keys that only take effect after a restart (the classic page marks them).
-RESTART_KEYS = ('network.ros_domain_id', 'network.partner_ip', 'network.dds_mode')
+RESTART_KEYS = ('network.ros_domain_id', 'network.partner_ip', 'network.dds_mode', 'paths.experiments')
 
 #: Keys that apply the moment they are saved: the web UI restyles itself in
 #: place (see ``appearance_state``) and the classic window re-themes in
@@ -71,6 +73,17 @@ def _backends(w):
     return items
 
 
+def _default_experiments():
+    from fic_studio import paths
+    from fic_studio.config import FIC_INTERFACE_DIR
+    old = os.environ.pop(paths.EXPERIMENTS_ENV, None)
+    try:
+        return paths.experiments_dir(FIC_INTERFACE_DIR / 'experiments', settings_path=os.devnull)
+    finally:
+        if old is not None:
+            os.environ[paths.EXPERIMENTS_ENV] = old
+
+
 def sections(w):
     """The cards, in the classic page's order, each a list of field specs."""
     from fic_studio.platform_utils import mono_font_choices
@@ -100,9 +113,30 @@ def sections(w):
                    choices=[{'value': 'multicast', 'label': 'Multicast (auto)'},
                             {'value': 'unicast', 'label': 'Unicast (manual IP)'}]),
         ]),
+        ('Data', 'Where experiments and bags are recorded. Needs a restart.', True, [
+            _field('paths.experiments', 'Experiments folder', 'text',
+                   placeholder='blank: ' + _default_experiments(),
+                   hint='Absolute path. Robot configs and tuning stay with the lab robot library'),
+        ]),
         ('Simulation', '', False, [
             _field('simulation.backend', 'Backend', 'choice', choices=_backends(w)),
         ]),
+    ]
+    if features.headset():
+        out.append(
+        ('VR', 'The MuJoCo VR headset app. Applies the moment you save.', False, [
+            _field('vr.relay_always_on', 'Relay always on', 'bool',
+                   hint='Headsets find this Studio whenever it is open, not only after VR > Start'),
+            _field('vr.allow_viewers', 'Let headsets watch the lab', 'bool',
+                   hint="Watch the lab: every Studio's robots, live, in the headset"),
+            _field('vr.fleet_stations', 'Headset robots on Multi-Robot', 'bool',
+                   hint="A headset's robots are listed as VR stations, to lead or follow"),
+            _field('vr.headset_ip', 'Headset address', 'text', placeholder='blank: find it on the WiFi',
+                   hint='Fixed IP, for networks that do not pass broadcasts (e.g. a 6 GHz band)'),
+            _field('vr.require_key', 'Require a pairing key', 'bool',
+                   hint='Sign every packet: only a headset paired over USB can drive the robots'),
+        ]))
+    out += [
         ('Playback tolerances', '', False, [
             _field('tolerances.joint_tolerance_deg', 'Joint tolerance', 'float', min=0.5, max=20.0, step=0.5, unit='deg',
                    hint='Joint position tolerance for sequence playback'),
@@ -231,6 +265,19 @@ def _validate(spec, raw):
         return raw
     if not isinstance(raw, str) or len(raw) > 200:
         raise Refused('%s must be text' % spec['label'], 'bad_args')
+    if spec['key'] == 'paths.experiments' and raw.strip():
+        p = os.path.expanduser(raw.strip())
+        if not os.path.isabs(p):
+            raise Refused('Experiments folder must be an absolute path, like /data/fic or ~/fic_data', 'bad_args')
+        from fic_studio import paths
+        if not paths._writable_dir(p):
+            raise Refused('The Studio cannot write to %s' % p, 'bad_args')
+    if spec['key'] == 'vr.headset_ip' and raw.strip():
+        import ipaddress
+        try:
+            ipaddress.IPv4Address(raw.strip())
+        except ValueError:
+            raise Refused('Headset address must be an IPv4 address, like 192.168.0.234', 'bad_args')
     return raw.strip()
 
 
@@ -352,6 +399,42 @@ def web(w, args, client):
     return {'ok': True, 'web': _web(w)}
 
 
+def _vr(w):
+    from fic_studio.fleet import vr_pairing
+    s = w._vr_settings() if hasattr(w, '_vr_settings') else {}
+    key = vr_pairing.read_key()
+    return {'require_key': bool(s.get('require_key')), 'fingerprint': vr_pairing.fingerprint(key),
+            'key_file': vr_pairing.key_path()}
+
+
+def vr(w, args, client):
+    """Pair the headset over USB, or make a new pairing key."""
+    if not features.headset():
+        raise Refused('This build of the Studio has no VR headset support', 'unavailable')
+    from fic_studio.fleet import vr_pairing
+    op = args.get('op')
+    if op == 'state':
+        return {'ok': True, 'vr': _vr(w)}
+    if op == 'pair':
+        need_confirm(args, 'Pairing restarts the headset app and needs confirmation')
+        key = vr_pairing.relay_key(w._vr_settings())
+        ok, message = vr_pairing.pair(key)
+        w.log_message('INFO' if ok else 'WARN', 'VR: ' + message, 'VR')
+        if not ok:
+            raise Refused(message, 'failed')
+        return {'ok': True, 'message': message, 'vr': _vr(w)}
+    if op == 'new_key':
+        need_confirm(args, 'A new key unpairs every headset and needs confirmation')
+        vr_pairing.new_key()
+        if hasattr(w, '_stop_vr_background'):
+            w._stop_vr_background()
+            w._apply_vr_settings(from_settings=True)
+        w.log_message('WARN', 'VR: new pairing key %s: pair each headset again'
+                      % vr_pairing.fingerprint(vr_pairing.read_key()), 'VR')
+        return {'ok': True, 'vr': _vr(w)}
+    raise Refused('No such VR command', 'bad_args')
+
+
 HANDLERS = {
     'settings_get': get,
     'settings_set': set_values,
@@ -359,4 +442,5 @@ HANDLERS = {
     'settings_extensions': extensions,
     'settings_gamepad': gamepad,
     'settings_web': web,
+    'settings_vr': vr,
 }

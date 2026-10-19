@@ -163,6 +163,35 @@ def clean(patch, current):
         out['admittance_deadbands'] = {k: _num_list([d.get(k)], 'Deadband ' + k, 1, 0, 1e4)[0]
                                        for k in ('joint_tau', 'cart_force', 'cart_torque', 'cart_force_hardware')
                                        if k in d}
+    if 'admittance_limits' in patch:
+        # How far a push may move the goal in the Cartesian admittance modes (robot_config_loader.hpp).
+        d = patch['admittance_limits']
+        bounds = {'push_and_stay_m': ('Push-and-stay translation', 2.0), 'haptic_m': ('Haptic translation', 1.0),
+                  'push_and_stay_deg': ('Push-and-stay rotation', 180.0), 'haptic_deg': ('Haptic rotation', 90.0)}
+        out['admittance_limits'] = {}
+        for k, (label, top) in bounds.items():
+            if k in d and d[k] is not None:
+                v = _num_list([d.get(k)], label, 1, 0, top)[0]
+                if v <= 0:
+                    raise Refused('%s must be more than zero' % label, 'bad_args')
+                out['admittance_limits'][k] = v
+    if 'fic_law' in patch:
+        # The FIC law options (robot_config_loader.hpp): restart on a stall, and the planners'
+        # frequency cap and speed margin.
+        d = patch['fic_law']
+        out['fic_law'] = {}
+        if d.get('restart_on_stall') is not None:
+            if not isinstance(d['restart_on_stall'], bool):
+                raise Refused('Restart on a stall must be on or off', 'bad_args')
+            out['fic_law']['restart_on_stall'] = d['restart_on_stall']
+        bounds = {'planner_max_frequency_hz': ('Planner frequency cap', 50.0),
+                  'planner_speed_margin': ('Planner speed margin', 5.0)}
+        for k, (label, top) in bounds.items():
+            if k in d and d[k] is not None:
+                v = _num_list([d.get(k)], label, 1, 0, top)[0]
+                if v <= 0:
+                    raise Refused('%s must be more than zero' % label, 'bad_args')
+                out['fic_law'][k] = v
     if 'safety_zones' in patch:
         out['safety_zones'] = _zones(patch['safety_zones'], n)
     if 'hardware_model' in patch:
@@ -230,6 +259,15 @@ def _zones(z, n):
         if mj is None or mc is None or mj < 0 or mc < 0:
             raise Refused('Speed limits must be zero or more', 'bad_args')
         out['velocity'] = {'max_joint_vel': mj, 'max_cart_vel': mc, 'enabled': bool(v.get('enabled'))}
+    if 'zones' in z or 'body' in z:
+        from fic_studio import safety_zones
+        try:
+            if 'zones' in z:
+                out['zones'] = safety_zones.check_zones(z['zones'])
+            if 'body' in z:
+                out['body'] = safety_zones.check_body(z['body'], n)
+        except ValueError as e:
+            raise Refused(str(e), 'bad_args')
     return out
 
 

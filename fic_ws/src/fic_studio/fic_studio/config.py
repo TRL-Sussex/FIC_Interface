@@ -2,6 +2,8 @@
 import os
 from pathlib import Path
 
+from fic_studio import paths as _paths
+
 # ---------------------- CONFIG ----------------------
 # Project root resolution: find the `fic_ws` workspace directory in this file's
 # path; the repo root is its parent. This works whether fic_studio is imported
@@ -28,7 +30,9 @@ WS_PATH          = str(FIC_INTERFACE_DIR / "fic_ws")
 ROBOT_LIB        = str(FIC_INTERFACE_DIR / "robot_library")
 FIC_API_DIR      = str(FIC_INTERFACE_DIR / "fic_api")
 FIC_DOCS         = str(FIC_INTERFACE_DIR / "fic_docs")
-EXPERIMENTS_ROOT = str(FIC_INTERFACE_DIR / "experiments")
+# Recordings may be moved ($FIC_EXPERIMENTS_DIR, Settings > Data), and leave the checkout when it
+# is read-only: see fic_studio.paths. Read once, at start-up.
+EXPERIMENTS_ROOT = _paths.experiments_dir(FIC_INTERFACE_DIR / "experiments")
 FIC_LIBRARY      = str(FIC_INTERFACE_DIR / "fic_library")
 FIC_CONFIG_DIR   = str(FIC_INTERFACE_DIR / "fic_library" / "config")
 

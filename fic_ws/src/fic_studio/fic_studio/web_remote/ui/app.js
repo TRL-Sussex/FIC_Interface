@@ -160,7 +160,6 @@ function spark(values) {
   path.setAttribute('d', 'M' + pts.join(' L')); svg.append(path);
   return svg;
 }
-const healthDot = state => state === 'live' ? 'ok live' : state === 'stale' ? 'warn' : 'bad';
 
 // ── Control lease: the desktop window is the trusted local session ───────
 async function takeControl(force) {
@@ -169,21 +168,38 @@ async function takeControl(force) {
   return r.ok;
 }
 setInterval(() => { if (document.body.classList.contains('signed-out')) return; post('/api/control', { op: 'heartbeat' }).then(r => { if (r.control) { CONTROL = r.control; renderBanner(); } }); }, 1000);
+let hadControl = null;
+async function releaseControl() {
+  const r = await post('/api/control', { op: 'release' });
+  CONTROL = r.control || CONTROL; renderBanner();
+  toast('Control released: you are watching');
+}
 function renderBanner() {
+  const mine = CONTROL && CONTROL.you;
+  if (hadControl === true && CONTROL && !mine) {        // someone else took it: say who, not silently
+    const who = CONTROL.holder && (CONTROL.holder.name || CONTROL.holder.addr);
+    toast((who || 'Someone') + ' took control. You are watching.', true);
+  }
+  if (CONTROL) hadControl = !!mine;
   const b = $('#banner');
   if (!b) return;
-  const mine = CONTROL && CONTROL.you;
   b.hidden = !!mine || !CONTROL;
   if (!b.hidden && !b.__built) {
     b.__built = true;
     b.append(h('span', { id: 'banner-text' }), h('button', { class: 'btn btn-primary', type: 'button', text: window.FIC.local ? 'Take control' : 'Request control',
-      onclick: async () => { if (!(await takeControl(window.FIC.local))) toast('Control is held by someone else. Ask them to release it.', true); } }));
+      onclick: async () => { if (!(await takeControl(window.FIC.local))) toast('Control is held by someone else. Ask them to release it.', true); } }),
+      // An admin may take over from a remote holder (they are told, and it is in the audit log).
+      h('button', { class: 'btn btn-danger', type: 'button', id: 'banner-takeover', text: 'Take over', hidden: true,
+        title: 'Take control from whoever holds it. They are told, and it goes in the audit log.',
+        onclick: async () => { if (await takeControl(true)) toast('You took control'); else toast('Could not take control', true); } }));
   }
   if (!b.hidden) {
     const who = CONTROL.holder && (CONTROL.holder.name || CONTROL.holder.addr);
     const view = window.FIC.remote && window.FIC.remote.viewOnly();
     setText($('#banner-text'), view ? 'View only: this account cannot command the robot.' : who ? who + ' is in control. You are watching.' : 'You are watching. Take control to command the robot.');
     $('#banner button').hidden = !!view;
+    const R = window.FIC.remote, admin = !window.FIC.local && R && R.auth && R.auth.admin;
+    $('#banner-takeover').hidden = !(admin && CONTROL.holder);
   }
 }
 
@@ -284,18 +300,27 @@ function armed(button, label, act) {
 // ── E-STOP: one click, no confirmation, no lease ──────────────────────────
 async function fireEstop() {
   const r = await post('/api/command', { action: 'estop', args: {} });
-  toast(r.ok === false ? (r.message || 'E-STOP failed') : 'E-STOP sent', r.ok === false);
+  toast(r.ok === false ? (r.message || 'E-STOP failed') + '. Use the physical emergency stop.' : 'E-STOP sent (software stop): latched until Reset', r.ok === false);
 }
 
 // ── What the page and shell scripts build on ──────────────────────────────
 window.FIC = {
-  $, h, fmt, setText, setSeg, setSelect, spark, section, csection, csectionAll, csectionTools, pageTitle, toast, post, cmd, inlineConfirm, armed,
-  pages: BUILDERS, state: () => S, control: () => CONTROL, history, renderBanner, store, params,
-  dismiss: dismissConfirm, pageList: () => PAGES, fireEstop, takeControl, link: LINK, healthDot, cycleTheme, local: true,
+  $, h, fmt, setText, setSeg, setSelect, spark, section, csection, csectionTools, pageTitle, toast, post, cmd, inlineConfirm, armed,
+  pages: BUILDERS, state: () => S, history, store,
+  dismiss: dismissConfirm, pageList: () => PAGES, fireEstop, link: LINK, cycleTheme, local: true,
+  control: () => CONTROL, releaseControl, takeControl,
   shell: { build() {}, update() {}, route() {} },
 };
 
 // ── Router ────────────────────────────────────────────────────────────────
+/** The tab title: page name, with "HW ·" in front while the Studio drives real hardware and
+ *  "E-STOP ·" while one is latched, so a tab in the background still says so. */
+function applyTitle() {
+  const s = S || {}, pre = (s.estop && s.estop.latched ? 'E-STOP · ' : '') + ((s.session || {}).target === 'hardware' ? 'HW · ' : '');
+  const t = pre + (window.FIC.pageName || 'FIC Studio') + ' · FIC Studio';
+  if (document.title !== t) document.title = t;
+}
+window.FIC.applyTitle = applyTitle;
 let current = null;
 function route() {
   const id = (location.hash.replace(/^#\//, '') || 'dashboard').split('?')[0];
@@ -307,7 +332,8 @@ function route() {
   const build = blocked ? R.notAllowed(id) : (BUILDERS[id] || buildSoon(id));
   const made = build(main);
   current = { id, update: typeof made === 'function' ? made : (made && made.update) || (() => {}), dispose: made && made.dispose };
-  document.title = ((PAGES.find(p => p.id === id) || {}).label || 'FIC Studio') + ' · FIC Studio';
+  window.FIC.pageName = (PAGES.find(p => p.id === id) || {}).label || 'FIC Studio';
+  applyTitle();
   window.FIC.shell.route(id);
   if (S) current.update(S);
   renderBanner();
@@ -357,7 +383,7 @@ async function boot() {
   es.addEventListener('open', () => { LINK.open = true; });
   es.addEventListener('error', () => { LINK.open = false; if (window.FIC.remote) window.FIC.remote.tick(); if (S) window.FIC.shell.update(S); });
   es.addEventListener('state', e => { LINK.open = true; LINK.last = Date.now(); refresh(JSON.parse(e.data)); });
-  es.addEventListener('settings', e => { try { const d = JSON.parse(e.data); applyAppearance(d.appearance); window.FIC.settingsChanged = d; document.dispatchEvent(new CustomEvent('fic-settings', { detail: d })); } catch (err) { /* ignore */ } });
+  es.addEventListener('settings', e => { try { const d = JSON.parse(e.data); applyAppearance(d.appearance); } catch (err) { /* ignore */ } });
   es.addEventListener('control', e => { CONTROL = JSON.parse(e.data); renderBanner(); });
   setInterval(() => { if (S) window.FIC.shell.update(S); }, 1000);
 }

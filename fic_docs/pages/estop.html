@@ -13,8 +13,21 @@
 </table>
 
 <div class="admonition tip"><div class="adm-title">Escape does not E-STOP</div>
-<p><kbd>Escape</kbd> is bound to <em>Stop sequence</em> (<code>shortcuts.stop_sequence</code>), not to E-STOP.
-It halts sequence playback but leaves controllers and processes running. Use <kbd>Space</kbd> for the full emergency stop.</p></div>
+<p><kbd>Escape</kbd> closes menus and panels (in the classic window it is <em>Stop sequence</em>,
+<code>shortcuts.stop_sequence</code>); it never fires E-STOP. Use <kbd>Space</kbd> for the full emergency stop.</p></div>
+
+<div class="admonition warning"><div class="adm-title">A software stop</div>
+<p>E-STOP asks the controllers to ramp down and hold, then stops this Studio's processes. It is not a
+substitute for the robot's physical emergency stop, and it cannot act while the Studio is not answering:
+in the web UI the button then turns grey and reads <em>unavailable: use the physical stop</em>.</p></div>
+
+<h2>Latched until Reset</h2>
+<p>An E-STOP stays in force. A red banner under the toolbar says when it fired and by whom (the signed-in
+account and its address, <em>Gamepad</em>, or the station that sent it), and the browser tab's title starts
+with <em>E-STOP</em>. Until someone presses <strong>Reset&hellip;</strong> on the banner and confirms that the
+robot and the space around it are safe, the Studio refuses Start, starting a process, motion commands, Home
+and teleoperation. Reset starts nothing. Every E-STOP and reset is written to the audit log,
+<code>~/.fic_studio/audit.log</code>, and put in <strong>Notices</strong> (the E-STOP stays there until Clear all).</p>
 
 <h2>What E-STOP Does (Full Studio)</h2>
 <p>Since the June 2026 safety remediation, E-STOP stops <em>gracefully first, kills second</em>.
@@ -49,9 +62,10 @@ torque frozen on the robot. The current sequence (<code>_emergency_stop</code> i
       <li>Plotter</li>
     </ul>
   </li>
-  <li><strong>OS-level backstop</strong> &mdash; <code>pkill -9 -f "ros2 launch"</code> and
-      <code>pkill -9 -f cartesian_impedance_control</code> catch anything that survived the
-      per-process teardown.</li>
+  <li><strong>Session backstop</strong> &mdash; every process the Studio starts leads its own session,
+      so anything that survived the per-process teardown (a node that left its launch's process group)
+      gets SIGKILL by session. Only this Studio's processes are stopped: other users' simulators
+      and launches on the same computer keep running.</li>
   <li><strong>UI feedback</strong> &mdash; the status bar shows
       <strong>"E-STOP ACTIVE - ALL PROCESSES KILLED"</strong> in red.</li>
 </ol>
@@ -130,10 +144,10 @@ torque frozen on the robot. The current sequence (<code>_emergency_stop</code> i
   <text x="350" y="383" class="label-sm">controller &middot; driver &middot; FIC sim &middot; MuJoCo &middot; bags &middot; plotter</text>
   <line x1="350" y1="396" x2="350" y2="412" class="arrow"/>
 
-  <!-- Step 6: pkill -->
+  <!-- Step 6: session backstop -->
   <rect x="150" y="414" width="400" height="44" class="box box-red"/>
-  <text x="350" y="429" class="label-bold">6. OS backstop</text>
-  <text x="350" y="445" class="label-code">pkill -9 -f "ros2 launch" &middot; pkill -9 -f cartesian_impedance_control</text>
+  <text x="350" y="429" class="label-bold">6. Session backstop</text>
+  <text x="350" y="445" class="label-code">SIGKILL what is left in the Studio's own sessions</text>
 </svg>
 
 <h2>What Each Extension Does on E-STOP</h2>
@@ -151,7 +165,7 @@ torque frozen on the robot. The current sequence (<code>_emergency_stop</code> i
 <h2>Dev Console Difference</h2>
 <p>The <a href="#dev-console" onclick="showPage('dev-console')">Dev Console</a> has a simpler E-STOP handler: it stops the
 hardware controller, driver, FIC controller, bag recording and plotter, publishes the hold pose for the
-station robot only, and runs the <code>cartesian_impedance_control</code> pkill backstop. It does not
+station robot only, and then stops every process it started (its own processes only). It does not
 load extensions, so there is no fan-out step, and it does not issue the mode-0 ramp command before
 killing &mdash; prefer the Full Studio when running hardware experiments.</p>
 
@@ -182,14 +196,16 @@ virtual walls, so this GUI-side stop is a backstop, not the primary enforcement.
   <tr><td>What it does</td><td>Publishes <code>"Stop Controller"</code> (mode 0) &mdash; graceful torque ramp, controller keeps running idle</td><td>SIGTERM to that process group only</td><td>Ramp + hold + kill everything</td></tr>
   <tr><td>Processes killed</td><td>None</td><td>Only the selected process</td><td>All Studio-launched processes</td></tr>
   <tr><td>Position hold</td><td>Yes (targets snap to current state)</td><td>No</td><td>Yes (hold pose published per robot)</td></tr>
-  <tr><td>Force kill</td><td>No</td><td>SIGKILL only after SIGTERM timeout</td><td>Yes (pkill -9 backstop)</td></tr>
+  <tr><td>Force kill</td><td>No</td><td>SIGKILL only after SIGTERM timeout</td><td>Yes (SIGKILL of what is left in the Studio's sessions)</td></tr>
   <tr><td>Extensions stopped</td><td>No</td><td>No</td><td>Yes (fan-out hook)</td></tr>
   <tr><td>Recoverable without restart</td><td>Yes &mdash; just select a mode again</td><td>Restart that process</td><td>Restart all processes</td></tr>
 </table>
 
 <h2>Terminal Equivalent</h2>
 <p>To stop everything manually from a terminal, mirror the GUI's own sequence &mdash; graceful stop
-first, then kill:</p>
+first, then kill. On a shared computer, kill only your own processes: the <code>pkill</code> lines
+below stop <em>every</em> matching process, including other users' simulators (the Studio itself
+never uses them).</p>
 <pre><code># 1. Graceful controller stop (torque ramp-down, robot1)
 ros2 topic pub --once /robot1_mode_select std_msgs/msg/String "{data: 'Stop Controller'}"
 

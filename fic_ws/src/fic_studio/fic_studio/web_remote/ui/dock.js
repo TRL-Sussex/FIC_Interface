@@ -29,7 +29,7 @@ function build() {
   for (const [id, label] of PANELS) {
     buttons.append(h('button', { class: 'btn tab', type: 'button', 'data-panel': id, 'aria-expanded': 'false', onclick: () => toggle(id) },
       h('span', { class: 'caret' }, window.FIC.icon('chevron-up')), h('span', { text: label })));
-    if (id === 'gripper') buttons.append(h('button', { class: 'btn', id: 'd-home', type: 'button', onclick: () => cmd('home', {}) }, h('span', { icon: 'home', text: 'Home' }), kbd('⇧H')));
+    if (id === 'gripper') buttons.append(h('button', { class: 'btn', id: 'd-home', type: 'button', onclick: () => FIC.goHome() }, h('span', { icon: 'home', text: 'Home' }), kbd('⇧H')));
   }
   dock.append(
     h('div', { class: 'drawer', id: 'drawer', hidden: true },
@@ -59,7 +59,8 @@ function buildMode() {
       h('label', { class: 'toggle', title: 'Every edit streams a command at once. Off: a command goes when you commit a field (release, Enter).' },
         h('input', { type: 'checkbox', id: 'd-live', onchange: e => cmd('live_publish', { value: e.target.checked }) }), h('span', { class: 'track' }), h('span', { text: 'Live publish' })),
       h('button', { class: 'btn', type: 'button', text: 'Reset', title: 'Reset all control fields to the robot’s defaults', onclick: () => { J.dirty = false; C.dirty = false; cmd('reset_defaults', {}); } }),
-      h('button', { class: 'btn', type: 'button', id: 'd-pause', text: 'Pause', title: 'Pause the controller (hardware)', onclick: () => cmd('robot_pause', {}) }),
+      h('button', { class: 'btn', type: 'button', id: 'd-pause', text: 'Pause', title: 'Pause: the controller ramps down and holds. Resume sends the robot its mode again.',
+        onclick: e => cmd(e.currentTarget.dataset.paused === '1' ? 'robot_resume' : 'robot_pause', {}) }),
       h('button', { class: 'btn btn-danger', type: 'button', id: 'd-stop', text: 'Stop', title: 'Stop the controller (hardware)', onclick: () => cmd('robot_stop', {}) }),
       h('div', { class: 'spacer' }),
       h('button', { class: 'btn btn-solid', type: 'button', id: 'd-send', text: 'Send', title: 'Send the fields above to the robot', onclick: () => sendCurrent() })));
@@ -412,7 +413,11 @@ function update(s) {
   const st = s.stations || { items: [] }, pick = $('#bar-robot');     // which robot the bar commands (several stations only)
   pick.hidden = st.items.length < 2;
   if (st.items.length > 1) setSelect(pick, st.items.map(x => ({ value: String(x.n), label: x.label })), String((st.items.find(x => x.rid === st.active) || {}).n), v => cmd('station', { op: 'select', n: Number(v) }));
-  setText($('#ds-mode'), mode.name || '—');
+  const myRid = st.active || (s.studio || {}).rid, paused = (s.paused || []).includes(myRid);
+  const pb = $('#d-pause');
+  if (pb) { pb.dataset.paused = paused ? '1' : ''; setText(pb, paused ? 'Resume' : 'Pause'); pb.classList.toggle('btn-primary', paused); }
+  setText($('#ds-mode'), paused ? 'PAUSED · ' + (mode.name || '—') : (mode.name || '—'));
+  $('#ds-mode').classList.toggle('warn-text', paused);
   setText($('#ds-rest'), '  ·  ' + (TARGET_SHORT[sess.target] || '') + '  ·  ' + (hl.rate != null && hl.state !== 'offline' ? fmt(hl.rate, 0) + ' Hz' : hl.state === 'offline' || !hl.state ? 'offline' : hl.state));
   setText($('#ds-contact'), (s.status && s.status.contact) || '');
   if (!opened) return;
@@ -458,7 +463,7 @@ function update(s) {
     rng.disabled = !g.available;
     if (document.activeElement !== rng && g.percent != null) rng.value = g.percent;
     setText($('#d-gr-v'), g.available ? fmt(rng.value, 0) + ' %' : 'none');
-    setText($('#d-gr-note'), g.available ? (g.measured != null ? 'Measured ' + fmt(g.measured * 1000, 0) + ' mm' : '') : 'This robot has no gripper');
+    setText($('#d-gr-note'), g.available ? (g.measured != null ? 'Measured ' + fmt(g.measured * 1000, 0) + ' mm' : '') : (g.reason || 'This robot has no gripper'));
   } else if (opened === 'contact') {
     const dr = s.drawer || {}, gt = dr.ground_truth || { items: ['none'], current: 'none' };
     setSelect($('#d-gt'), gt.items.map(v => ({ value: v, label: v })), gt.current, link => cmd('contact_truth', { link }));

@@ -15,7 +15,7 @@ during a sequence, and starting or stopping a session).
 import math
 import time
 
-from fic_studio import theme
+from fic_studio import audit, notices, theme
 from fic_studio.web_remote import chrome as _chrome
 from fic_studio.web_remote import help as _help
 from fic_studio.web_remote import robot_config as _robot_config
@@ -28,7 +28,7 @@ from fic_studio.web_remote.common import (  # noqa: F401
 )
 from fic_studio.math_helpers import _quat_to_axis_angle, _quat_to_euler_xyz
 from fic_studio.mixins.control_bar_mixin import (
-    MODE_MENUS, MODE_ROW_LABELS, NO_CARTESIAN, NO_SEQUENCES, VR_DRIVEN,
+    MODE_MENUS, MODE_ROW_LABELS, NO_CARTESIAN, NO_SEQUENCES, VR_NO_GRIPPER,
 )
 from fic_studio.mixins.robot_control_mixin import (
     CONTROL_MODE_DISPLAY, CONTROL_MODE_TABS, mode_display_name,
@@ -81,32 +81,38 @@ def availability(w):
     cfg = _cfg(w, _robot(w))
     legged = cfg.get('robot_category') == 'legged'
     vr = getattr(w, 'control_target', 'simulation') == 'vr'
-    reason = VR_DRIVEN if vr else ''
     return {
-        'command': not vr,
-        'joint': not vr,
-        'cart': not vr and not legged,
+        'command': True,
+        'joint': True,
+        'cart': not legged,
         'gripper': not vr and bool(cfg.get('has_gripper', True)),
-        'home': not vr,
+        'home': True,
         'sequences': _sequences_ext(w) is not None,
-        'reason': reason,
-        'cart_reason': NO_CARTESIAN if legged else reason,
+        'reason': '',
+        'cart_reason': NO_CARTESIAN if legged else '',
+        'gripper_reason': VR_NO_GRIPPER if vr else '',
         'sequences_reason': NO_SEQUENCES,
     }
 
 
-def _require_command(w, args, kind=None):
-    """Refuse motion while VR drives, just after an E-stop, or on the wrong robot."""
-    since = time.monotonic() - getattr(w, '_web_estop_time', float('-inf'))
-    if since < ESTOP_HOLDOFF_S:
+def _estop_gate(w):
+    """Refuse anything that moves a robot or starts a process while an E-stop is latched
+    (until Reset), and for a moment after one fired."""
+    latch = getattr(w, 'estop_latch_state', None)
+    if latch is not None and latch().get('latched'):
+        raise Refused('E-STOP is latched. Check the robot, then press Reset on the red banner', 'estop_latched')
+    if time.monotonic() - getattr(w, '_web_estop_time', float('-inf')) < ESTOP_HOLDOFF_S:
         raise Refused('E-stop just fired — wait a moment', 'estop_holdoff')
+
+
+def _require_command(w, args, kind=None):
+    """Refuse motion after an E-stop, or on the wrong robot."""
+    _estop_gate(w)
     expected = args.get('robot')
     if expected is not None and expected != _robot(w):
         raise Refused('The Studio switched robot to %s — reloading' % _robot(w),
                       'robot_changed')
     avail = availability(w)
-    if not avail['command']:
-        raise Refused(avail['reason'], 'vr_target')
     if kind == 'cart' and not avail['cart']:
         raise Refused(avail['cart_reason'], 'no_cartesian')
     if kind is not None and getattr(w, '_rc_selected_kind', 'joint') != kind:
@@ -120,10 +126,26 @@ def _estop(w, args, client):
     # Stamped first so anything queued behind the E-stop is refused.
     w._web_estop_time = time.monotonic()
     w.log_message('ERROR', 'E-STOP from web remote (%s)' % _who(client), 'Web')
+    w._estop_source = _who(client)
     if hasattr(w, '_loco_velocity'):
         w._loco_velocity = (0.0, 0.0, 0.0)        # a held walk command ends with the stop
         w._loco_hold_until = None
     w._emergency_stop()
+
+
+def _estop_reset(w, args, client):
+    """Clear a latched E-stop. Starts nothing; asks first (the page says what to check)."""
+    need_confirm(args, 'Resetting the E-STOP needs confirmation')
+    if not w._estop_latch_reset(_who(client)):
+        return {'ok': True, 'already': True}
+
+
+def _notices_list(w, args, client):
+    return {'ok': True, 'items': notices.history(w)}
+
+
+def _notices_clear(w, args, client):
+    return {'ok': True, 'cleared': notices.clear(w, _who(client))}
 
 
 def _set_mode(w, args, client):
@@ -140,6 +162,9 @@ def _set_mode(w, args, client):
     if modes is None:
         modes = w._web_modes = {}
     modes[getattr(w, '_rc_active_rid', '')] = index      # what each robot was last told
+    paused = getattr(w, '_paused_rids', None)
+    if paused is not None:
+        paused.discard(getattr(w, '_rc_active_rid', ''))   # a new mode ends a pause
 
 
 def _set_option(w, args, client):
@@ -219,8 +244,9 @@ def _send_pose(w, args, client):
 
 def _gripper(w, args, client):
     _require_command(w, args)
-    if not availability(w)['gripper']:
-        raise Refused('This robot has no gripper', 'unavailable')
+    avail = availability(w)
+    if not avail['gripper']:
+        raise Refused(avail['gripper_reason'] or 'This robot has no gripper', 'unavailable')
     percent = int(round(min(100.0, max(0.0, _arg_num(args, 'percent')))))
     slider = w._rc_gripper_slider
     if slider.value() == percent:
@@ -231,6 +257,8 @@ def _gripper(w, args, client):
 
 def _home(w, args, client):
     _require_command(w, args)
+    if getattr(w, 'control_target', 'simulation') == 'hardware' and not args.get('confirm'):
+        raise Refused('Home moves the real arm. Confirm first', 'confirm')
     ext = _sequences_ext(w)
     if ext is not None and getattr(ext, 'is_playing', False) and not args.get('confirm'):
         raise Refused('A sequence is playing. Home anyway?', 'confirm')
@@ -257,6 +285,12 @@ def _set_target(w, args, client):
         raise Refused('No such target', 'bad_args')
     if w._tb_session_running():
         raise Refused('Stop the running session before changing target', 'session_running')
+    if target != getattr(w, 'control_target', 'simulation'):
+        audit.record('target', _who(client), target)
+        live = getattr(w, '_rc_live_publish', None)
+        if target == 'hardware' and live is not None and live.isChecked():
+            live.setChecked(False)              # a slider must not stream to a real arm unasked
+            w.log_message('INFO', 'Live publish turned off for hardware', 'Web')
     w._tb_set_target(target)
 
 
@@ -271,8 +305,7 @@ def _session(w, args, client):
         return {'ok': True, 'already': True}
     target = getattr(w, 'control_target', 'simulation')
     if op == 'start':
-        if time.monotonic() - getattr(w, '_web_estop_time', float('-inf')) < ESTOP_HOLDOFF_S:
-            raise Refused('E-stop just fired — wait a moment', 'estop_holdoff')
+        _estop_gate(w)
         robot = _robot(w)
         # _start_driver would otherwise pop a modal dialog on the desktop,
         # where nobody holding a phone can dismiss it.
@@ -283,6 +316,7 @@ def _session(w, args, client):
             raise Refused('No driver command and no inner-loop MCU for %s' % robot, 'no_driver')
     w.log_message('WARN' if target == 'hardware' else 'INFO',
                   'Web remote (%s): %s %s session' % (_who(client), op, target), 'Web')
+    audit.record('session_' + op, _who(client), target, target=target)
     w._tb_toggle_start()
 
 
@@ -310,9 +344,8 @@ def _teleop(w, args, client):
         raise Refused('Answering a pairing needs confirmation', 'confirm')
     if op == 'start':
         return _teleop_start(w, teleop, args, client)
-    if op == 'accept' and time.monotonic() - getattr(
-            w, '_web_estop_time', float('-inf')) < ESTOP_HOLDOFF_S:
-        raise Refused('E-stop just fired — wait a moment', 'estop_holdoff')
+    if op == 'accept':
+        _estop_gate(w)
 
     me = w.node.station_id
     sid = args.get('sid')
@@ -432,8 +465,7 @@ def _panel(w, args, client):
 
 def _teleop_start(w, teleop, args, client):
     """Ask for one station to lead another, as the Multi-robot page's Start does."""
-    if time.monotonic() - getattr(w, '_web_estop_time', float('-inf')) < ESTOP_HOLDOFF_S:
-        raise Refused('E-stop just fired — wait a moment', 'estop_holdoff')
+    _estop_gate(w)
     try:
         leader, follower = int(args.get('leader')), int(args.get('follower'))
     except (TypeError, ValueError):
@@ -457,6 +489,7 @@ def _teleop_start(w, teleop, args, client):
                              leader_joints=int(lcard.get('joints', 0) or 0))
     w.log_message('INFO', 'Teleop requested from the web UI (%s): station %d leads %d'
                   % (_who(client), leader, follower), 'Teleop')
+    audit.record('teleop_request', _who(client), 'station %d leads %d' % (leader, follower))
     return {'ok': True, 'sid': getattr(session, 'sid', None)}
 
 
@@ -487,8 +520,7 @@ def _process(w, args, client):
     if (op == 'start') == running:
         return {'ok': True, 'already': True}
     if op == 'start':
-        if time.monotonic() - getattr(w, '_web_estop_time', float('-inf')) < ESTOP_HOLDOFF_S:
-            raise Refused('E-stop just fired — wait a moment', 'estop_holdoff')
+        _estop_gate(w)
         if pid == 'driver' and not w._resolve_driver_command(_robot(w)) and \
                 _inner_loop_state(w, {}).get('path') != 'mcu':
             raise Refused('No driver command and no inner-loop MCU for %s' % _robot(w), 'no_driver')
@@ -496,6 +528,7 @@ def _process(w, args, client):
             raise Refused('%s is not a legged robot' % _robot(w), 'unavailable')
     w.log_message('WARN' if hardware else 'INFO',
                   'Web remote (%s): %s %s' % (_who(client), op, label), 'Web')
+    audit.record('process_' + op, _who(client), label, target=getattr(w, 'control_target', ''))
     getattr(w, start if op == 'start' else stop)()
     update = getattr(w, '_update_status', None)
     if update is not None:
@@ -544,6 +577,16 @@ def _log_clear(w, args, client):
         raise Refused('There is no log', 'unavailable')
     viewer.clear_logs()
     w.log_message('INFO', 'Log cleared from the web UI (%s)' % _who(client), 'Web')
+
+
+#: The most audit lines one read returns.
+AUDIT_READ_MAX = 2000
+
+
+def _audit_read(w, args, client):
+    """The audit log, newest last: the last ``limit`` lines (read-only; it cannot be cleared here)."""
+    limit = int(min(AUDIT_READ_MAX, max(1, _num(args.get('limit'), 500))))
+    return {'ok': True, 'entries': audit.tail(limit), 'path': audit.path()}
 
 
 # ── Safety and tuning ────────────────────────────────────────────────────
@@ -606,11 +649,20 @@ def _fleet(w, args, client):
     if op == 'estop_all':                       # like E-STOP: no confirmation
         w._web_estop_time = time.monotonic()
         w.log_message('ERROR', 'E-STOP ALL from web remote (%s)' % _who(client), 'Web')
+        audit.record('estop_all', _who(client), 'E-STOP ALL')
+        w._estop_source = 'E-STOP ALL: ' + _who(client)
         w._fleet_estop_all()
         return {'ok': True}
     if op == 'pause_all':
         w.log_message('WARN', 'PAUSE ALL from web remote (%s)' % _who(client), 'Web')
+        audit.record('pause_all', _who(client), 'PAUSE ALL')
         w._fleet_pause_all()
+        return {'ok': True}
+    if op == 'resume_all':
+        _estop_gate(w)
+        w.log_message('INFO', 'RESUME ALL from web remote (%s)' % _who(client), 'Web')
+        audit.record('resume_all', _who(client), 'RESUME ALL')
+        w._fleet_resume_all()
         return {'ok': True}
     if op == 'session':
         n, card = _fleet_station(w, args)
@@ -711,6 +763,9 @@ HANDLERS = {
     'panel': _panel,
     'ext': _ext,
     'estop': _estop,
+    'estop_reset': _estop_reset,
+    'notices_clear': _notices_clear,
+    'notices_list': _notices_list,
     'set_mode': _set_mode,
     'set_option': _set_option,
     'desired_wrench': _desired_wrench,
@@ -730,6 +785,7 @@ HANDLERS = {
     'process': _process,
     'log_read': _log_read,
     'log_clear': _log_clear,
+    'audit_read': _audit_read,
     'safety_set': _safety_set,
     'tuning_info': _tuning_info,
     'tuning_get': _tuning_get,
@@ -752,11 +808,15 @@ HANDLERS.update(_help.HANDLERS)
 #: Commands only the trusted desktop session may send: they change the Studio's
 #: own configuration, files or build, which no phone or remote account should.
 LOCAL_ONLY = frozenset((
-    'settings_set', 'settings_reset', 'settings_extensions', 'settings_gamepad', 'settings_web',
+    'settings_set', 'settings_reset', 'settings_extensions', 'settings_gamepad', 'settings_web', 'settings_vr',
     'robots_save', 'robots_add', 'robots_duplicate', 'robots_delete', 'robots_import', 'robots_upload', 'robots_import_yaml',
     'robots_compile_driver', 'robots_open_folder', 'robots_viewer',
     'import_snapshot', 'build', 'recent_experiments',
 ))
+
+#: Commands that change what keeps the robot safe, or remove a record of what
+#: was done. With accounts on, only an admin may send them from a browser.
+ADMIN_ONLY = frozenset(('safety_set', 'tuning_save', 'log_clear'))
 
 #: Commands a simulation-only account may send whatever the target is.
 SIM_ONLY_ALWAYS = ('estop',)
@@ -787,10 +847,13 @@ def handle_command(w, action, args, client):
         return Refused('Unknown command: %s' % action, 'unknown_action').reply()
     if action in LOCAL_ONLY and not (client or {}).get('local'):
         return Refused('That is only available in the Studio window itself', 'local_only').reply()
-    if (client or {}).get('limits', {}).get('sim_only'):
+    limits = (client or {}).get('limits')
+    if (limits or {}).get('sim_only'):
         problem = _sim_only_problem(w, action, args or {})
         if problem:
             return Refused(problem, 'simulation_only').reply()
+    if action in ADMIN_ONLY and limits is not None and not limits.get('admin'):
+        return Refused('Only an admin may do that', 'admin_only').reply()
     try:
         reply = handler(w, args or {}, client)
     except Refused as exc:
@@ -1035,7 +1098,9 @@ def _gripper_state(w, ctx):
         if state:                      # (width_m, motor current, age_s)
             measured, age = _num(state[0]), _num(state[2])
     return {
-        'available': bool(ctx['cfg'].get('has_gripper', True)) and slider is not None,
+        'available': bool(ctx['cfg'].get('has_gripper', True)) and slider is not None
+                     and availability(w)['gripper'],
+        'reason': availability(w)['gripper_reason'],
         'percent': slider.value() if slider is not None else None,
         'max_width': GRIPPER_MAX_WIDTH_M,
         # what the arm reports (fic_hardware), so a view can show the real fingers
@@ -1092,7 +1157,7 @@ def _log_state(w, ctx):
 
 def _fleet_state(w, ctx):
     """Every Studio on the network, for the Multi-robot page."""
-    from fic_studio.fleet.stations import is_master, station_label
+    from fic_studio.fleet.stations import is_master, is_vr, station_label
     directory = getattr(w, '_fleet_dir', None)
     if directory is None:
         return {'available': False, 'studios': [], 'conflicts': []}
@@ -1105,13 +1170,14 @@ def _fleet_state(w, ctx):
         known = modes.get('robot%d' % n) if n in mine else None
         if known is not None and known < len(CONTROL_MODE_DISPLAY):
             card = dict(card, mode=CONTROL_MODE_DISPLAY[known])  # what this Studio last sent that robot
+        viewer = card.get('role') == 'viewer'
         studios.append({
-            'station': n, 'label': station_label(n), 'host': card.get('host', ''),
+            'station': n, 'label': 'VR viewer' if viewer else station_label(n), 'host': card.get('host', ''),
             'robot': card.get('robot', ''), 'robot_display': card.get('robot_display', ''),
             'target': card.get('target', ''), 'running': bool(card.get('running')),
             'has_joints': bool(card.get('has_joints')), 'mode': card.get('mode', ''),
             'teleop': list(card.get('teleop') or []), 'urls': list(card.get('urls') or []),
-            'self': n == me, 'master': bool(is_master(n)),
+            'self': n == me, 'master': bool(is_master(n)), 'vr': bool(is_vr(n) or viewer), 'viewer': viewer,
             'last_cmd': card.get('last_cmd'),
         })
     conflicts = [{'station': n, 'label': station_label(n), 'hosts': list(h)}
@@ -1148,6 +1214,11 @@ def _appearance_state(w, ctx):
     return settings_page.appearance_state(w)
 
 
+def _estop_state(w, ctx):
+    fn = getattr(w, 'estop_latch_state', None)
+    return fn() if fn is not None else {'latched': False}
+
+
 SECTIONS = (
     ('studio', _studio),
     ('robots', _robots_state),
@@ -1169,6 +1240,9 @@ SECTIONS = (
     ('log', _log_state),
     ('safety', _safety_state),
     ('fleet', _fleet_state),
+    ('estop', _estop_state),
+    ('paused', lambda w, ctx: sorted(getattr(w, '_paused_rids', None) or [])),
+    ('notices', lambda w, ctx: notices.state(w)),
     ('locomotion', _locomotion_state),
     *_chrome.SECTIONS,
     ('theme', _theme_state),

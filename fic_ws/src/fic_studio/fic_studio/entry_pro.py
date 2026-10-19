@@ -5,7 +5,9 @@ import sys
 import os
 import signal
 
-SETTINGS_PATH = os.path.expanduser('~/.robot_selector_gui_settings.yaml')
+# $FIC_STUDIO_SETTINGS moves it (fic_studio.paths; not imported here: the splash paints first).
+SETTINGS_PATH = os.path.abspath(os.path.expanduser(
+    os.environ.get('FIC_STUDIO_SETTINGS') or '~/.robot_selector_gui_settings.yaml'))
 
 
 def _load_settings() -> dict:
@@ -43,7 +45,8 @@ def main():
     app.setOrganizationName("RoboticsLab")
     app.setDesktopFileName("fic-control-studio")
 
-    splash = make_splash("FIC Control Studio", version="v5.10.0")
+    from fic_studio import version
+    splash = make_splash("FIC Control Studio", version="v" + version.display())
 
     # ── Settings (lazy yaml import) ──────────────────────────────────────────
     splash_status(splash, "Loading settings…")

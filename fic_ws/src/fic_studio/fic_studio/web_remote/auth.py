@@ -102,4 +102,5 @@ class Auth:
             'admin': self.accounts.is_admin(user),
             'control': self.accounts.may_control(user),
             'sim_only': self.accounts.sim_only(user),
+            'kind': self.accounts.kind(user),
         }

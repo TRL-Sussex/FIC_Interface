@@ -69,8 +69,9 @@ def sim_controller():
         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
     except Exception:
         pass
-    subprocess.run(['pkill', '-9', '-f', 'fic_simulation'],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # Anything left in the launch's own session; never a pkill by name (other users' sims share the PC).
+    from fic_studio.mixins.process_mixin import _kill_session
+    _kill_session(proc.pid)
 
 
 def test_cartesian_zone_clamps_target(sim_controller):

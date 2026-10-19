@@ -2,7 +2,7 @@
 
 > **Package:** `fic_studio`
 > **Node name:** `fic_studio_node`
-> **Entry points:** `fic_studio`, `fic_studio_pro`, `fic_dev`
+> **Entry points:** `fic_studio_pro`, `fic_dev`
 > **Language:** Python 3 (PyQt5 + ROS 2 Jazzy/Humble)
 
 FIC Control Studio is the GUI for operating, tuning and programming robots controlled by the Fractal Impedance Control (FIC) library. It works with real hardware (`fic_hardware`) and with MuJoCo simulation (`fic_simulation`), from its own window or from a browser (the web interface).

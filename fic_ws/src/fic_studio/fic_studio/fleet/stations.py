@@ -19,6 +19,12 @@ MASTER = 0
 MASTER_BASE = 100
 MASTER_TOP = 999
 
+#: Stations of a VR headset's simulated robots (fleet/vr_station.py): VR_BASE + 1
+#: for the scene's first robot, and so on. They lead and follow in teleoperation
+#: but have no robotN_* topics, so nothing drives them from the control bar.
+VR_BASE = 1000
+VR_TOP = 1099
+
 
 def master_station(host: str) -> int:
     """Return the internal station of a Master on ``host`` (stable, 100..999)."""
@@ -35,6 +41,11 @@ def resolve_station(setting, host: str) -> int:
 def is_master(n) -> bool:
     """Return True for the Master setting or a Master's internal station."""
     return n == MASTER or (isinstance(n, int) and MASTER_BASE <= n <= MASTER_TOP)
+
+
+def is_vr(n) -> bool:
+    """Return True for a VR headset robot's station."""
+    return isinstance(n, int) and not isinstance(n, bool) and VR_BASE < n <= VR_TOP
 
 
 def is_robot(n) -> bool:
@@ -63,8 +74,12 @@ def station_rid(n: int) -> str:
 
 
 def station_label(n) -> str:
-    """Return how a station is shown: 'Master' or 'Robot N'."""
-    return 'Master' if is_master(n) else 'Robot %s' % n
+    """Return how a station is shown: 'Master', 'VR N' or 'Robot N'."""
+    if is_master(n):
+        return 'Master'
+    if is_vr(n):
+        return 'VR %d' % (n - VR_BASE)
+    return 'Robot %s' % n
 
 
 def rid_station(rid: str):

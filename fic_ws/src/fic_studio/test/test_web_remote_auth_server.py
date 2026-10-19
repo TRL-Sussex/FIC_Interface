@@ -218,10 +218,10 @@ def test_a_new_account_reaches_the_studio_as_simulation_only(remote):
     browser.post('/api/register', {'user': 'yasir', 'password': 'a-good-password'})
     browser.post('/api/control', {'client': 'c', 'op': 'take'})
     browser.post('/api/command', {'client': 'c', 'action': 'home'})
-    assert seen and seen[-1]['limits'] == {'sim_only': True}
+    assert seen and seen[-1]['limits'] == {'sim_only': True, 'admin': False}
 
     admin = Client(remote.test_port)
     admin.sign_in('admin', 'admin-pass')
     admin.post('/api/users', {'client': 'c', 'user': 'yasir', 'sim_only': False})
     browser.post('/api/command', {'client': 'c', 'action': 'home'})
-    assert seen[-1]['limits'] == {'sim_only': False}
+    assert seen[-1]['limits'] == {'sim_only': False, 'admin': False}

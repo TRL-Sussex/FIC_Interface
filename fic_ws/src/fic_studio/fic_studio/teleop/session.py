@@ -392,7 +392,8 @@ class TeleopManager:
                                    'requested from the master Studio (%s)'
                            % (leader, s.origin))
             self.accept(s.sid)
-        elif self.hooks.target() == 'simulation':
+        elif self.hooks.target() in ('simulation', 'vr'):
+            # No real arm moves: VR drives the headset's simulated one.
             self.accept(s.sid)
         else:
             self.hooks.confirm_request(s)      # the operator answers: accept() / reject()

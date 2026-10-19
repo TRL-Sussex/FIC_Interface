@@ -7,11 +7,15 @@ controller). What is added here is checking, because a web form can send
 anything: every number must be finite and sane, a lower bound must be under
 its upper bound, joint safety limits must lie inside the joint's mechanical
 range, and nothing is applied without an explicit ``confirm: true`` (the page
-shows the change and asks again).
+shows the change and asks again). The whole-arm safety zones (``zones``, ``body``;
+fic_studio/safety_zones.py) are checked the same way. What is applied is also saved
+in the selected robot's configuration, so it is still there after a restart.
 """
 import copy
 import math
 
+from fic_studio import safety_zones
+from fic_studio.mixins.safety_mixin import STOP_PAST_DEG, STOP_PAST_M, TOUCH_M
 from fic_studio.web_remote.common import Refused, _num, _who, need_confirm
 
 AXES = ('x', 'y', 'z')
@@ -26,6 +30,8 @@ DEFAULT_LIMITS = {
                   'z': {'min': 0.0, 'max': 1.5, 'enabled': True}},
     'joint_safety_deg': {'lower': [], 'upper': [], 'enabled': True},
     'velocity': {'max_joint_vel': 1.0, 'max_cart_vel': 0.5, 'enabled': True},
+    'zones': [],
+    'body': dict(safety_zones.DEFAULT_BODY),
 }
 
 
@@ -57,6 +63,8 @@ def _merged(w):
                     limits[key][k].update(v)
                 else:
                     limits[key][k] = v
+        elif key == 'zones' and isinstance(section, list):
+            limits['zones'] = copy.deepcopy(section)
     return limits
 
 
@@ -121,19 +129,34 @@ def state(w, ctx=None):
         rows.append({'label': 'Joint %d' % (i + 1), 'lower': lo, 'upper': hi, 'value': value,
                      'mech_lower': _num(mech_lo[i]) if i < len(mech_lo) else None,
                      'mech_upper': _num(mech_hi[i]) if i < len(mech_hi) else None, 'state': st})
-    states = [c['state'] for c in cart.values()] + [r['state'] for r in rows]
+    zone_now = None
+    if ctx is not None and hasattr(w, 'zone_state_for'):
+        try:
+            zone_now = w.zone_state_for(ctx['rid'])
+        except Exception:
+            zone_now = None
+    states = [c['state'] for c in cart.values()] + [r['state'] for r in rows] + (
+        [zone_now['state']] if zone_now else [])
     enabled = bool(getattr(w, 'safety_enabled', True))
     overall = ('off' if not enabled else 'violation' if 'violation' in states
                else 'warn' if 'warn' in states else 'ok')
     return {
         'enabled': enabled,
         'enforce': bool(getattr(w, 'safety_enforce', True)),
+        'stop_past': {'m': STOP_PAST_M, 'deg': STOP_PAST_DEG},
         'warning_threshold': thr,
         'overall': overall,
         'cartesian': cart,
         'joints': {'enabled': bool(joint.get('enabled', True)), 'rows': rows},
         'velocity': dict({'joint_target_speed': 0.0}, **limits['velocity']),
-        'bounds': {'cart_abs': MAX_CART_ABS_M, 'joint_vel': MAX_JOINT_VEL, 'cart_vel': MAX_CART_VEL},
+        'zones': limits['zones'],
+        'body': dict(safety_zones.DEFAULT_BODY, **(limits.get('body') or {})),
+        'zone_now': zone_now,
+        'touch_m': TOUCH_M,
+        'warn_band_m': safety_zones.WARN_BAND_M,
+        'joint_count': n,
+        'bounds': {'cart_abs': MAX_CART_ABS_M, 'joint_vel': MAX_JOINT_VEL, 'cart_vel': MAX_CART_VEL,
+                   'max_zones': safety_zones.MAX_ZONES},
     }
 
 
@@ -240,6 +263,14 @@ def _describe_change(old, new):
                 b['min'], b['max'], '' if b['enabled'] else ' (off)'))
     if old['joint_safety_deg'] != new['joint_safety_deg']:
         parts.append('joint limits changed')
+    if old.get('zones') != new.get('zones'):
+        on = [z for z in new.get('zones') or [] if z.get('enabled', True)]
+        parts.append('%d safety zones (%d on: %s)' % (len(new.get('zones') or []), len(on),
+                     ', '.join('%s %s keep-%s' % (z['name'], z['shape'], z['keep']) for z in on) or 'none'))
+    if old.get('body') != new.get('body'):
+        b = new['body']
+        parts.append('arm checked from joint %d, link radius %.0f mm, tool %.0f mm' % (
+            b['from_joint'], 1000 * b['radius'], 1000 * b['tool_radius']))
     if old['velocity'] != new['velocity']:
         v = new['velocity']
         parts.append('velocity %.2f rad/s, %.2f m/s%s, joint target speed %s' % (
@@ -248,10 +279,31 @@ def _describe_change(old, new):
     return '; '.join(parts) or 'no change'
 
 
+def _save_to_robot(w, limits):
+    """Keep what was applied in the selected robot's configuration (robots file), as its Robot Config page does."""
+    try:
+        from fic_studio.mixins.robot_config_mixin import merge_robot_config
+        from fic_studio.web_remote.robot_config import _persist
+        robot = w.robot_dropdown.currentText()
+        cfg = getattr(w, 'robot_configs', {}).get(robot)
+        if cfg is None:
+            return False
+        saved = merge_robot_config(cfg.get('safety_zones') or {}, copy.deepcopy(limits))
+        saved['zones'] = copy.deepcopy(limits.get('zones') or [])
+        cfg['safety_zones'] = saved
+        return _persist(w)
+    except Exception as e:
+        try:
+            w.log_message('ERROR', 'Safety limits applied but not saved: %s' % e, 'Safety')
+        except Exception:
+            pass
+        return False
+
+
 def set_limits(w, args, client):
     """Apply an edit to the zones and limits. Needs ``confirm: true``."""
     need_confirm(args, 'Changing the safety limits needs confirmation')
-    wanted = [k for k in ('cartesian', 'joints', 'velocity', 'monitor', 'enforce') if k in args]
+    wanted = [k for k in ('cartesian', 'joints', 'velocity', 'zones', 'body', 'monitor', 'enforce') if k in args]
     if not wanted:
         raise Refused('Nothing to change', 'bad_args')
     old = _merged(w)
@@ -264,6 +316,13 @@ def set_limits(w, args, client):
             args['joints'], old['joint_safety_deg'], _joint_count(w, mech_lo), mech_lo, mech_hi)
     if 'velocity' in args:
         new['velocity'] = _check_velocity(args['velocity'], old['velocity'])
+    try:
+        if 'zones' in args:
+            new['zones'] = safety_zones.check_zones(args['zones'])
+        if 'body' in args:
+            new['body'] = safety_zones.check_body(args['body'], _joint_count(w, mech_lo))
+    except ValueError as e:
+        raise Refused(str(e), 'bad_args')
     monitor = _flag(args['monitor'], 'monitor') if 'monitor' in args else None
     enforce = _flag(args['enforce'], 'enforce') if 'enforce' in args else None
     # All checks passed: apply, then publish, as the desktop page does.
@@ -273,6 +332,7 @@ def set_limits(w, args, client):
     if enforce is not None:
         w.safety_enforce = enforce
     w._publish_safety_limits()
+    _save_to_robot(w, new)
     panel = getattr(w, '_safety_panel', None)
     if panel is not None:
         try:

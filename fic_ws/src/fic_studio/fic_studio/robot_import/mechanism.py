@@ -250,22 +250,6 @@ def link_offset(src, info, link, body):
     return np.linalg.inv(tb) @ np.array(poses[link])
 
 
-def pose_xyzw(model, data, body, offset=None):
-    """(position, [x, y, z, w]) of ``body`` (times ``offset``) in world."""
-    bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body)
-    t = np.eye(4)
-    t[:3, :3] = data.xmat[bid].reshape(3, 3)
-    t[:3, 3] = data.xpos[bid]
-    if offset is not None:
-        t = t @ offset
-    q = np.zeros(4)
-    mujoco.mju_mat2Quat(q, t[:3, :3].flatten())
-    w, x, y, z = (float(v) for v in q)
-    if w < 0:
-        w, x, y, z = -w, -x, -y, -z
-    return [float(v) for v in t[:3, 3]], [x, y, z, w]
-
-
 def view_joints(info, mechanism, balls=()):
     """Joints to show for a closed-loop robot: every mechanism joint, balls as r/p/y."""
     out = []

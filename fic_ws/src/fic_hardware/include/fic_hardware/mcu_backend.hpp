@@ -60,6 +60,7 @@ public:
         double torque_cutoff_hz = 200.0;
         double state_cutoff_hz = 10.0;
         double dt = 0.001;
+        double joint_speed_limit = 0.0;              // joint planners' speed cap (rad/s), 0: none
     };
 
     void setAddress(const std::string& a) {
@@ -119,6 +120,10 @@ public:
         c.torque_cutoff_hz = static_cast<float>(lim.torque_cutoff_hz);
         c.state_cutoff_hz = static_cast<float>(lim.state_cutoff_hz);
         c.damping_alpha = static_cast<float>(lim.damping_alpha);
+        c.restart_on_stall = cfg.restart_on_stall ? 1 : 0;
+        c.planner_max_hz = static_cast<float>(cfg.planner_max_hz);
+        c.planner_speed_margin = static_cast<float>(cfg.planner_speed_margin);
+        c.joint_speed_limit = static_cast<float>(lim.joint_speed_limit);
         std::strncpy(c.robot_name, cfg.robot_id.c_str(), sizeof(c.robot_name) - 1);
         const float inf = std::numeric_limits<float>::infinity();
         for (size_t i = 0; i < lim.n; ++i) {

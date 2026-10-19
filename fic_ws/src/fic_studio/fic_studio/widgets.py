@@ -1,12 +1,11 @@
 # widgets.py — Reusable widgets for Robot Selector GUI
 
-import math
 import subprocess
 import os
-from PyQt5.QtCore import Qt, QTimer, QPointF, QProcess, pyqtSignal
-from PyQt5.QtGui import QColor, QPainter, QBrush, QPen, QFont, QTextCursor
+from PyQt5.QtCore import QTimer, QProcess
+from PyQt5.QtGui import QFont, QTextCursor
 from PyQt5.QtWidgets import (
-    QWidget, QLabel, QPushButton, QFrame, QDialog, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QFrame, QDialog, QVBoxLayout, QHBoxLayout,
     QProgressBar, QTextEdit, QSizePolicy,
 )
 
@@ -37,103 +36,6 @@ class StatusLED(QFrame):
         self.setStyleSheet(
             'QFrame { background-color: %s; border-radius: 5px; '
             'border: 1px solid %s; }' % (color, t['bg_base']))
-
-
-def _status_dot(color: str = None) -> QLabel:
-    """Create a small colored dot label for status indicators."""
-    if color is None:
-        from fic_studio import theme
-        color = theme.current()['accent_green']
-    dot = QLabel()
-    dot.setObjectName("StatusDot")
-    dot.setStyleSheet(
-        f"background-color:{color};border-radius:3px;"
-        "min-width:7px;max-width:7px;min-height:7px;max-height:7px;"
-    )
-    return dot
-
-
-class VirtualJoystick(QWidget):
-    """
-    A virtual joystick widget that emits (dx, dy) values from -1.0 to 1.0.
-    
-    Signals:
-        joystickMoved(float, float): Emitted continuously while grabbed,
-                                      with normalized x and y displacement.
-    """
-    joystickMoved = pyqtSignal(float, float)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setMinimumSize(100, 100)
-        self.is_grabbed = False
-        self.max_radius = 40
-        self.stick_radius = 15
-        # We calculate the center dynamically in paintEvent,
-        # but store the stick offset here.
-        self.stick_offset = QPointF(0, 0)
-        # Timer to continuously emit values while held off-center
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.emit_position)
-        self.timer.start(50)  # 20Hz update rate
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        center = QPointF(self.width() / 2, self.height() / 2)
-        # Draw Base
-        from fic_studio import theme
-        t = theme.current()
-        painter.setBrush(QBrush(QColor(t['bg_overlay'])))
-        painter.setPen(QPen(QColor(t['border_subtle']), 2))
-        painter.drawEllipse(center, self.max_radius, self.max_radius)
-        # Draw Stick
-        stick_color = QColor(t['accent_teal']) if self.is_grabbed else QColor(t['text_disabled'])
-        painter.setBrush(QBrush(stick_color))
-        painter.setPen(Qt.NoPen)
-        stick_pos = center + self.stick_offset
-        painter.drawEllipse(stick_pos, self.stick_radius, self.stick_radius)
-
-    def mousePressEvent(self, event):
-        center = QPointF(self.width() / 2, self.height() / 2)
-        if (event.pos() - center).manhattanLength() < self.max_radius:
-            self.is_grabbed = True
-            self.update_stick(event.pos(), center)
-
-    def mouseMoveEvent(self, event):
-        if self.is_grabbed:
-            center = QPointF(self.width() / 2, self.height() / 2)
-            self.update_stick(event.pos(), center)
-
-    def mouseReleaseEvent(self, event):
-        self.is_grabbed = False
-        self.stick_offset = QPointF(0, 0)
-        self.update()
-        self.joystickMoved.emit(0.0, 0.0)  # Stop command
-
-    def update_stick(self, pos, center):
-        vec = pos - center
-        dist = math.hypot(vec.x(), vec.y())
-        # Clamp to max radius
-        if dist > self.max_radius:
-            vec.setX(vec.x() * self.max_radius / dist)
-            vec.setY(vec.y() * self.max_radius / dist)
-        self.stick_offset = vec
-        self.update()
-
-    def emit_position(self):
-        if not self.is_grabbed:
-            return
-        # Normalize to -1.0 to +1.0
-        dx = self.stick_offset.x() / self.max_radius
-        dy = -self.stick_offset.y() / self.max_radius  # Invert Y so UP is positive
-        # Deadzone
-        if abs(dx) < 0.05:
-            dx = 0.0
-        if abs(dy) < 0.05:
-            dy = 0.0
-        if dx != 0.0 or dy != 0.0:
-            self.joystickMoved.emit(dx, dy)
 
 
 class BuildDialog(QDialog):

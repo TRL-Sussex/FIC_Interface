@@ -201,35 +201,68 @@ def _dash_ee(w, ctx):
     return out
 
 
+#: Joint data older than this is not evidence that a limit is respected.
+SAFETY_STALE_MS = 1000.0
+
+
+def _limit_at(raw, i, default):
+    if isinstance(raw, list):
+        return raw[i] if i < len(raw) and raw[i] is not None else default
+    return default if raw is None else raw
+
+
 def _dash_safety(w, ctx, joints):
-    cfg = ctx['cfg']
+    """The Dashboard's three safety lights: 'ok', 'warn' (within 5 % of a joint limit, at 90 % of a
+    torque or velocity limit), 'violation' (past a joint limit) or 'unknown' (no fresh data, or no
+    limit to compare with). Never 'ok' without data."""
+    cfg, rid = ctx['cfg'], ctx['rid']
+    age = None
+    if hasattr(w, 'joint_update_time'):
+        t = w.joint_update_time(rid)
+        age = None if t is None else (time.monotonic() - t) * 1000.0
+    pos = _get(w, 'joint_positions_for', rid)
+    if not pos or (age is not None and age > SAFETY_STALE_MS) or (age is None and hasattr(w, 'joint_update_time')):
+        return {'joints': 'unknown', 'velocity': 'unknown', 'torque': 'unknown'}
+
     jlim = cfg.get('joint_limits_deg') or {}
-    ok_j = True
-    pos = _get(w, 'joint_positions_for', ctx['rid'])
-    if pos and isinstance(jlim, dict):
+    joints_state = 'unknown'
+    if isinstance(jlim, dict) and jlim:
+        joints_state = 'ok'
         lo_raw, hi_raw = jlim.get('lower', -180), jlim.get('upper', 180)
         for i, val in enumerate(pos):
-            lo = math.radians(lo_raw[i] if isinstance(lo_raw, list) and i < len(lo_raw) else
-                              (lo_raw if not isinstance(lo_raw, list) else -180))
-            hi = math.radians(hi_raw[i] if isinstance(hi_raw, list) and i < len(hi_raw) else
-                              (hi_raw if not isinstance(hi_raw, list) else 180))
+            lo, hi = math.radians(_limit_at(lo_raw, i, -180)), math.radians(_limit_at(hi_raw, i, 180))
+            if val < lo or val > hi:
+                joints_state = 'violation'
+                break
             margin = (hi - lo) * 0.05
             if val <= lo + margin or val >= hi - margin:
-                ok_j = False
-                break
-    ok_t = True
+                joints_state = 'warn'
+
+    vel = _get(w, 'joint_velocity_for', rid)
+    vmax = None
+    try:
+        from fic_studio.web_remote.safety import _merged
+        v = _merged(w)['velocity']
+        vmax = _num(v.get('max_joint_vel')) if v.get('enabled') else None
+    except Exception:
+        vmax = None
+    velocity_state = 'unknown'
+    if vel and vmax:
+        velocity_state = 'warn' if any(abs(x) >= vmax * 0.90 for x in vel) else 'ok'
+
     tlim = cfg.get('joint_torque_limits') or {}
-    eff = _get(w, 'joint_effort_for', ctx['rid'])
-    if eff and isinstance(tlim, dict):
+    eff = _get(w, 'joint_effort_for', rid)
+    torque_state = 'unknown'
+    if eff and isinstance(tlim, dict) and tlim:
+        torque_state = 'ok'
         tmx_raw, tmn_raw = tlim.get('max'), tlim.get('min')
         for i, e in enumerate(eff):
-            tmx = tmx_raw[i] if isinstance(tmx_raw, list) and i < len(tmx_raw) else tmx_raw
-            tmn = tmn_raw[i] if isinstance(tmn_raw, list) and i < len(tmn_raw) else tmn_raw
+            tmx, tmn = _limit_at(tmx_raw, i, None), _limit_at(tmn_raw, i, None)
             lim = max(abs(tmx) if tmx is not None else 1.0, abs(tmn) if tmn is not None else 1.0, 1.0)
             if abs(e) >= lim * 0.90:
-                ok_t = False
+                torque_state = 'warn'
                 break
-    return {'joints': ok_j, 'velocity': True, 'torque': ok_t}
+    return {'joints': joints_state, 'velocity': velocity_state, 'torque': torque_state}
 
 
 def dashboard_state(w, ctx):
@@ -471,6 +504,14 @@ def _robot_pause(w, args, client):
     return {'ok': True}
 
 
+def _robot_resume(w, args, client):
+    from fic_studio.web_remote.actions import _estop_gate
+    _estop_gate(w)
+    if not w.resume_for(_station_rid(w, args)):
+        raise Refused('That robot is not paused', 'not_paused')
+    return {'ok': True}
+
+
 def _robot_stop(w, args, client):
     w.stop_for(_station_rid(w, args))
     return {'ok': True}
@@ -576,8 +617,12 @@ def _menu(w, args, client):
         opened = w.serve_docs(str(args.get('page') or 'home')) if hasattr(w, 'serve_docs') else False
         return {'ok': True, 'opened': bool(opened)}
     if item == 'help.wizard':
-        raise Refused('The setup wizard is a window on the Studio machine; run it from the desktop '
-                      '(Help, Re-run Setup Wizard)', 'unavailable')
+        if not (client or {}).get('local') or not hasattr(w, '_run_first_launch_wizard'):
+            raise Refused('The setup wizard is a window on the Studio machine; open it there '
+                          '(Help, Re-run Setup Wizard)', 'unavailable')
+        from PyQt5.QtCore import QTimer
+        QTimer.singleShot(0, w._run_first_launch_wizard)     # a window of its own; this reply goes first
+        return {'ok': True}
     if item not in MENU_CALLS:
         raise Refused('No such menu entry', 'bad_args')
     handler, hardware = MENU_CALLS[item]
@@ -763,6 +808,7 @@ HANDLERS = {
     'station': _station,
     'menu': _menu,
     'robot_pause': _robot_pause,
+    'robot_resume': _robot_resume,
     'robot_stop': _robot_stop,
     'live_publish': _live_publish,
     'reset_defaults': _reset_defaults,

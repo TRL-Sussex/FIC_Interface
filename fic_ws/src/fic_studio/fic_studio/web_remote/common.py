@@ -34,7 +34,7 @@ def _arg_num(args, key):
 
 
 def _who(client):
-    name = (client or {}).get('name') or 'browser'
+    name = (client or {}).get('account') or (client or {}).get('name') or 'browser'
     addr = (client or {}).get('addr') or '?'
     return '%s @ %s' % (name, addr)
 

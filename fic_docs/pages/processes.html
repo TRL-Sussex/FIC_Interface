@@ -156,7 +156,8 @@ it logs a warning and falls back to the CPU simulator. Alongside the simulator t
     station_id:=1 source_prefix:=robot1_simulation</code></pre>
 <p><code>source_prefix</code> selects where the controller reads robot state from:
 <code>robot&lt;sid&gt;_simulation</code> for the simulator, or <code>vr</code> / <code>vr&lt;i&gt;</code> when
-launched by the VR target (multi-robot VR scenes additionally pass <code>joint_name_prefix:=r&lt;i&gt;_</code>).</p>
+launched by the VR target, with <code>joint_name_prefix:=r&lt;i&gt;_</code> (the headset names robot <em>i</em>'s joints
+<code>r&lt;i&gt;_&hellip;</code>, one robot or many).</p>
 
 <h3>FIC Hardware Controller</h3>
 <pre><code>ros2 launch fic_hardware robot_control_launch.py robot_name:=Franka_FR3 station_id:=1</code></pre>
@@ -182,9 +183,8 @@ exit code, and resets the button so you can restart. Drivers are compiled from
 <h3>ROS Bag Recording</h3>
 <pre><code>ros2 bag record -a -o ~/FIC_Interface/experiments/bags/2026_07_04_session_001</code></pre>
 <p>Bags are stored under <code>experiments/bags/</code> in the repo root (not <code>~/bags</code>) as
-<code>YYYY_MM_DD_session_NNN</code>; the session number auto-increments per day. The mixin also implements a
-bag-replay toggle that plays the most recently recorded bag with <code>ros2 bag play</code> and refuses to
-start while recording is active. For structured recording with metadata, prefer the
+<code>YYYY_MM_DD_session_NNN</code>; the session number auto-increments per day. To play a bag back, use
+<code>ros2 bag play</code> on its folder. For structured recording with metadata and replay, prefer the
 <a href="#experiments" onclick="showPage('experiments')">Experiments extension</a> (EXP button).</p>
 
 <h3>Plotter</h3>
@@ -218,13 +218,13 @@ differ per process:</p>
   <tr><td>Simulator</td><td><code>SIGKILL</code> to the group, then to any process still in its session (strays that moved to another process group); the gripper bridge the same way. Nothing outside the Studio's own processes is touched.</td></tr>
   <tr><td>Bag recorder</td><td><code>SIGINT</code> (so the bag closes cleanly), 5&nbsp;s grace, then <code>SIGKILL</code></td></tr>
   <tr><td>Driver</td><td><code>SIGTERM</code>, 3&nbsp;s grace, then <code>SIGKILL</code></td></tr>
-  <tr><td>VR relay + VR FIC controllers</td><td><code>SIGTERM</code> relay / <code>SIGKILL</code> controllers, plus <code>pkill -9 -f vr_relay_node.py</code></td></tr>
+  <tr><td>VR relay + VR FIC controllers</td><td><code>SIGTERM</code> relay / <code>SIGKILL</code> controllers, then <code>SIGKILL</code> to anything left in their sessions</td></tr>
 </table>
-<div class="admonition note"><div class="adm-title">Simulator stop is scoped to this Studio</div>
+<div class="admonition note"><div class="adm-title">Stops are scoped to this Studio</div>
 <p>Before v4.5.0, stopping the simulator also ran <code>pkill -9 -f mujoco</code>, which killed any process on
 the machine whose command line contained "mujoco", including simulators started by another Studio or another
-user. It now stops only the processes in its own session, so several simulators can share a PC. The VR relay
-and the contact twin still use a <code>pkill</code> sweep on their own script names.</p></div>
+user. It now stops only the processes in its own session, so several simulators can share a PC. E-STOP, the
+VR relay and the contact twin now work the same way: no stop in the Studio uses <code>pkill</code>.</p></div>
 
 <h3>Crash-safe cleanup</h3>
 <p>If the GUI itself dies, its children must not keep running &mdash; an orphaned controller would keep

@@ -65,7 +65,6 @@ target_include_directories(fic_hardware PRIVATE
   ${EIGEN3_INCLUDE_DIRS}
   ${fic_simulation_INCLUDE_DIRS}
   ${CMAKE_CURRENT_SOURCE_DIR}/../../../fic_library/include
-
 )
 
 # Reference the executable target name for linking libraries
@@ -95,12 +94,6 @@ install(TARGETS
 # Install the launch directory (if any)
 install(DIRECTORY launch/
   DESTINATION share/${PROJECT_NAME}/launch
-)
-
-# Install Python script
-install(PROGRAMS
-  scripts/plotter_node.py
-  DESTINATION lib/${PROJECT_NAME}
 )
 
 ament_package()

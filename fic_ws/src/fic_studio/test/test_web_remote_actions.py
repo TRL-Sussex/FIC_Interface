@@ -219,10 +219,14 @@ def test_cartesian_modes_are_refused_for_a_legged_robot():
     assert not any(c[0] == 'mode' for c in studio.calls)
 
 
-def test_vr_target_locks_commanding(studio):
+def test_vr_target_commands_the_headsets_fic_controller(studio):
+    # On VR this station's FIC controller drives the headset's arm, so the control
+    # surface commands it as in simulation; only the headset's gripper is not reached.
     studio.control_target = 'vr'
-    assert run(studio, 'set_mode', index=1)['error'] == 'vr_target'
-    assert run(studio, 'home')['error'] == 'vr_target'
+    assert run(studio, 'set_mode', index=1)['ok']
+    assert run(studio, 'home')['ok']
+    reply = run(studio, 'gripper', percent=50)
+    assert reply['error'] == 'unavailable' and 'headset' in reply['message']
 
 
 def test_option_toggles_the_studio_checkbox(studio):
@@ -436,7 +440,7 @@ def test_a_simulation_only_account_may_still_stop_everything(studio):
 
 def test_an_unlimited_account_is_not_affected(studio):
     studio.control_target = 'hardware'
-    assert run(studio, 'home')['ok'] is True
+    assert run(studio, 'home', confirm=True)['ok'] is True
 
 
 # ── Teleoperation ────────────────────────────────────────────────────────

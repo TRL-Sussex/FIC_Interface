@@ -1717,10 +1717,6 @@ class RobotControlMixin:
 
         self.log_message("INFO", f"Pose: ({x:.3f}, {y:.3f}, {z:.3f})", "Control")
 
-    # Keep the old name as an alias for backward compat
-    def publish_custom_pose_axis_angle(self):
-        self._publish_rc_pose()
-
     # ──────────────────────────────────────────────────────────────────────
     #  Joystick handlers
     # ──────────────────────────────────────────────────────────────────────
@@ -1973,12 +1969,6 @@ class RobotControlMixin:
         if hasattr(self, '_cb_mirror_profiles'):
             self._cb_mirror_profiles()
 
-    def _on_rc_profile_changed(self):
-        """User picked a config in the control panel → publish it."""
-        self._publish_rc_profile()
-        self.log_message("INFO",
-            f"Active config → {self._rc_current_profile()}", "Control")
-
     def _publish_rc_profile(self):
         """Publish the currently selected profile on active_profile_publisher_."""
         try:
@@ -2092,10 +2082,6 @@ class RobotControlMixin:
         self._show_page('multi_robot')
         self._set_active_sidebar_btn(self._side_buttons[1])
         self._rc_refresh_joint_count()
-
-    def launch_robot_node(self):
-        """Legacy alias — shows the robot control panel."""
-        self.show_robot_control_panel()
 
 
 class DesiredWrenchDialog(QDialog):

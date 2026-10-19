@@ -57,6 +57,7 @@ static Config makeConfig(uint32_t epoch = 7) {
     c.torque_cutoff_hz = 200;
     c.state_cutoff_hz = 10;
     c.damping_alpha = std::exp(-2.0 * M_PI * 20.0 / 1000.0);
+    c.restart_on_stall = 1; c.planner_max_hz = 8.75f; c.planner_speed_margin = 1.5708f; c.joint_speed_limit = 0;
     for (int i = 0; i < N; ++i) {
         c.lower[i] = -3.0f; c.upper[i] = 3.0f;
         c.fault_lower[i] = -2.5f; c.fault_upper[i] = 2.5f;

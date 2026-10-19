@@ -542,12 +542,6 @@ class _CVADualTrack(QFrame):
         self._cmd_frac = self._to_frac(value)
         self.update()
 
-    def set_fracs(self, actual_frac, cmd_frac):
-        """Set pre-normalised [0, 1] fractions for both actual and commanded."""
-        self._actual_frac = max(0.0, min(1.0, float(actual_frac)))
-        self._cmd_frac = max(0.0, min(1.0, float(cmd_frac)))
-        self.update()
-
     def _to_frac(self, value):
         """Map value in [range_min, range_max] to a [0, 1] fraction."""
         span = self._range_max - self._range_min

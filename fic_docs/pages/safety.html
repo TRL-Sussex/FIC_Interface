@@ -131,28 +131,85 @@ guarded again in the 1&nbsp;kHz control loop before anything is published:</p>
 
 <h2>Tier 1 &mdash; Soft safety zones (GUI)</h2>
 <h3>The Safety page</h3>
-<p>Open <strong>&#8856;&nbsp;Safety</strong> from the sidebar. It is a live page, not just a
-configuration form:</p>
+<p>Open <strong>Safety</strong> from the sidebar. It shows the safety zones, the workspace box, the joint limits
+and the velocity limits, each with a live readout of where the robot is against it. An edit is a draft until you
+press <strong>Review changes</strong>, read the before/after list and press <strong>Apply to the
+controllers</strong>; a change that makes a limit wider is marked. Applied limits are sent to every
+robot&rsquo;s controller at once and, since v5.11.0, saved with the robot selected in the toolbar
+(<code>safety_zones</code> in <code>fic_studio_robots.yaml</code>, as
+<a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a> &rarr; <strong>Safety Zones</strong>
+saves them), so they are still there after a restart.</p>
+
+<h3>The 3D view and its toolbar</h3>
+<p><em>Zones in 3D</em> draws the robot live with every zone. The toolbar on the view holds the tools:</p>
+<table>
+  <tr><th>Tool</th><th>What it does</th></tr>
+  <tr><td><strong>Select and turn</strong> (arrow)</td><td>Click a zone to select it and show its handles; drag a handle to move,
+    lift, resize or turn it; drag elsewhere to turn the view, scroll or pinch to zoom. A face of the workspace box can be
+    dragged along its axis as before (5&nbsp;mm steps, 50&nbsp;mm kept from the opposite face).</td></tr>
+  <tr><td><strong>Box, Sphere, Cylinder</strong></td><td>Click the floor where the shape goes; it starts at a usual size
+    (a 0.3&nbsp;&times;&nbsp;0.3&nbsp;&times;&nbsp;0.5&nbsp;m box, a 0.15&nbsp;m sphere, a 0.15&nbsp;m cylinder 0.8&nbsp;m
+    high) and is selected so you can size it.</td></tr>
+  <tr><td><strong>Draw an outline</strong> (pen)</td><td>Click the floor at each corner of any shape (a bench, a walkway,
+    an L-shaped cell); click the first corner, double-click or press Enter to close it. Set its bottom and top on the strip
+    that appears. Backspace undoes a corner, Esc cancels. An outline that crosses itself is refused.</td></tr>
+  <tr><td><strong>Keep out / Keep in</strong></td><td>What new zones are: the arm stays out of a keep-out zone and inside a
+    keep-in zone. Each zone can be changed afterwards in the list.</td></tr>
+  <tr><td><strong>Bin</strong></td><td>Deletes the selected zone (also the bin at the end of its row in the list). Like
+    every change it is a draft until Review and Apply; Discard brings it back.</td></tr>
+  <tr><td><strong>Table here, Wall here, Set here</strong></td><td>Set a workspace limit where the tool is: guide the arm by
+    hand (joint admittance) until the tool rests on the table or wall and press <strong>Table here</strong> (Z min) or
+    <strong>Wall here</strong> (the X or Y face the tool is furthest towards from the base); <strong>Set here</strong> moves
+    the face chosen next to it. The limit goes at the tool, the margin (20&nbsp;mm by default, next to the buttons) inside.
+    The robot does the measuring, so the limit matches where the surface really is. Move the arm clear before applying.</td></tr>
+</table>
+<p>A zone is drawn green (keep in) or red (keep out), amber when the arm is near it, and the arm&rsquo;s point closest
+to a boundary is marked. Handles: the diamond moves a zone across the floor, the dot above it lifts it, the dots on a
+box&rsquo;s faces move that face (the opposite one stays), the ring turns a box, the dot on a sphere or cylinder sets its
+radius, the dots at a cylinder&rsquo;s or outline&rsquo;s top and bottom set its height, and an outline&rsquo;s corner
+dots move its corners. Every value can also be set with a slider or typed in the selected zone&rsquo;s panel below the
+view, and the joint and velocity limits have sliders next to their numbers (a joint&rsquo;s two thumbs set its lower and
+upper limit over its mechanical range, with a tick where the joint is).</p>
+
+<h3>Whole-arm safety zones</h3>
+<p>Up to 16 zones of four shapes: a box (turned about the vertical), a sphere, an upright cylinder, and an outline drawn
+on the floor raised between two heights. Unlike the workspace box, which bounds the tool point, a zone is checked
+<strong>along the whole arm</strong>: every link from the chosen joint (the second by default: the first link turns about
+its own axis and cannot be moved out of a zone) to the tool, each as a capsule of the link radius (50&nbsp;mm by default)
+and the tool as a ball (30&nbsp;mm), sampled every 4&nbsp;cm. Set them under <em>The arm checked</em>. With several
+keep-in zones the arm must stay inside one of them; it must stay out of every keep-out zone.</p>
+<p>The controller enforces them in every control mode (<code>fic_library/include/fic/safety_zones.h</code>, the same code
+in simulation and on hardware):</p>
 <ul>
-  <li><strong>Master banner</strong> &mdash; an unmissable indicator that reads green
-      &ldquo;SAFETY ZONES ACTIVE&rdquo; or red &ldquo;SAFETY ZONES OFF &mdash; robot motion is
-      unrestricted&rdquo;. Toggle it with the master checkbox.</li>
-  <li><strong>Cartesian workspace box</strong> &mdash; per-axis X / Y / Z min &amp; max
-      (metres), each with its own enable.</li>
-  <li><strong>Joint angle bounds</strong> &mdash; per-joint min &amp; max (degrees) with a
-      single enforce toggle. The row count follows the selected robot&rsquo;s joint count.</li>
-  <li><strong>Live readout</strong> &mdash; the current end-effector position and joint angles
-      are shown beside each limit and coloured green when in&#8209;zone, red when past it &mdash;
-      so you can see exactly how close the robot is to a bound.</li>
-  <li><strong>Mode-aware</strong> &mdash; a &#9656; marks the section relevant to the active
-      control mode (joint vs Cartesian; see <a href="#control-modes" onclick="showPage('control-modes')">Control Modes</a>).</li>
+  <li><strong>Virtual wall.</strong> A link past a boundary is pushed back by 2000&nbsp;N/m on its deepest point, through
+      that point&rsquo;s Jacobian, as the workspace box&rsquo;s wall. The arm comes to rest a few millimetres in where
+      its own impedance pulls it towards a target inside the zone.</li>
+  <li><strong>Joint targets.</strong> A joint target that would put the arm further into a zone than it is now is
+      refused (the last target is held). A target beyond a zone is accepted when the arm can stand there; the wall then
+      stops the arm at the zone on the way, as an obstacle would.</li>
+  <li><strong>Tool targets.</strong> In the Cartesian modes the tool target is moved the least way that keeps it out of
+      the keep-out zones and inside a keep-in zone; where no such place is found nearby, the last one that was is held.</li>
+  <li><strong>Reporting.</strong> The controller publishes the arm&rsquo;s worst clearance at 20&nbsp;Hz; the Safety page
+      shows it (&ldquo;The arm is 34&nbsp;mm from Bench&rdquo;), and the Studio warns and stops on it as for the workspace
+      box.</li>
 </ul>
-<p>Editing any field publishes the new limits to the controller immediately, but only for the
-current session. To <strong>persist</strong> zones, edit them under
-<a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a> &rarr; <strong>Safety Zones</strong>, which
-saves them per robot under the <code>safety_zones</code> key in <code>fic_studio_robots.yaml</code>.
-Velocity limits (<code>max_joint_vel</code>, <code>max_cart_vel</code>) are only editable there
-&mdash; the live Safety page covers the Cartesian box and joint bounds.</p>
+
+<h3>Warnings</h3>
+<p>When a robot touches a limit (comes within 5&nbsp;mm of a safety zone or of a workspace face) or goes past it, a
+warning drops down from the top of the window and goes after six seconds; it stays in <strong>Notices</strong> until
+Clear all. Each robot and limit warns once as it touches and once more if it then goes past, and again only after it has
+been clear of it by 2&nbsp;cm. An E-STOP, and its reset, are put in Notices too.</p>
+
+<h3>Stop on violation</h3>
+<p>The controller holds the robot at the limits by itself (below). <strong>Stop on violation</strong>, on by
+default under <em>Monitoring</em>, is a backstop for when something pushes the arm through anyway: when a
+robot is more than <strong>30&nbsp;mm</strong> past a workspace limit or a safety zone (anywhere along the arm)
+or <strong>2&deg;</strong> past a joint limit, the Studio gives that robot the graceful stop &mdash; E-STOP&rsquo;s first step, the
+&ldquo;Stop Controller&rdquo; ramp-down and a hold at its current joint pose, without stopping any process.
+Closer than that the arm is being held at the limit (the virtual wall gives 60&nbsp;N at 30&nbsp;mm), so an
+arm resting against a limit is not stopped. Each robot is stopped once per episode: it can be stopped again
+only after it has come back within 15&nbsp;mm (1&deg;), so you can restart the controller and move it back
+in. The check runs whether or not the warn-and-log monitor is on.</p>
 
 <h3>Cartesian virtual wall (joint modes)</h3>
 <p>In Cartesian modes (5&ndash;8), Cartesian targets are directly clamped to the zone boundaries.
@@ -183,7 +240,8 @@ controller uses a different mechanism:</p>
   <li><strong>Velocity limits</strong> &mdash; when enabled, a per-joint damping torque is added
       to the actuator command (see below).</li>
   <li><strong>Runtime monitor</strong> &mdash; a 10&nbsp;Hz check in the GUI logs a warning when
-      the robot is past a zone boundary.</li>
+      the robot is past a zone boundary, and gives it the graceful stop when it is clearly past
+      (see <em>Stop on violation</em> above).</li>
 </ul>
 
 <h3>Velocity limits</h3>
@@ -196,6 +254,10 @@ from each joint&rsquo;s final actuator command:</p>
 faster a joint moves, the more its command is opposed &mdash; a soft brake rather than a hard cut.
 <code>max_joint_vel</code> is in rad/s. The Cartesian value <code>max_cart_vel</code> (m/s) is
 received and logged by the controller but is not currently enforced.</p>
+<p>Since v5.11.0 the same value also caps the <strong>joint planners</strong> (modes 2&ndash;4 and the H-PMP
+joint layer): a planned joint move never asks for more than <code>max_joint_vel</code>, so the damper above
+is not left fighting the planner (a Kinova joint in mode 2 used to plan up to 1.5708&nbsp;&times;&nbsp;1.7453
+= 2.74&nbsp;rad/s against a 1.0&nbsp;rad/s limit). Off when the limits are disabled.</p>
 <p>A robot's velocity block may also set <code>sim_max_joint_vel</code>, used instead of
 <code>max_joint_vel</code> for a robot driven in simulation (the Studio sends it to robots on the
 Simulation target, and the simulation node reads it at start-up); hardware always uses
@@ -209,6 +271,12 @@ so large moves converge in simulation.</p>
   <tr><td><code>robot{N}_safety/cartesian_limits</code></td><td><code>[x_min, x_max, x_en, y_min, y_max, y_en, z_min, z_max, z_en]</code></td></tr>
   <tr><td><code>robot{N}_safety/joint_limits</code></td><td><code>[j0_min, j0_max, j1_min, j1_max, ..., enabled]</code> (radians)</td></tr>
   <tr><td><code>robot{N}_safety/velocity_limits</code></td><td><code>[max_joint_vel, max_cart_vel, enabled]</code></td></tr>
+  <tr><td><code>robot{N}_safety/zones</code></td><td><code>[1, link_radius, tool_radius, first_joint (0-based), n, zone...]</code>,
+    each zone <code>[shape, keep_in, enabled, k, k values]</code>: box (0) centre, half sizes, turn (rad); sphere (1) centre,
+    radius; cylinder (2) x, y, radius, bottom, top; outline (3) bottom, top, corners x, y&hellip; Latched (transient local),
+    so a controller started later gets them.</td></tr>
+  <tr><td><code>robot{N}_safety/zone_state</code></td><td>From the controller, 20&nbsp;Hz while a zone is on:
+    <code>[clearance (m, negative past), zone, segment, segments past, x, y, z of the worst point]</code></td></tr>
 </table>
 <p>The GUI publishes the <strong>same</strong> limits to every active robot &mdash; a master station
 with several robots applies one workspace box to all of them. Until the GUI publishes, the

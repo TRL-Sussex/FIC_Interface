@@ -5653,6 +5653,13 @@
                     <asymmetric>false</asymmetric>
                     <n_neg_sat>1</n_neg_sat>
                 </controller>
+                <planner>
+                    <stiffness>15780.0</stiffness>
+                    <vel_desired>3.0</vel_desired>
+                    <acc_max>5000.0</acc_max>
+                    <damping_ratio>0.01</damping_ratio>
+                    <frequency>150.0</frequency>
+                </planner>
                 <admittance>
                     <InvM>1.0</InvM>
                     <Damping>9.0</Damping>
@@ -5672,6 +5679,13 @@
                     <asymmetric>false</asymmetric>
                     <n_neg_sat>1</n_neg_sat>
                 </controller>
+                <planner>
+                    <stiffness>15780.0</stiffness>
+                    <vel_desired>3.0</vel_desired>
+                    <acc_max>5000.0</acc_max>
+                    <damping_ratio>0.01</damping_ratio>
+                    <frequency>150.0</frequency>
+                </planner>
                 <admittance>
                     <InvM>1.0</InvM>
                     <Damping>9.0</Damping>
@@ -5691,6 +5705,13 @@
                     <asymmetric>false</asymmetric>
                     <n_neg_sat>1</n_neg_sat>
                 </controller>
+                <planner>
+                    <stiffness>15780.0</stiffness>
+                    <vel_desired>3.0</vel_desired>
+                    <acc_max>5000.0</acc_max>
+                    <damping_ratio>0.01</damping_ratio>
+                    <frequency>150.0</frequency>
+                </planner>
                 <admittance>
                     <InvM>1.0</InvM>
                     <Damping>9.0</Damping>
@@ -5710,6 +5731,13 @@
                     <asymmetric>false</asymmetric>
                     <n_neg_sat>1</n_neg_sat>
                 </controller>
+                <planner>
+                    <stiffness>15780.0</stiffness>
+                    <vel_desired>3.0</vel_desired>
+                    <acc_max>5000.0</acc_max>
+                    <damping_ratio>0.01</damping_ratio>
+                    <frequency>150.0</frequency>
+                </planner>
                 <admittance>
                     <InvM>1.0</InvM>
                     <Damping>9.0</Damping>
@@ -5729,6 +5757,13 @@
                     <asymmetric>false</asymmetric>
                     <n_neg_sat>1</n_neg_sat>
                 </controller>
+                <planner>
+                    <stiffness>15780.0</stiffness>
+                    <vel_desired>3.0</vel_desired>
+                    <acc_max>5000.0</acc_max>
+                    <damping_ratio>0.01</damping_ratio>
+                    <frequency>150.0</frequency>
+                </planner>
                 <admittance>
                     <InvM>1.0</InvM>
                     <Damping>9.0</Damping>
@@ -5748,6 +5783,13 @@
                     <asymmetric>false</asymmetric>
                     <n_neg_sat>1</n_neg_sat>
                 </controller>
+                <planner>
+                    <stiffness>15780.0</stiffness>
+                    <vel_desired>3.0</vel_desired>
+                    <acc_max>5000.0</acc_max>
+                    <damping_ratio>0.01</damping_ratio>
+                    <frequency>150.0</frequency>
+                </planner>
                 <admittance>
                     <InvM>1.0</InvM>
                     <Damping>9.0</Damping>
@@ -5767,6 +5809,13 @@
                     <asymmetric>false</asymmetric>
                     <n_neg_sat>1</n_neg_sat>
                 </controller>
+                <planner>
+                    <stiffness>15780.0</stiffness>
+                    <vel_desired>3.0</vel_desired>
+                    <acc_max>5000.0</acc_max>
+                    <damping_ratio>0.01</damping_ratio>
+                    <frequency>150.0</frequency>
+                </planner>
                 <admittance>
                     <InvM>1.0</InvM>
                     <Damping>9.0</Damping>
@@ -5788,6 +5837,13 @@
                     <asymmetric>false</asymmetric>
                     <n_neg_sat>1</n_neg_sat>
                 </controller>
+                <planner>
+                    <stiffness>15780.0</stiffness>
+                    <vel_desired>3.0</vel_desired>
+                    <acc_max>5000.0</acc_max>
+                    <damping_ratio>0.01</damping_ratio>
+                    <frequency>150.0</frequency>
+                </planner>
                 <admittance>
                     <InvM>1.0</InvM>
                     <Damping>9.0</Damping>
@@ -5807,6 +5863,13 @@
                     <asymmetric>false</asymmetric>
                     <n_neg_sat>1</n_neg_sat>
                 </controller>
+                <planner>
+                    <stiffness>15780.0</stiffness>
+                    <vel_desired>3.0</vel_desired>
+                    <acc_max>5000.0</acc_max>
+                    <damping_ratio>0.01</damping_ratio>
+                    <frequency>150.0</frequency>
+                </planner>
                 <admittance>
                     <InvM>1.0</InvM>
                     <Damping>9.0</Damping>
@@ -5826,6 +5889,13 @@
                     <asymmetric>false</asymmetric>
                     <n_neg_sat>1</n_neg_sat>
                 </controller>
+                <planner>
+                    <stiffness>15780.0</stiffness>
+                    <vel_desired>3.0</vel_desired>
+                    <acc_max>5000.0</acc_max>
+                    <damping_ratio>0.01</damping_ratio>
+                    <frequency>150.0</frequency>
+                </planner>
                 <admittance>
                     <InvM>1.0</InvM>
                     <Damping>9.0</Damping>
@@ -5845,6 +5915,13 @@
                     <asymmetric>false</asymmetric>
                     <n_neg_sat>1</n_neg_sat>
                 </controller>
+                <planner>
+                    <stiffness>15780.0</stiffness>
+                    <vel_desired>3.0</vel_desired>
+                    <acc_max>5000.0</acc_max>
+                    <damping_ratio>0.01</damping_ratio>
+                    <frequency>150.0</frequency>
+                </planner>
                 <admittance>
                     <InvM>1.0</InvM>
                     <Damping>9.0</Damping>
@@ -5864,6 +5941,13 @@
                     <asymmetric>false</asymmetric>
                     <n_neg_sat>1</n_neg_sat>
                 </controller>
+                <planner>
+                    <stiffness>15780.0</stiffness>
+                    <vel_desired>3.0</vel_desired>
+                    <acc_max>5000.0</acc_max>
+                    <damping_ratio>0.01</damping_ratio>
+                    <frequency>150.0</frequency>
+                </planner>
                 <admittance>
                     <InvM>1.0</InvM>
                     <Damping>9.0</Damping>
@@ -5883,6 +5967,13 @@
                     <asymmetric>false</asymmetric>
                     <n_neg_sat>1</n_neg_sat>
                 </controller>
+                <planner>
+                    <stiffness>15780.0</stiffness>
+                    <vel_desired>3.0</vel_desired>
+                    <acc_max>5000.0</acc_max>
+                    <damping_ratio>0.01</damping_ratio>
+                    <frequency>150.0</frequency>
+                </planner>
                 <admittance>
                     <InvM>1.0</InvM>
                     <Damping>9.0</Damping>
@@ -5902,6 +5993,13 @@
                     <asymmetric>false</asymmetric>
                     <n_neg_sat>1</n_neg_sat>
                 </controller>
+                <planner>
+                    <stiffness>15780.0</stiffness>
+                    <vel_desired>3.0</vel_desired>
+                    <acc_max>5000.0</acc_max>
+                    <damping_ratio>0.01</damping_ratio>
+                    <frequency>150.0</frequency>
+                </planner>
                 <admittance>
                     <InvM>1.0</InvM>
                     <Damping>9.0</Damping>

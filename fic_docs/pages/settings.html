@@ -1,6 +1,6 @@
 <div class="breadcrumb"><a href="#home" onclick="showPage('home')">Home</a><span class="bc-sep">&rsaquo;</span> Settings</div>
 <h1>Settings</h1>
-<p class="subtitle">Stored in <code>~/.robot_selector_gui_settings.yaml</code> &mdash; v5.10.0</p>
+<p class="subtitle">Stored in <code>~/.robot_selector_gui_settings.yaml</code> &mdash; v5.11.0</p>
 
 <h2>Accessing Settings</h2>
 <p>Open <strong>Settings</strong> from the sidebar (or press <code>Ctrl+5</code>). Settings are displayed as a
@@ -171,6 +171,16 @@ A file saved before v4.5.0 may say <code>backend: mujoco</code> (the retired C++
 <div class="admonition tip"><div class="adm-title">The Newton dropdown entry is greyed out if the package is not installed</div><p>The Settings card probes <code>importlib.util.find_spec('newton')</code>. If Newton was uninstalled, the entry shows <em>"Newton (not installed &mdash; run install-deps.sh)"</em> and cannot be selected.</p></div>
 <p>Switching backends does not restart anything automatically. If a simulation is already running,
 stop it (<strong>SIM</strong> off), change the setting, and start it again &mdash; the new backend will launch.</p>
+
+
+<h2>Data <span style="font-size:0.75em;vertical-align:middle;">&#x26A0; Restart required</span></h2>
+<p><strong>Experiments folder</strong>: where experiments and bags are recorded. Blank: the repository's
+<code>experiments/</code> when the checkout can be written to, else <code>~/.local/share/fic_studio/experiments</code>.
+<code>$FIC_EXPERIMENTS_DIR</code> overrides it. Robot configs, tuning (<code>config.xml</code>) and imported models stay
+with the lab's robot library in the repository, where the controllers read them.</p>
+<p>Two more variables move the rest of this machine's files: <code>$FIC_STUDIO_HOME</code> the state folder
+(<code>~/.fic_studio</code>: web accounts, certificate, audit log) and <code>$FIC_STUDIO_SETTINGS</code>
+this settings file.</p>
 
 <h2>Playback Tolerances</h2>
 <p>Used by <a href="#sequences" onclick="showPage('sequences')">Sequences</a> and <a href="#teach-mode" onclick="showPage('teach-mode')">Teach Mode</a>

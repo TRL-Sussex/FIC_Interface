@@ -11,6 +11,8 @@ const { $, h, fmt, setText, setSeg, section, pageTitle, cmd, toast } = window.FI
 const TARGET = { simulation: 'simulation', hardware: 'hardware', vr: 'vr' };
 const EE_ROWS = ['commanded', 'pose', 'error', 'velocity'];
 const EE_COLS = ['x', 'y', 'z', 'ox', 'oy', 'oz'];
+const SAFE_DOT = { ok: 'ok', warn: 'warn', violation: 'bad', unknown: '' };
+const SAFE_TEXT = { ok: 'ok', warn: 'near limit', violation: 'past limit', unknown: 'no data' };
 const JOINT_COLS = ['commanded', 'position', 'error', 'velocity', 'torque'];
 const JOINT_DETAIL = JOINT_COLS.concat(['τ max', '% τ', 'limit lo', 'limit hi', '% range']);
 
@@ -36,7 +38,7 @@ window.FIC.pages.dashboard = function buildDashboard(root) {
   const wbody = h('tbody');
   const safety = h('div', { class: 'safe-row' });
   const safeEls = {};
-  for (const [k, label] of [['joints', 'Joint limits'], ['velocity', 'Velocity limits'], ['torque', 'Force / torque']]) { const d = h('span', { class: 'dot ok' }), t = h('span', { text: label }); safeEls[k] = d; safety.append(h('span', { class: 'sr-item' }, d, t)); }
+  for (const [k, label] of [['joints', 'Joint limits'], ['velocity', 'Velocity limits'], ['torque', 'Force / torque']]) { const d = h('span', { class: 'dot' }), t = h('span', { text: label }), st = h('span', { class: 'faint sr-state', text: 'no data' }); safeEls[k] = { d, st }; safety.append(h('span', { class: 'sr-item' }, d, t, st)); }
   overview.append(
     section('Base', null, base),
     section('Joints', { id: 'jt-aside' }, tableOf(JOINT_COLS, jbody)),
@@ -95,7 +97,11 @@ window.FIC.pages.dashboard = function buildDashboard(root) {
       setText($('#w-c'), w.contact ? '● contact' : '○ free');
       fillRows(wbody, [{ label: 'force', values: w.force || [] }, { label: 'torque', values: w.torque || [] }], ['x', 'y', 'z'], 2);
       const sf = d.safety || {};
-      for (const k of Object.keys(safeEls)) safeEls[k].className = 'dot ' + (sf[k] === false ? 'bad' : 'ok');
+      for (const k of Object.keys(safeEls)) {      // never green without data: grey 'no data' until the robot reports
+        const v = sf[k] === true ? 'ok' : sf[k] === false ? 'warn' : (sf[k] || 'unknown');
+        safeEls[k].d.className = 'dot ' + (SAFE_DOT[v] || '');
+        setText(safeEls[k].st, SAFE_TEXT[v] || 'no data');
+      }
     } else {
       fillRows(jdbody, joints.map(j => ({ label: j.label, values: [j.commanded, j.position, j.error, j.velocity, j.torque, j.tau_max, j.pct_tau, j.lo, j.hi, j.pct_range] })), JOINT_DETAIL, 2);
       const ee = d.ee || {}, w = d.wrench || {};

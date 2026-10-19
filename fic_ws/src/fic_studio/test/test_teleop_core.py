@@ -260,6 +260,12 @@ class TestSessions:
         assert m[3].accept(s.sid)
         assert m[1].leading()
 
+    def test_follower_on_vr_accepts_like_simulation(self):
+        # VR drives the headset's simulated arm: no real arm moves, so nobody is asked.
+        m, h, _ = _lab(target='vr')
+        s = m[1].request(1, 3)
+        assert not h[3].asked and m[3].following().sid == s.sid
+
     def test_refused_when_robots_differ(self):
         m, h, _ = _lab(robot='Franka_FR3')
         s = m[0].request(1, 3, leader_robot='KinovaGen3_7DOF', leader_joints=7)

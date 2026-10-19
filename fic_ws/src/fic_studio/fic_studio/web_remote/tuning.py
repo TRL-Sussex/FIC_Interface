@@ -31,25 +31,23 @@ _CONTROLLER = [
     ('n_neg_sat', 'Negative-side points', '', 'int', 'controller', 1, 4),
 ]
 _VELOCITY = ('velocity', 'Velocity limit', 'rad/s', 'number', 'controller', 0.0, 20.0)
+# Not the planner's stiffness or frequency either: the planner derives its stiffness and does not
+# read the frequency (FIC.cpp Planner). Acceleration max is a cap (0: none). The robot-wide
+# frequency cap and speed margin are on the Robot Config page (robots_config.yaml fic_law).
 _PLANNER_JOINT = [
-    ('planner_stiffness', 'Planner stiffness', '', 'number', 'planner', 0.0, 1e7),
     ('planner_vel_desired', 'Desired velocity', '', 'number', 'planner', 0.0, 50.0),
     ('planner_acc_max', 'Acceleration max', '', 'number', 'planner', 0.0, 1e6),
     ('planner_damping_ratio', 'Damping ratio', '', 'number', 'planner', 0.0, 10.0),
-    ('planner_frequency', 'Frequency', 'Hz', 'number', 'planner', 1.0, 5000.0),
     ('planner_wrapped', 'Wrapped joint', '', 'choice', 'planner', 0, 1),
     ('planner_pos_lower', 'Position lower', 'rad', 'number', 'planner', -100.0, 100.0),
     ('planner_pos_upper', 'Position upper', 'rad', 'number', 'planner', -100.0, 100.0),
 ]
 _PLANNER_AXIS = [
-    ('planner_stiffness_p', 'Planner stiffness', '', 'number', 'planner', 0.0, 1e7),
     ('planner_vel_desired', 'Desired velocity', '', 'number', 'planner', 0.0, 50.0),
     ('planner_acc_max', 'Acceleration max', '', 'number', 'planner', 0.0, 1e6),
     ('planner_damping_ratio', 'Damping ratio', '', 'number', 'planner', 0.0, 10.0),
-    ('planner_frequency', 'Frequency', 'Hz', 'number', 'planner', 1.0, 5000.0),
 ]
-_PLANNER_POSTURAL = [f for f in _PLANNER_AXIS if f[0] != 'planner_stiffness_p'] + [
-    ('planner_stiffness', 'Planner stiffness', '', 'number', 'planner', 0.0, 1e7)]
+_PLANNER_POSTURAL = list(_PLANNER_AXIS)
 _ADMITTANCE = [
     ('admittance_inv_m', 'Inverse mass', '', 'number', 'admittance', 0.0, 1e6),
     ('admittance_damping', 'Damping', '', 'number', 'admittance', 0.0, 1e5),

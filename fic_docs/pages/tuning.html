@@ -341,7 +341,7 @@ for comparison; <code>sim</code> is &times;4 and
 <code>&#9656;</code> header to expand it. Sections that do not apply to the current mode/axis are hidden entirely:</p>
 <table>
   <tr><th>Section</th><th>Shown for</th><th>Contents</th></tr>
-  <tr><td><strong>PLANNER</strong></td><td>Modes 2&ndash;4 and 6&ndash;8 (hidden for <code>elbow</code>/<code>postural</code>)</td><td>Stiffness P, Vel Desired, Acc Max, Damping Ratio, Frequency; Wrapped and Pos Limits for joint modes only</td></tr>
+  <tr><td><strong>PLANNER</strong></td><td>Modes 2&ndash;4 and 6&ndash;8 (hidden for <code>elbow</code>/<code>postural</code>)</td><td>Vel Desired, Acc Max, Damping Ratio; Wrapped and Pos Limits for joint modes only</td></tr>
   <tr><td><strong>ADMITTANCE</strong></td><td>Modes 3&ndash;4 and 7&ndash;8 (hidden for <code>elbow</code>/<code>postural</code>)</td><td>Inv-M, Damping Kv, dFlow, Flow, Pose</td></tr>
   <tr><td><strong>ADVANCED</strong></td><td>Always</td><td>Asymmetric checkbox, N_negSat spinner</td></tr>
 </table>
@@ -350,14 +350,16 @@ for comparison; <code>sim</code> is &times;4 and
 <p>Stored in the <code>&lt;planner&gt;</code> block of each joint/axis:</p>
 <table>
   <tr><th>Field</th><th>XML tag</th><th>Field range</th><th>Description</th></tr>
-  <tr><td>Stiffness P</td><td><code>stiffness</code> (joint) / <code>stiffness_P</code> (Cartesian)</td><td>0 &ndash; 5000</td><td>Planner attractor stiffness (separate from FIC K&#8320;)</td></tr>
   <tr><td>Vel Desired</td><td><code>vel_desired</code></td><td>0 &ndash; 10</td><td>Desired trajectory velocity (rad/s or m/s)</td></tr>
-  <tr><td>Acc Max</td><td><code>acc_max</code></td><td>0 &ndash; 50</td><td>Acceleration limit</td></tr>
+  <tr><td>Acc Max</td><td><code>acc_max</code></td><td>0 &ndash; 10000</td><td>Cap on the planner's acceleration (rad/s&sup2; or m/s&sup2;); 0: no cap. The shipped 5000 is never reached</td></tr>
   <tr><td>Damping Ratio</td><td><code>damping_ratio</code></td><td>0 &ndash; 2</td><td>Velocity damping &mdash; higher values reduce oscillation but slow convergence</td></tr>
-  <tr><td>Frequency</td><td><code>frequency</code></td><td>0.01 &ndash; 100 Hz</td><td>Planner update frequency</td></tr>
   <tr><td>Wrapped</td><td><code>wrapped</code></td><td>0 / 1</td><td>Joint modes only: treat the joint as continuous (wrap-around)</td></tr>
   <tr><td>Pos Limits</td><td><code>pos_limits lower=".." upper=".."</code></td><td>&plusmn;6.28 rad</td><td>Joint modes only: planner position limits</td></tr>
 </table>
+<p>The planner's <code>stiffness</code> / <code>stiffness_P</code> and <code>frequency</code> stay in config.xml but are
+not offered (since v5.11.0): the planner derives its stiffness and does not read the frequency, and a save keeps
+the stored values. Its frequency cap and speed margin are per robot, on the
+<a href="#robot-config" onclick="showPage('robot-config')">Robot Config</a> page (<code>fic_law</code>).</p>
 
 <h2>Admittance Parameters</h2>
 <p>Stored in the <code>&lt;admittance&gt;</code> block of each joint/axis:</p>

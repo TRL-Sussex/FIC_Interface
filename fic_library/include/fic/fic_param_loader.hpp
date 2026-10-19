@@ -120,12 +120,14 @@ public:
         joint_admittance.assign(num_joints, {1.0, 100.0, {0.05, 0.1}, {5.0, 39.0}, {5.0, 39.0}});
         for (size_t i = 0; i < num_joints; ++i) {
             joint_lists[i] = {{0.05, 0.1, 0.2}, {20.0, 40.0, 60.0}, {0.8, 0.9, 1.0}, {0.5, 1.0, 1.5}, 6, false, 3};
-            joint_planners[i] = {150.0, 0.3, 0.5, 1.0, 1000.0, 0.0};
+            // acc_max 5000 as config.xml: it caps the planner since FIC 5.11.0, and the 0.5 here
+            // before had no effect.
+            joint_planners[i] = {150.0, 0.3, 5000.0, 1.0, 1000.0, 0.0};
         }
         for (int i = 0; i < 3; ++i) {
-            cart_params.pos_axes[i] = {500.0, 100.0, {0.02, 0.05, 0.1}, {10.0, 20.0, 30.0}, {0.7, 0.9, 1.0}, 6, false, 3, 200.0, 0.1, 0.2, 1.0, 1000.0};
+            cart_params.pos_axes[i] = {500.0, 100.0, {0.02, 0.05, 0.1}, {10.0, 20.0, 30.0}, {0.7, 0.9, 1.0}, 6, false, 3, 200.0, 0.1, 5000.0, 1.0, 1000.0, {}};
         }
-        cart_params.rot_axis = {50.0, 10.0, {0.1, 0.2}, {5.0, 10.0}, {1.0, 1.0}, 4, false, 2, 50.0, 0.5, 1.0, 1.0, 1000.0};
+        cart_params.rot_axis = {50.0, 10.0, {0.1, 0.2}, {5.0, 10.0}, {1.0, 1.0}, 4, false, 2, 50.0, 0.5, 5000.0, 1.0, 1000.0, {}};
     }
 
     // Whether the robot has a <mode id="control_mode"> block for this profile or, failing

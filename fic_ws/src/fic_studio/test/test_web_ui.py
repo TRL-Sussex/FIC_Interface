@@ -277,10 +277,10 @@ def test_the_page_list_is_the_classic_sidebar_in_its_order_and_has_no_control_pa
     bottom = [p for p in UI_PAGES if p[4] == 'bottom']
     system = [p for p in UI_PAGES if p[4] == 'system']
     assert [p[1] for p in main] == ['Dashboard', 'Multi-Robot', 'Locomotion', 'Tuning Panel']
-    assert [p[1] for p in system] == ['Robot Config', 'Topic Monitor', 'Safety']
+    assert [p[1] for p in system] == ['Robot Config', 'Topic Monitor', 'Safety', 'Session']
     # Users sits with Settings: both are administration, not operating the arm.
     assert [p[1] for p in bottom] == ['Users', 'Settings', 'Logs', 'Help']
-    assert {p[0] for p in UI_PAGES if p[4] == 'hidden'} == {'extensions', 'session', 'view3d'}
+    assert {p[0] for p in UI_PAGES if p[4] == 'hidden'} == {'extensions', 'view3d'}
     js = (UI_DIR / 'app.js').read_text()
     assert 'buildControl' not in js and "#/control" not in (UI_DIR / 'dock.js').read_text()
 
@@ -311,8 +311,11 @@ def test_the_six_classic_menus_are_there_with_their_entries():
 
 def test_status_bar_has_the_classic_indicators():
     js = (UI_DIR / 'shell.js').read_text()
-    items = re.search(r"SB_ITEMS = \[(.*?)\];", js).group(1)
-    assert re.findall(r"'([A-Z0-9]+)'\]", items) == ['ROS2', 'FIC', 'SIM', 'BAGS', 'INNER', 'TELEOP', 'GAMEPAD', 'WEB']
+    items = re.search(r"SB_ITEMS = \[(.*?)\];", js, re.S).group(1)
+    # [key, the prefix of the Studio's text, the label shown, spelled out]
+    rows = re.findall(r"\['(\w+)', '([A-Z0-9]+)', '([^']+)'\]", items)
+    assert [r[1] for r in rows] == ['ROS2', 'FIC', 'SIM', 'BAGS', 'INNER', 'TELEOP', 'GAMEPAD', 'WEB']
+    assert [r[2] for r in rows][:3] == ['ROS 2', 'Controller', 'Simulator']
     assert "sb-robot" in js and 'statusbar' in js
 
 
@@ -353,7 +356,7 @@ def test_estop_stays_above_everything_and_is_the_only_boxed_control():
 def test_narrow_layout_keeps_estop_and_the_menu_bar():
     css = (UI_DIR / 'fic.css').read_text()
     narrow = css[css.index('@media (max-width: 860px)'):css.index('@media (prefers-reduced-motion')]
-    assert '.only-s { display: inline-block; }' in narrow and 'body:not(.side-collapsed) .side { display: flex; }' in narrow
+    assert 'body:not(.side-collapsed) .side { display: flex; }' in narrow
     assert not re.search(r'\.estop-wrap[^{]*\{[^}]*display:\s*none', narrow)          # never hidden
     assert '.menubar' in narrow and '.drawer' in narrow
 

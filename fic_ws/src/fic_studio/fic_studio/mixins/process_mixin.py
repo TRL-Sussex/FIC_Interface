@@ -13,6 +13,7 @@ from PyQt5.QtWidgets import QPushButton, QMessageBox
 
 from fic_studio.mixins.settings_mixin import (
     SIM_BACKEND_CPU, SIM_BACKEND_GPU, normalize_sim_backend)
+from fic_studio import notices
 from fic_studio.mcu_probe import discover as mcu_discover
 
 from std_msgs.msg import Int32, String
@@ -151,9 +152,8 @@ _PROC_ATTRS = (
     ('simulation_process', 'simulation_running', 'Simulation'),
     ('fic_process',        'fic_running',        'FIC controller'),
     ('vr_relay_process',   'vr_relay_running',   'VR relay'),
-    ('vr_fic_process',     'vr_fic_running',     'VR FIC controller'),
+    ('vr_bg_relay_process', 'vr_bg_relay_running', 'VR relay (background)'),
     ('bags_process',       'bags_running',       'Bag recorder'),
-    ('bag_replay_process', 'bag_replay_running', 'Bag replay'),
     ('plotter_process',    'plotter_running',    'Plotter'),
     ('locomotion_process', 'locomotion_running', 'Locomotion'),
     ('contact_twin_process', 'contact_twin_running', 'Contact twin'),
@@ -274,6 +274,15 @@ class ProcessMixin:
     # ══════════════════════════════════════════════════════════════════════════
     #  CRASH-SAFE TEARDOWN
     # ══════════════════════════════════════════════════════════════════════════
+    def _owned_sessions(self):
+        """Session ids of every process this Studio started and that is still alive: the ones in
+        _PROC_ATTRS, the gripper bridge and the VR controllers. Each leads its own session
+        (_child_preexec), so its session id is its pid."""
+        procs = [getattr(self, attr, None) for attr, _run, _label in self._PROC_ATTRS]
+        procs.append(getattr(self, 'gripper_bridge_process', None))
+        procs.extend(getattr(self, '_vr_fic_processes', None) or [])
+        return [p.pid for p in procs if p is not None and getattr(p, 'pid', None) and p.poll() is None]
+
     def _kill_all_processes(self, reason: str = "GUI exiting") -> None:
         """Forcefully tear down every subprocess this GUI started.
 
@@ -343,21 +352,6 @@ class ProcessMixin:
             except Exception:
                 pass
 
-    def _update_toggle_btn(self, btn: QPushButton, running: bool, start_style: str, label: str):
-        """
-        Legacy helper — resolves category from old objectName and delegates
-        to _apply_btn_style so all callers (E-Stop etc.) keep working.
-        """
-        category_map = {
-            'BtnTeal':    'hw',
-            'BtnPrimary': 'sim',
-            'BtnWarn':    'util',
-            'BtnGreen':   'util',
-        }
-        category = category_map.get(start_style, 'sim')
-        icon = '■' if running else '▶'
-        _apply_btn_style(btn, running, category, f'{icon} {label}')
-
     # ══════════════════════════════════════════════════════════════════════════
     #  CONTROLLER
     # ══════════════════════════════════════════════════════════════════════════
@@ -397,8 +391,7 @@ class ProcessMixin:
             self._mode_republish_waited_ms = 0
             QTimer.singleShot(_MODE_REPUBLISH_POLL_MS, self._mode_republish_when_ready)
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to start controller: {e}")
-            self.log_message("ERROR", f"Failed to start controller: {e}", "Process")
+            notices.alert(self, 'error', 'Controller failed to start', str(e), 'Process')
 
     def _mode_republish_when_ready(self):
         """Re-assert the mode as soon as the controller is listening.
@@ -621,8 +614,7 @@ class ProcessMixin:
                 lambda p=launched_proc, lbl=backend_label, b=backend, lp=log_path:
                     self._check_sim_alive(p, lbl, b, lp))
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to start simulation: {e}")
-            self.log_message("ERROR", f"Failed to start simulation: {e}", "Process")
+            notices.alert(self, 'error', 'Simulation failed to start', str(e), 'Process')
 
     def _check_sim_alive(self, expected_proc, backend_label, backend, log_path):
         """Surface an error if the simulation subprocess died during warmup.
@@ -672,10 +664,10 @@ class ProcessMixin:
                 "\n\nNewton 1.1.0 cannot load mesh-heavy MJCFs (Franka, Kinova, "
                 "IIWA, UR5e, XArm7). Switch to MuJoCo in Settings → Simulation, "
                 "or pick the Pendulum robot to test Newton.")
-        QMessageBox.critical(
-            self, f"{backend_label} failed to start",
+        notices.alert(
+            self, 'error', f"{backend_label} failed to start",
             f"The simulation subprocess exited during startup.\n\n"
-            f"Log: {log_path}\n\nLast lines:\n{log_tail[-1200:]}" + hint)
+            f"Log: {log_path}\n\nLast lines:\n{log_tail[-1200:]}" + hint, 'Process')
 
     def _stop_simulation(self):
         try:
@@ -782,9 +774,8 @@ class ProcessMixin:
                 proc.kill()
             except Exception:
                 pass
-        subprocess.run(
-            ['pkill', '-9', '-f', 'fic_contact.twin'],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if proc is not None:
+            _kill_session(proc.pid)    # anything it spawned; nothing outside it
         self.contact_twin_process = None
         self.contact_twin_running = False
         _apply_btn_style(
@@ -808,10 +799,6 @@ class ProcessMixin:
             self._start_fic_simulation()
         self._update_status()
 
-    # Keep the name the toolbar uses
-    def _toggle_fic_controller(self):
-        self._toggle_fic_simulation()
-
     def _start_fic_simulation(self):
         robot_name = self.robot_dropdown.currentText()
         num_joints = self.robots.get(robot_name, 7)
@@ -819,8 +806,14 @@ class ProcessMixin:
             ws_path = _FIC_WS
             sid = self.node.station_id
             target = self.robot_target(self.node.station_robot_id)
+            if target == "vr" and self._vr_drives_station(sid):
+                self.log_message("INFO", "The VR relay already runs this station's FIC controller", "Process")
+                return
             source_prefix = "vr" if target == "vr" else f"robot{sid}_simulation"
             cmd = f"source {ws_path}/install/setup.bash && exec ros2 launch fic_simulation fic_launch.py robot_name:={robot_name} num_joints:={num_joints} station_id:={sid} source_prefix:={source_prefix}"
+            if target == "vr":
+                # The headset's scene composer names every robot's joints r{i}_, one robot or many.
+                cmd += " joint_name_prefix:=r0_"
             self.fic_process = subprocess.Popen(
                 ["bash", "-c", cmd],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -830,8 +823,7 @@ class ProcessMixin:
             _apply_btn_style(self.fic_toggle_btn, True, 'sim', '■ FIC')
             self.log_message("INFO", f"FIC controller started for {robot_name} ({num_joints} joints)", "Process")
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to start FIC controller: {e}")
-            self.log_message("ERROR", f"Failed to start FIC controller: {e}", "Process")
+            notices.alert(self, 'error', 'FIC controller failed to start', str(e), 'Process')
 
     def _stop_fic_simulation(self):
         try:
@@ -870,10 +862,7 @@ class ProcessMixin:
                 "INFO", f"Locomotion controller started for {robot_name}",
                 "Process")
         except Exception as e:
-            QMessageBox.critical(
-                self, "Error", f"Failed to start locomotion controller: {e}")
-            self.log_message(
-                "ERROR", f"Failed to start locomotion controller: {e}", "Process")
+            notices.alert(self, 'error', 'Locomotion controller failed to start', str(e), 'Process')
 
     def _stop_locomotion(self):
         """Stop the gait controller."""
@@ -897,7 +886,127 @@ class ProcessMixin:
     # ══════════════════════════════════════════════════════════════════════════
     #  VR (relay + FIC controller with source_prefix=vr)
     # ══════════════════════════════════════════════════════════════════════════
-    _VR_RELAY_SCRIPT = str(_FIC_ROOT.parent / "VRAPK" / "tools" / "vr_relay_node.py")
+    # The headset-app repo (VRAPK): $FIC_VRAPK, else a sibling of FIC_Interface, else ~/VRAPK.
+    _VRAPK_DIRS = [d for d in (os.environ.get('FIC_VRAPK'), str(_FIC_ROOT.parent / "VRAPK"),
+                               os.path.expanduser('~/VRAPK')) if d]
+    _VR_RELAY_SCRIPT = next(
+        (os.path.join(d, "tools", "vr_relay_node.py") for d in _VRAPK_DIRS
+         if os.path.isfile(os.path.join(d, "tools", "vr_relay_node.py"))),
+        os.path.join(_VRAPK_DIRS[0], "tools", "vr_relay_node.py"))
+
+    def _vr_settings(self):
+        """The Settings page's VR card (``settings['vr']``), filled with the defaults."""
+        from fic_studio.mixins.settings_mixin import DEFAULT_SETTINGS
+        out = dict(DEFAULT_SETTINGS['vr'])
+        out.update((getattr(self, 'settings', None) or {}).get('vr') or {})
+        return out
+
+    def _vr_relay_env(self, fic_station=0):
+        """The relay's environment: the Studio's own, plus the VR settings."""
+        env = dict(os.environ)
+        for k in ('FIC_VR_FIC_STATION', 'FIC_VR_HEADSET_IP', 'FIC_VR_KEY'):
+            env.pop(k, None)
+        if fic_station:
+            env['FIC_VR_FIC_STATION'] = str(fic_station)
+        s = self._vr_settings()
+        env['FIC_VR_VIEWER'] = '1' if s.get('allow_viewers') else '0'
+        env['FIC_VR_STATIONS'] = '1' if s.get('fleet_stations') else '0'
+        if (s.get('headset_ip') or '').strip():
+            env['FIC_VR_HEADSET_IP'] = s['headset_ip'].strip()
+        from fic_studio import features
+        if features.headset():
+            from fic_studio.fleet import vr_pairing
+            key = vr_pairing.relay_key(s)       # Settings > VR > Require a pairing key
+            if key:
+                env['FIC_VR_KEY'] = key
+        return env
+
+    def _spawn_vr_relay(self, env, tag=''):
+        """Start tools/vr_relay_node.py; return (process, log file handle, log path)."""
+        relay_cmd = (
+            f"source {_FIC_WS}/install/setup.bash && "
+            f"exec python3 -u {self._VR_RELAY_SCRIPT}"
+        )
+        log = f"/tmp/fic_vr_relay_{tag}{int(time.time())}.log"
+        fh = open(log, "w")
+        proc = subprocess.Popen(
+            ["bash", "-c", relay_cmd],
+            stdout=fh, stderr=subprocess.STDOUT,
+            preexec_fn=_child_preexec, cwd=_FIC_WS, env=env
+        )
+        return proc, fh, log
+
+    # The background relay (Settings > VR "Relay always on"): while the Studio is open and
+    # VR is not started, headsets find this Studio, their robots join the Multi-Robot page
+    # as VR stations and Watch the lab works. Starting VR swaps it for VR's own relay.
+    def _apply_vr_settings(self, from_settings=False):
+        if from_settings:
+            self._vr_bg_failures = 0
+        if getattr(self, 'vr_relay_running', False):
+            return              # VR's own relay is up; it took the settings when it started
+        s = self._vr_settings()
+        from fic_studio import features
+        want = (bool(s.get('relay_always_on')) and os.path.isfile(self._VR_RELAY_SCRIPT)
+                and features.headset())     # a build without the headset station runs no background relay
+        key = tuple(sorted(s.items()))
+        proc = getattr(self, 'vr_bg_relay_process', None)
+        running = proc is not None and proc.poll() is None
+        if running and (not want or key != getattr(self, '_vr_bg_key', None)):
+            self._stop_vr_background()
+            running = False
+        if want and not running:
+            self._start_vr_background(key)
+
+    def _start_vr_background(self, key=None):
+        try:
+            self.vr_bg_relay_process, self._vr_bg_log_fh, log = self._spawn_vr_relay(self._vr_relay_env(), 'bg_')
+        except Exception as e:
+            self.log_message("WARN", f"VR relay (background) did not start: {e}", "VR")
+            return
+        self.vr_bg_relay_running = True
+        self._vr_bg_started = time.monotonic()
+        self._vr_bg_key = key or tuple(sorted(self._vr_settings().items()))
+        self.log_message("INFO", "VR relay running in the background: headsets find this Studio, "
+                         f"show on Multi-Robot and can watch the lab (Settings > VR; log: {log})", "VR")
+
+    def _vr_bg_watchdog(self):
+        """Bring the background relay back when it is not running and should be: after an E-STOP
+        (which stops every process of this Studio) or if it stopped by itself. Every 5 s."""
+        proc = getattr(self, 'vr_bg_relay_process', None)
+        if proc is not None and proc.poll() is None:
+            return
+        if proc is not None:
+            # it exited by itself: once quickly after starting is a port in use, not worth a loop
+            quick = time.monotonic() - getattr(self, '_vr_bg_started', 0.0) < 10.0
+            self._vr_bg_failures = getattr(self, '_vr_bg_failures', 0) + 1 if quick else 0
+            self._stop_vr_background()
+            if self._vr_bg_failures >= 3:
+                self.log_message("WARN", "VR relay (background) keeps stopping: is another relay using "
+                                 "UDP 9095 on this PC? Not restarting it (Settings > VR to try again)", "VR")
+                self._vr_bg_key = None
+                return
+            self.log_message("WARN", f"VR relay (background) stopped (exit {proc.returncode}): restarting", "VR")
+        elif getattr(self, '_vr_bg_failures', 0) >= 3 and getattr(self, '_vr_bg_key', 1) is None:
+            return                  # gave up; saving the VR settings tries again
+        self._apply_vr_settings()
+
+    def _stop_vr_background(self):
+        proc = getattr(self, 'vr_bg_relay_process', None)
+        if proc is not None:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            except Exception:
+                pass
+            _kill_session(proc.pid)
+            self.vr_bg_relay_process = None
+        fh = getattr(self, '_vr_bg_log_fh', None)
+        if fh is not None:
+            try:
+                fh.close()
+            except Exception:
+                pass
+            self._vr_bg_log_fh = None
+        self.vr_bg_relay_running = False
 
     def _init_vr_robots(self):
         if not hasattr(self, '_vr_robots'):
@@ -930,25 +1039,22 @@ class ProcessMixin:
         self._vr_robots = []
         self._vr_fic_processes = []
 
-        ws_path = _FIC_WS
         relay_script = self._VR_RELAY_SCRIPT
 
         if not os.path.isfile(relay_script):
-            QMessageBox.critical(self, "VR Error", f"Relay script not found:\n{relay_script}")
+            notices.alert(self, 'error', 'VR relay not found',
+                          "Looked for tools/vr_relay_node.py in:\n" + "\n".join(self._VRAPK_DIRS)
+                          + "\nSet FIC_VRAPK to the VRAPK folder.", 'Process')
             return
 
+        self._stop_vr_background()      # VR's own relay takes the port
         try:
-            relay_cmd = (
-                f"source {ws_path}/install/setup.bash && "
-                f"exec python3 -u {relay_script}"
-            )
-            relay_log = f"/tmp/fic_vr_relay_{int(time.time())}.log"
-            self._vr_relay_log_fh = open(relay_log, "w")
-            self.vr_relay_process = subprocess.Popen(
-                ["bash", "-c", relay_cmd],
-                stdout=self._vr_relay_log_fh, stderr=subprocess.STDOUT,
-                preexec_fn=_child_preexec, cwd=ws_path
-            )
+            # On the VR target the headset's first robot IS this station: FIC drives it, the
+            # control area commands it, the HUD's mode buttons reach this station's controller.
+            # Otherwise the headset's robots are VR stations only (fleet/vr_station.py).
+            self._vr_fic_target = self.robot_target(self.node.station_robot_id) == 'vr'
+            env = self._vr_relay_env(self.node.station_id if self._vr_fic_target else 0)
+            self.vr_relay_process, self._vr_relay_log_fh, relay_log = self._spawn_vr_relay(env)
             self.vr_relay_running = True
             self._update_vr_label()
 
@@ -964,8 +1070,7 @@ class ProcessMixin:
                 f"VR relay started (auto-detect mode, log: {relay_log})",
                 "Process")
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to start VR: {e}")
-            self.log_message("ERROR", f"Failed to start VR: {e}", "Process")
+            notices.alert(self, 'error', 'VR relay failed to start', str(e), 'Process')
 
     def _on_vr_scene_config(self, msg):
         self._vr_pending_scene_config = msg.data
@@ -997,59 +1102,72 @@ class ProcessMixin:
         self._kill_vr_fic_processes()
 
         self._vr_robots = new_robots
+        if not getattr(self, '_vr_fic_target', False):
+            names = ', '.join(r for _, r, _ in new_robots)
+            self.log_message("INFO", f"VR headset: {len(new_robots)} robot(s) [{names}], "
+                             "on the fleet as VR stations (FIC drives them on the VR target)", "VR")
+            return
+
         multi = len(new_robots) > 1
         ws_path = _FIC_WS
+        me = self.node.station_id
 
         self._vr_fic_processes = []
         for i, (sid, robot_name, num_joints) in enumerate(new_robots):
-            if multi:
-                source_prefix = f'vr{i}'
-                jnp = f'r{i}_'
-            else:
-                source_prefix = 'vr'
-                jnp = ''
-
+            # Only this Studio's own station runs FIC on the PC; the headset runs FIC for its
+            # other robots itself (the VR stations 1002...), commanded on their station topics.
+            if sid != me:
+                continue
+            if getattr(self, 'fic_running', False):
+                continue        # the Session page's FIC controller already drives this station
+            source_prefix = f'vr{i}' if multi else 'vr'
+            # The headset's scene composer names every robot's joints r{i}_, one robot or many.
             fic_cmd = (
                 f"source {ws_path}/install/setup.bash && "
                 f"exec ros2 launch fic_simulation fic_launch.py "
                 f"robot_name:={robot_name} num_joints:={num_joints} "
-                f"station_id:={sid} source_prefix:={source_prefix}"
+                f"station_id:={sid} source_prefix:={source_prefix} joint_name_prefix:=r{i}_"
             )
-            if jnp:
-                fic_cmd += f" joint_name_prefix:={jnp}"
-
             proc = subprocess.Popen(
                 ["bash", "-c", fic_cmd],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                preexec_fn=_child_preexec, cwd=ws_path
+                preexec_fn=_child_preexec, cwd=ws_path, env=self._sim_env()
             )
             self._vr_fic_processes.append(proc)
 
         self.vr_fic_running = True
         self._update_vr_label()
 
-        if hasattr(self, 'set_robot_target') and hasattr(self, 'node'):
-            for sid, _, _ in new_robots:
-                self.set_robot_target(f"robot{sid}", "vr")
-
+        own = [(sid, rname, nj) for sid, rname, nj in new_robots if sid == me]
         names = ', '.join(f'{r}(RID{s})' for s, r, _ in new_robots)
         self.log_message(
             "INFO",
-            f"VR auto-detected {len(new_robots)} robot(s): [{names}]",
+            f"VR auto-detected {len(new_robots)} robot(s): [{names}]"
+            + ("" if own else f" — none is station {me}: is the relay this Studio's?"),
             "VR")
+        if not own:
+            return
+        rid = self.node.station_robot_id
+        if hasattr(self, 'set_robot_target'):
+            self.set_robot_target(rid, "vr")
+        _, rname, nj = own[0]
+        self.node.publish_robot(rname, robot_id=me)
+        self.node.publish_joints(nj, robot_id=me)
 
-        if hasattr(self, 'node') and new_robots:
-            for sid, rname, nj in new_robots:
-                self.node.publish_robot(rname, robot_id=sid)
-                self.node.publish_joints(nj, robot_id=sid)
-
-        if hasattr(self, '_vr_mode_sub') and self._vr_mode_sub is not None:
+        # The HUD's mode buttons: the relay publishes them on this station's mode topic,
+        # which the controller acts on; the Studio only shows them (_poll_vr_mode).
+        if getattr(self, '_vr_mode_sub', None) is not None:
             self.node.destroy_subscription(self._vr_mode_sub)
-        first_sid = new_robots[0][0]
         from rclpy.qos import QoSProfile
         self._vr_mode_sub = self.node.create_subscription(
-            Int32, f'robot{first_sid}_control_mode',
+            Int32, f'{rid}_control_mode',
             self._on_vr_mode_received, QoSProfile(depth=10))
+
+    def _vr_drives_station(self, sid):
+        """True while the VR relay's FIC controllers include station ``sid``'s."""
+        return (getattr(self, 'vr_relay_running', False) and getattr(self, '_vr_fic_target', False)
+                and any(s == sid for s, _, _ in getattr(self, '_vr_robots', []))
+                and any(p.poll() is None for p in getattr(self, '_vr_fic_processes', [])))
 
     def _stop_vr(self):
         self._kill_vr_fic_processes()
@@ -1060,6 +1178,7 @@ class ProcessMixin:
                 os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
             except Exception:
                 pass
+            _kill_session(proc.pid)
             self.vr_relay_process = None
 
         if getattr(self, '_vr_relay_log_fh', None):
@@ -1068,11 +1187,8 @@ class ProcessMixin:
             except Exception:
                 pass
             self._vr_relay_log_fh = None
-        subprocess.run(["pkill", "-9", "-f", "vr_relay_node.py"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.vr_relay_running = False
         self.vr_fic_running = False
-        self.vr_fic_process = None
 
         if hasattr(self, '_vr_mode_sub') and self._vr_mode_sub is not None:
             self.node.destroy_subscription(self._vr_mode_sub)
@@ -1085,11 +1201,14 @@ class ProcessMixin:
 
         self._update_vr_label()
 
-        if hasattr(self, 'set_robot_target') and hasattr(self, 'node'):
-            for sid, _, _ in getattr(self, '_vr_robots', []):
-                self.set_robot_target(f"robot{sid}", "simulation")
+        # This station goes back to the toolbar's target (the per-robot override is VR's own).
+        targets = getattr(self, '_robot_targets', None)
+        if targets is not None and hasattr(self, 'node'):
+            targets.pop(self.node.station_robot_id, None)
         self._vr_robots = []
+        self._vr_fic_target = False
         self.log_message("INFO", "VR stopped (relay + controllers)", "Process")
+        self._apply_vr_settings()       # back to the background relay, if it is on
 
     def _kill_vr_fic_processes(self):
         for proc in getattr(self, '_vr_fic_processes', []):
@@ -1099,7 +1218,9 @@ class ProcessMixin:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
             except Exception:
                 pass
+            _kill_session(proc.pid)
         self._vr_fic_processes = []
+        self.vr_fic_running = False
 
     def _on_vr_mode_received(self, msg):
         self._vr_pending_mode = msg.data
@@ -1109,11 +1230,14 @@ class ProcessMixin:
         if mode is None:
             return
         self._vr_pending_mode = None
-        if hasattr(self, 'mode_dropdown'):
-            idx = mode - 1
-            if 0 <= idx < self.mode_dropdown.count():
-                self.mode_dropdown.setCurrentIndex(idx)
-        self.log_message("INFO", f"VR mode changed to {mode}", "VR")
+        if not 1 <= mode <= 8 or mode - 1 == getattr(self, '_rc_selected_mode_idx', -1):
+            return          # this Studio's own publish, or nothing new
+        from fic_studio.mixins.robot_control_mixin import CONTROL_MODE_NAMES
+        if hasattr(self, 'update_mode_ui_only'):
+            self.update_mode_ui_only(CONTROL_MODE_NAMES[mode - 1])
+        elif hasattr(self, 'mode_dropdown') and mode - 1 < self.mode_dropdown.count():
+            self.mode_dropdown.setCurrentIndex(mode - 1)
+        self.log_message("INFO", f"Mode {mode} ({CONTROL_MODE_NAMES[mode - 1]}) selected on the headset", "VR")
 
     # ══════════════════════════════════════════════════════════════════════════
     #  BAGS
@@ -1172,8 +1296,7 @@ class ProcessMixin:
         except Exception as e:
             self.bags_running = False
             _apply_btn_style(self.bags_toggle_btn, False, 'util', '▶ BAG')
-            self.log_message("ERROR", f"Failed to start bags: {e}", "Process")
-            QMessageBox.critical(self, "Error", f"Failed to start bags: {e}")
+            notices.alert(self, 'error', 'Bag recording failed to start', str(e), 'Process')
 
     def _bag_log_tail(self, lines: int = 12) -> str:
         """Last few lines of the recorder's log, for error reporting."""
@@ -1215,10 +1338,10 @@ class ProcessMixin:
             f"Bag recording failed to start (exit code {proc.returncode}). "
             f"See {getattr(self, '_bag_log_path', 'the recorder log')}",
             "Process")
-        QMessageBox.critical(
-            self, "Bag recording failed",
+        notices.alert(
+            self, 'error', "Bag recording failed",
             f"ros2 bag record exited immediately (code {proc.returncode}), so "
-            f"nothing is being recorded.{detail}")
+            f"nothing is being recorded.{detail}", 'Process')
         self._update_status()
 
     def _summarise_bag(self, path: str):
@@ -1262,10 +1385,10 @@ class ProcessMixin:
                 f"Bag recorded 0 messages over {duration_s:.1f}s. Nothing was "
                 f"captured — were the controller and simulator running?",
                 "Process")
-            QMessageBox.warning(
-                self, "Empty bag",
-                f"{os.path.basename(path)} contains no messages.\n\n"
-                f"Start the simulator and controller before recording.")
+            notices.alert(
+                self, 'warn', "Empty bag",
+                f"{os.path.basename(path)} contains no messages. "
+                f"Start the simulator and controller before recording.", 'Process')
             return
 
         empty = [t["topic_metadata"]["name"] for t in entries
@@ -1320,71 +1443,6 @@ class ProcessMixin:
             self._summarise_bag(path)
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  BAG REPLAY
-    # ══════════════════════════════════════════════════════════════════════════
-    def _toggle_bag_replay(self):
-        if getattr(self, 'bag_replay_running', False):
-            self._stop_bag_replay()
-        else:
-            self._start_bag_replay()
-        self._update_status()
-
-    def _find_latest_bag(self):
-        from fic_studio.config import EXPERIMENTS_ROOT
-        bags_dir = os.path.join(EXPERIMENTS_ROOT, "bags")
-        if not os.path.isdir(bags_dir):
-            return None
-        entries = [
-            os.path.join(bags_dir, d)
-            for d in os.listdir(bags_dir)
-            if os.path.isdir(os.path.join(bags_dir, d))
-        ]
-        return max(entries, key=os.path.getmtime) if entries else None
-
-    def _start_bag_replay(self):
-        if getattr(self, 'bags_running', False):
-            QMessageBox.warning(self, "Bag Replay", "Stop bag recording before replaying.")
-            return
-        bag_path = getattr(self, 'current_bag_path', None) or self._find_latest_bag()
-        if not bag_path:
-            QMessageBox.warning(self, "Bag Replay", "No bag found in experiments/bags.")
-            return
-        try:
-            # Same latent bug as the recorder had: a relative `source` only
-            # works if the GUI happens to have been started from fic_ws.
-            self.bag_replay_process = subprocess.Popen(
-                ["bash", "-c",
-                 f"source {shlex.quote(str(_FIC_WS))}/install/setup.bash && "
-                 f"exec ros2 bag play {shlex.quote(bag_path)}"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                preexec_fn=_child_preexec, cwd=_FIC_WS,
-            )
-            self.bag_replay_running = True
-            _apply_btn_style(getattr(self, 'tb_bag_replay_btn', None), True, 'util', '■ REP')
-            self.log_message("INFO", f"Replaying bag: {bag_path}", "Process")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to replay bag: {e}")
-            self.log_message("ERROR", f"Failed to replay bag: {e}", "Process")
-
-    def _stop_bag_replay(self):
-        try:
-            if hasattr(self, 'bag_replay_process') and self.bag_replay_process:
-                os.killpg(os.getpgid(self.bag_replay_process.pid), signal.SIGTERM)
-                self.bag_replay_process.wait(timeout=5)
-                self.bag_replay_process = None
-        except subprocess.TimeoutExpired:
-            try:
-                os.killpg(os.getpgid(self.bag_replay_process.pid), signal.SIGKILL)
-            except Exception:
-                pass
-        except Exception as e:
-            self.log_message("WARN", f"Error stopping bag replay: {e}", "Process")
-        finally:
-            self.bag_replay_running = False
-            _apply_btn_style(getattr(self, 'tb_bag_replay_btn', None), False, 'util', '▶ REP')
-            self.log_message("INFO", "Bag replay stopped", "Process")
-
-    # ══════════════════════════════════════════════════════════════════════════
     #  PLOTTER
     # ══════════════════════════════════════════════════════════════════════════
     def _toggle_plotter(self):
@@ -1412,8 +1470,7 @@ class ProcessMixin:
             _apply_btn_style(self.plotter_toggle_btn, True, 'util', '■ PLT')
             self.log_message("INFO", "Plotter started (background)", "Process")
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to start plotter: {e}")
-            self.log_message("ERROR", f"Failed to start plotter: {e}", "Process")
+            notices.alert(self, 'error', 'Plotter failed to start', str(e), 'Process')
 
     def _stop_plotter(self):
         try:
@@ -1471,15 +1528,12 @@ class ProcessMixin:
             self.log_message("INFO", f"{robot_name}: {detail} — standard vendor driver", "Process")
         driver_cmd = self._resolve_driver_command(robot_name)
         if not driver_cmd:
-            QMessageBox.warning(
-                self, "No Driver Command",
-                f"No driver command configured for '{robot_name}'.\n\n"
-                f"In Robot Configuration, open {robot_name}'s Hardware tab and\n"
-                f"drop its driver library there, or set the driver command.\n\n"
-                f"Use {{robot_lib}} for the robot_library directory\n"
-                f"Use {{robot_name}} for the robot ID."
-            )
-            self.log_message("WARN", f"No driver command for {robot_name}", "Process")
+            notices.alert(
+                self, 'warn', f"No driver command for {robot_name}",
+                f"In Robot Configuration, open {robot_name}'s Hardware tab and "
+                f"drop its driver library there, or set the driver command "
+                f"({{robot_lib}} is the robot_library directory, {{robot_name}} the robot ID).",
+                'Process')
             return
         try:
             # Note: driver_cmd is user-supplied (vendor binary), so we don't
@@ -1499,8 +1553,8 @@ class ProcessMixin:
             self.log_message("INFO", f"Driver started for {robot_name} (PID: {self.driver_process.pid})", "Process")
             self._start_driver_log_pump()
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to start driver:\n{e}\n\nCommand was:\n{driver_cmd}")
-            self.log_message("ERROR", f"Failed to start driver for {robot_name}: {e}", "Process")
+            notices.alert(self, 'error', f'Driver for {robot_name} failed to start',
+                          f"{e}\n\nCommand was:\n{driver_cmd}", 'Process')
 
     def _mcu_send_start(self, attempt=0):
         """Tell fic_hardware to start on the MCU: it runs the robot's
@@ -1683,13 +1737,11 @@ class ProcessMixin:
         build_dir = config.get('build_directory', '')
         build_cmd = config.get('build_command', '')
         if not build_dir or not build_cmd:
-            QMessageBox.warning(
-                self, "No Build Config",
-                f"No build configuration for '{robot_name}'.\n\n"
-                f"In Robot Configuration, open {robot_name}'s Hardware tab and\n"
-                f"drop its driver library there, or set:\n"
-                f"  • Build directory\n  • Build command"
-            )
+            notices.alert(
+                self, 'warn', f"No build configuration for {robot_name}",
+                f"In Robot Configuration, open {robot_name}'s Hardware tab and "
+                f"drop its driver library there, or set its build directory and build command.",
+                'Process')
             return
         build_dir = os.path.expanduser(build_dir.replace('{robot_lib}', _FIC_ROBOT_LIB).replace('{robot_name}', robot_name))
         build_cmd = build_cmd.replace('{robot_lib}', _FIC_ROBOT_LIB).replace('{robot_name}', robot_name)
@@ -1722,17 +1774,4 @@ class ProcessMixin:
         dlg.exec_()
         return dlg.exit_code
 
-    # ══════════════════════════════════════════════════════════════════════════
-    #  LEGACY STUBS
-    # ══════════════════════════════════════════════════════════════════════════
-    def start_simulation(self):
-        self._toggle_simulation()
 
-    def start_Bags(self):
-        self._toggle_bags()
-
-    def start_plotter_node(self):
-        self._toggle_plotter()
-
-    def start_robot_controller_node(self, robot_name: str):
-        self._toggle_controller()

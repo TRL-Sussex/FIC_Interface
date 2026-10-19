@@ -1,5 +1,5 @@
 """
-Help page mixin for FIC Control Studio v5.10.0.
+Help page mixin for FIC Control Studio.
 
 Provides ``HelpMixin._build_help_page() -> QWidget`` which assembles a
 searchable, theme-aware help page: a ``QLineEdit`` search bar and a
@@ -18,6 +18,7 @@ content colours are injected via a ``<style>`` block generated from
 ``theme.current()`` and re-injected on ``theme.signals.theme_changed``.
 """
 
+from fic_studio import version
 import os
 import re
 import sys
@@ -57,7 +58,7 @@ HELP_SECTIONS: List[Tuple[str, str, Union[str, Callable]]] = []
 
 _HTML_GETTING_STARTED = """
 <h2>Getting Started</h2>
-<p><b>FIC Control Studio v5.10.0</b> is the operator GUI for the Fractal
+<p><b>FIC Control Studio v{VERSION}</b> is the operator GUI for the Fractal
 Impedance Control (FIC) framework. It runs the FIC C++ controller and the
 simulator, talks to them over ROS 2 / DDS, and lets you drive, tune and
 monitor a robot; up to four robot stations can work side by side.</p>
@@ -98,10 +99,12 @@ controller, use <b>Settings &rarr; Processes</b>.</p>
   <li><b>Extensions</b> &ndash; optional pages, switched on in
       Settings &rarr; Extensions (restart to apply).</li>
   <li><b>E-STOP</b> &ndash; the red button at the top right,
-      Robot &rarr; Emergency Stop, <b>Space</b> or <b>Esc</b>: halts all
-      motion and stops the running processes.</li>
+      Robot &rarr; Emergency Stop or <b>Space</b>: halts all motion and
+      stops the running processes. It is a software stop, not a substitute
+      for the robot&rsquo;s physical stop, and it stays latched until
+      <b>Reset</b> on the red banner.</li>
 </ul>
-"""
+""".replace('{VERSION}', version.RELEASE)
 
 # -- 2. Window Layout ---------------------------------------------------------
 
@@ -134,8 +137,8 @@ stop; Simulation starts and stops the simulator and the controller. The
       <td>Two selectors: the station (Robot 1&ndash;4, Master) and the
           robot model.</td></tr>
   <tr><td><b>E-STOP</b></td>
-      <td>Emergency stop (also <b>Space</b>, or <b>Esc</b> when nothing is
-          open to close).</td></tr>
+      <td>Emergency stop (also <b>Space</b>). <b>Esc</b> only closes
+          menus and panels.</td></tr>
 </table>
 <p>EXP, BAG, PLT and VIEW ask for a second click to confirm.</p>
 
@@ -446,8 +449,10 @@ _HTML_SAFETY = """
 
 <h3>E-STOP</h3>
 <p>Triggered by the <b>E-STOP</b> button (top right), Robot &rarr; Emergency
-Stop, <b>Space</b>, <b>Esc</b> (when nothing is open to close) or gamepad
-<b>B</b>. It:</p>
+Stop, <b>Space</b> or gamepad <b>B</b> (<b>Esc</b> never fires it). It is
+a software stop: it cannot replace the robot&rsquo;s own emergency stop,
+and it cannot act when the Studio is not answering (the button then turns
+grey and says so). It:</p>
 <ol>
   <li>tells every loaded extension to halt, and ends teleoperation (the
       partner arms are stopped too);</li>
@@ -455,30 +460,67 @@ Stop, <b>Space</b>, <b>Esc</b> (when nothing is open to close) or gamepad
       every robot and waits 250&nbsp;ms, so the robot settles into a hold
       instead of keeping its last torque;</li>
   <li>holds each robot at its last joint pose;</li>
-  <li>stops every process (controllers, driver, simulator, rosbag,
-      plotter) &mdash; including every <code>ros2 launch</code> running on
-      this computer;</li>
-  <li>shows &ldquo;E-STOP sent&rdquo; and, in the status bar,
-      &ldquo;E-STOP ACTIVE&rdquo;. Start is refused for 2&nbsp;s after.</li>
+  <li>stops every process this Studio started (controllers, driver,
+      simulator, rosbag, plotter). Other users' simulators and launches on
+      the same computer keep running;</li>
+  <li>latches: a red banner says when and by whom (the account, the
+      gamepad or the station that sent it), the tab title starts with
+      &ldquo;E-STOP&rdquo;, and Start, processes, motion, Home and
+      teleoperation are refused until <b>Reset&hellip;</b> on the banner.
+      Reset asks you to check the robot and starts nothing.</li>
 </ol>
+<p>Every E-STOP, reset, session or process start and stop, target change,
+teleoperation request and control hand-over is also written to
+<code>~/.fic_studio/audit.log</code> (one JSON line each, with the account
+name; it cannot be cleared from the UI).</p>
 
 <h3>Safety page</h3>
-<p>Cartesian zones (x, y, z minimum and maximum in metres), joint limits
-(degrees), velocity limits and force/torque limits, each with a live readout
-of where the robot is. Edits are reviewed, then applied to every
-robot&rsquo;s controller. They last until the robot is reselected or the
-Studio restarts; the permanent values are in <b>Robot Config &rarr;
-Safety</b>.</p>
+<p>Safety zones, the workspace box (x, y, z minimum and maximum in metres,
+checked at the tool), joint limits (degrees) and velocity limits, each with a
+live readout of where the robot is. Edits are reviewed, then applied to every
+robot&rsquo;s controller and saved with the robot selected in the toolbar.</p>
+<p>The toolbar on <em>Zones in 3D</em> makes and moves zones, all reviewed and
+applied the same way:</p>
+<ul>
+  <li><b>Select and turn</b> (arrow): click a zone to show its handles and
+      drag them to move, lift, resize or turn it; drag a face of the workspace
+      box along its axis; drag elsewhere to turn the view.</li>
+  <li><b>Box, Sphere, Cylinder</b>: click the floor where the shape goes.</li>
+  <li><b>Draw an outline</b> (pen): click the floor at each corner; click the
+      first corner, double-click or press Enter to close it, and set its bottom
+      and top. Backspace undoes a corner, Esc cancels.</li>
+  <li><b>Bin</b>: deletes the selected zone (Review and Apply to remove it
+      from the controllers).</li>
+  <li><b>Keep out / Keep in</b>: what new zones are. A zone is checked along
+      the whole arm (from the joint set under <em>The arm checked</em> to the
+      tool), not only at the tool point.</li>
+  <li><b>Table here, Wall here, Set here</b>: guide the arm by hand (joint
+      admittance) until the tool rests on the table or wall and press one; the
+      workspace limit goes at the tool&rsquo;s position, the margin (20&nbsp;mm
+      by default) inside. Move the arm clear before applying.</li>
+</ul>
+<p>Every value also has a slider next to its number. When a robot touches a
+zone or a workspace face, or goes past it, a warning drops down and stays in
+<b>Notices</b>.</p>
 <ul>
   <li>The controller <b>clamps commanded targets</b> to the enabled joint and
       Cartesian limits and holds the end effector inside the zone with a
       virtual wall.</li>
   <li><b>Joint modes and the workspace:</b> a joint target whose end effector
-      would leave the enabled Cartesian box is rejected.</li>
+      would leave the enabled Cartesian box is rejected, and one that would take
+      the arm further into a safety zone; a link past a zone is pushed back by a
+      virtual wall in every mode.</li>
   <li>The Studio checks the position 10 times a second, warns in the outer
-      10&nbsp;% of each range and logs every violation. The
-      <em>Stop the robot on a violation</em> switch has no effect at present:
-      the controller&rsquo;s clamping and wall do the bounding.</li>
+      10&nbsp;% of each range and logs every violation.</li>
+  <li><b>Stop on violation</b> (on by default) is a backstop for when
+      something pushes the arm through a limit: a robot more than 30&nbsp;mm
+      past a Cartesian limit or a safety zone, or 2&deg; past a joint limit, gets the graceful
+      stop (E-STOP&rsquo;s ramp-down and pose hold, without stopping any
+      process). Closer than that the controller holds it at the limit by
+      itself, so an arm resting against a limit is not stopped. Only that
+      robot is stopped, once: it can be stopped again after it has come back
+      within half that distance, so you can restart the controller and move
+      it back in.</li>
   <li><b>Velocity limits:</b> the maximum joint velocity acts as damping on
       every joint (simulation uses the robot&rsquo;s <code>sim_max_joint_vel</code>
       unless &ldquo;simulate like the real robot&rdquo; is on). The maximum
@@ -639,7 +681,7 @@ _HTML_GLOSSARY = """
 
 _HTML_ABOUT = """
 <h2>About FIC Control Studio</h2>
-<p><b>FIC Control Studio v5.10.0</b></p>
+<p><b>FIC Control Studio v{VERSION}</b></p>
 <p>The operator GUI for the Fractal Impedance Control robot framework.</p>
 <ul>
   <li><b>Package:</b> <code>fic_studio</code></li>
@@ -655,7 +697,7 @@ _HTML_ABOUT = """
 loaded at start.</p>
 <p>The full documentation: <b>Open the documentation</b> on this page, or
 Help &rarr; Open Documentation (web).</p>
-"""
+""".replace('{VERSION}', version.RELEASE)
 
 
 def _scripting_html() -> str:
