@@ -8,7 +8,7 @@ The layout is the one most simulators use, so a visitor already knows it:
     joint space      1-7 pick the joint, then Up/Down (or , and .) drive it
     Cartesian space  W/S forward and back, A/D left and right, Q/E up and
                      down, J/L yaw
-    either           Tab swaps space, G works the gripper,
+    either           Tab swaps space, O / C work the gripper,
                      Shift is fast, Ctrl is slow
 
 Nothing here decides *whether* the keyboard may drive the arm — that is the
@@ -39,6 +39,10 @@ JOINT_KEYS = {'UP': +1, '.': +1, 'DOWN': -1, ',': -1}
 GRIP_KEYS = {'O': +1, 'C': -1}
 #: The keys that pick a joint, in order.
 PICK_KEYS = ('1', '2', '3', '4', '5', '6', '7', '8', '9')
+#: Held for speed: Shift fast, Ctrl slow.
+MODIFIERS = ('SHIFT', 'CTRL')
+#: Most keys one person holds at once; a page sending more is not a keyboard.
+MAX_HELD = 8
 
 
 def speed_factor(keys):
@@ -90,6 +94,28 @@ def picked_joint(key, joint_count):
         return None
     index = PICK_KEYS.index(key)
     return index if index < joint_count else None
+
+
+def is_tap(key):
+    """Say whether this key acts once when pressed (Tab, 1-9) rather than while held."""
+    return key == 'TAB' or key in PICK_KEYS
+
+
+def held_keys(names):
+    """Return the drive keys and modifiers in ``names`` (a list from the web page).
+
+    Anything else -- taps, unknown names, things that are not names -- is dropped.
+    """
+    if not isinstance(names, (list, tuple)):
+        return set()
+    held = set()
+    for name in names:
+        if len(held) >= MAX_HELD:
+            break
+        if isinstance(name, str) and (name in CART_KEYS or name in JOINT_KEYS
+                                      or name in GRIP_KEYS or name in MODIFIERS):
+            held.add(name)
+    return held
 
 
 def is_ours(key):

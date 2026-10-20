@@ -149,6 +149,29 @@
 <div class="admonition warning"><div class="adm-title">Fixed accelerators</div>
 <p><code>save_settings</code>, <code>toggle_log</code>, and <code>panel_tuning</code> appear in the Settings editor but changing them has no effect: those accelerators are hard-wired to the File and View menus to avoid ambiguous double-firing. All other menu shortcuts (F5&ndash;F9, Ctrl+H, Ctrl+B, …) are likewise fixed.</p></div>
 
+<h2 id="keyboard-control">Keyboard Control: driving the arm</h2>
+<p>For anyone without a gamepad. Turn it on with <strong>View &rsaquo; Keyboard Control</strong> or <kbd>Ctrl+K</kbd>; the
+status bar then shows <strong>KBD</strong> and what the keys drive (<em>CART</em>, or the joint, e.g. <em>J4</em>). Hold a key
+to move; let go and the arm holds its target. The keys publish what the gamepad publishes, so the control mode must match
+the space: Cartesian keys need a Cartesian mode, joint keys a joint mode (the log says when they disagree).</p>
+<table>
+  <tr><th>Key</th><th>Action</th></tr>
+  <tr><td><kbd>W</kbd> / <kbd>S</kbd></td><td>Forward / back (Cartesian)</td></tr>
+  <tr><td><kbd>A</kbd> / <kbd>D</kbd></td><td>Left / right (Cartesian)</td></tr>
+  <tr><td><kbd>Q</kbd> / <kbd>E</kbd></td><td>Up / down (Cartesian)</td></tr>
+  <tr><td><kbd>J</kbd> / <kbd>L</kbd></td><td>Yaw (Cartesian)</td></tr>
+  <tr><td><kbd>1</kbd>&ndash;<kbd>9</kbd></td><td>Pick a joint (switches to joint space)</td></tr>
+  <tr><td><kbd>&uarr;</kbd> / <kbd>&darr;</kbd> (or <kbd>,</kbd> / <kbd>.</kbd>)</td><td>Move the picked joint</td></tr>
+  <tr><td><kbd>Tab</kbd></td><td>Swap joint / Cartesian space</td></tr>
+  <tr><td><kbd>O</kbd> / <kbd>C</kbd></td><td>Open / close the gripper</td></tr>
+  <tr><td><kbd>Shift</kbd> / <kbd>Ctrl</kbd> held</td><td>Three times faster / a quarter of the speed</td></tr>
+</table>
+<p>While it is on, the Studio window's mode keys need <kbd>Shift</kbd>: <kbd>Shift+J</kbd> / <kbd>Shift+C</kbd> joint /
+Cartesian control, <kbd>Shift+1</kbd>&ndash;<kbd>4</kbd> the mode, <kbd>Shift+F</kbd> / <kbd>P</kbd> / <kbd>E</kbd> the options.
+Keys typed in a text field never drive the arm. Keyboard Control needs control of the Studio, lets go of every key after an
+E-STOP, when the window loses the focus, and when the Studio has not heard from the page for 0.3&nbsp;s. In a browser tab,
+<kbd>Ctrl+W</kbd> still closes the tab.</p>
+
 <h2>Gamepad (Xbox Controller)</h2>
 <p>See <a href="#gamepad" onclick="showPage('gamepad')">Gamepad Control</a> for full details, including remapping buttons in Settings &rsaquo; Gamepad. Default mapping:</p>
 <table>

@@ -24,6 +24,21 @@ Studio is published here as one commit, with its entry below.
 
 ## [Unreleased]
 
+## [6.0.1] — 2026-10-20 — Keyboard Control in the web UI
+
+### Fixed
+- **Keyboard Control works in the web UI** (the launcher and the Docker image open it). The hidden
+  classic window used to read the keys, so with the web UI nothing moved, and it caught the keys before the page
+  could see them. The page now reads the drive keys itself and sends the ones held down about every 100 ms; the
+  Studio lets go of any key it has not heard about for 0.3 s, and of every key after an E-STOP. Keys typed in a
+  text field never drive the arm. Ctrl+K turns it on in the web UI too, and the status bar shows
+  **KBD** with what the keys drive.
+- **Shift (faster) and Ctrl (slower) work** in Keyboard Control; they were never counted.
+
+### Changed
+- **The web UI's mode keys need Shift:** Shift+J / Shift+C (joint / Cartesian), Shift+1–4 (mode), Shift+F / P / E
+  (options). J, C, 1–4 and E drive the arm while Keyboard Control is on.
+
 ## [6.0.0] — 2026-10-19 — One joint inner loop everywhere; fic_control; 35 stations
 
 ### Added

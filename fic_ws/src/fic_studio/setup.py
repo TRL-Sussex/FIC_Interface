@@ -4,7 +4,7 @@ package_name = 'fic_studio'
 
 setup(
     name=package_name,
-    version='6.0.0',
+    version='6.0.1',
     packages=find_packages(),
     # The web remote's page. Without this a copy-install (macOS) ships only
     # the .py files and the server has nothing to serve.

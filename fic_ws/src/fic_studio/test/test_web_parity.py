@@ -143,6 +143,13 @@ class _Studio(_PageStudio):
         self._kbd_on = on
         self.calls.append(('keyboard', on))
 
+    def keyboard_state(self):
+        return {'on': self._kbd_on, 'space': 'joint', 'joint': 2}
+
+    def keyboard_web_keys(self, keys, tap=None):
+        self.calls.append(('keys', list(keys), tap))
+        return dict(self.keyboard_state(), ok=self._kbd_on)
+
     def _toggle_simulation(self):
         self.calls.append(('toggle_sim',))
 
@@ -353,6 +360,29 @@ def test_keyboard_control(studio):
     assert 'teleop' not in build_snapshot(studio)['toolbar']
     assert run(studio, 'toolbar', op='keyboard', value=True)['ok'] and ('keyboard', True) in studio.calls
     assert run(studio, 'toolbar', op='nope')['error'] == 'bad_args'
+
+
+def test_keyboard_keys_from_the_page_reach_the_driver(studio):
+    assert run(studio, 'keyboard_keys', keys=['W'])['error'] == 'keyboard_off'
+    studio._kbd_on = True
+    reply = run(studio, 'keyboard_keys', keys=['W', 'SHIFT'], tap='3')
+    assert reply['ok'] and reply['space'] == 'joint' and reply['joint'] == 2
+    assert studio.calls[-1] == ('keys', ['W', 'SHIFT'], '3')
+    assert build_snapshot(studio)['toolbar']['keyboard_drive'] == {'on': True, 'space': 'joint', 'joint': 2}
+
+
+def test_keyboard_keys_are_refused_and_let_go_after_an_estop(studio):
+    studio._kbd_on = True
+    studio.estop_latch_state = lambda: {'latched': True}
+    assert run(studio, 'keyboard_keys', keys=['W'])['error'] == 'estop_latched'
+    assert studio.calls[-1] == ('keys', [], None)                # whatever was held is let go
+    assert run(studio, 'keyboard_keys', keys=[])['ok']           # letting go is never refused
+
+
+def test_keyboard_keys_need_control(studio):
+    """Driving is a command like any other: a viewer without the lease cannot."""
+    from fic_studio.web_remote.server import NO_LEASE
+    assert 'keyboard_keys' not in NO_LEASE
 
 
 def test_station_add_select_remove_and_set(studio):

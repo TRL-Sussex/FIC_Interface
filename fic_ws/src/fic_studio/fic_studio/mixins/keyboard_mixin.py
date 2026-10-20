@@ -11,12 +11,19 @@ be tested. This file is the Studio's side: when the keyboard is allowed to
 drive, where the targets come from, and where they go.
 
 **It is off until someone turns it on**, with Ctrl+K or the KBD indicator in
-the status bar, and it turns itself off when:
+the status bar, and it lets go of the keys when:
 
   * the window stops being the active one — alt-tabbing away drops the keys,
     so nothing keeps moving while you read something else;
   * the focus is in a box you can type in — a joint number, a file name, the
-    script editor. Typing "w" into a field must never drive the arm.
+    script editor. Typing "w" into a field must never drive the arm;
+  * an E-stop is latched.
+
+The web UI hides this window, so there the page reads the keys itself (it
+knows when someone is typing in one of its boxes) and sends the ones held down
+about every 100 ms (``keyboard_web_keys``). Keys it has not repeated for
+``WEB_STALE_S`` are let go, so a dropped connection or a hidden tab cannot
+leave the arm moving.
 
 Releasing every key stops the motion; the arm holds the last target, as it
 does for the gamepad.
@@ -35,11 +42,14 @@ from std_msgs.msg import Float32, Float32MultiArray
 
 #: How often the held keys are turned into movement.
 TICK_MS = 50
+#: A key the web page has not repeated for this long is let go.
+WEB_STALE_S = 0.3
 
 #: Qt keys that are not letters or digits.
 _SPECIAL = {
     Qt.Key_Up: 'UP', Qt.Key_Down: 'DOWN', Qt.Key_Left: 'LEFT', Qt.Key_Right: 'RIGHT',
     Qt.Key_Tab: 'TAB', Qt.Key_Comma: ',', Qt.Key_Period: '.',
+    Qt.Key_Shift: 'SHIFT', Qt.Key_Control: 'CTRL',
 }
 #: Widgets that swallow the keyboard: typing in one must not move an arm.
 _TYPING = (QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox)
@@ -71,8 +81,11 @@ def _key_name(event):
     key = event.key()
     if key in _SPECIAL:
         return _SPECIAL[key]
-    text = event.text().upper()
-    return text if text and (text.isalnum()) else None
+    # By key, not by text: with Ctrl held the text of W is a control
+    # character, and with Shift held the text of 1 is "!".
+    if Qt.Key_A <= key <= Qt.Key_Z or Qt.Key_0 <= key <= Qt.Key_9:
+        return chr(key)
+    return None
 
 
 class KeyboardMixin:
@@ -83,6 +96,8 @@ class KeyboardMixin:
         """Set up the keyboard driver. Call once the status bar exists."""
         self._kbd_on = False
         self._kbd_keys = set()
+        self._kbd_web_keys = set()
+        self._kbd_web_time = None
         self._kbd_space = 'cartesian'
         self._kbd_warned = None
         self._kbd_joint = 0
@@ -122,7 +137,7 @@ class KeyboardMixin:
         if on == getattr(self, '_kbd_on', False):
             return
         self._kbd_on = on
-        self._kbd_keys.clear()
+        self._kbd_let_go()
         self._kbd_forget_targets()
         if on:
             self._kbd_space = self._kbd_space_for_mode()
@@ -149,6 +164,51 @@ class KeyboardMixin:
         """Flip keyboard control (Ctrl+K, or the KBD indicator)."""
         self.set_keyboard_control(not self.keyboard_control_enabled())
 
+    def _kbd_let_go(self):
+        """Release every key, from the window and from the web page."""
+        self._kbd_keys.clear()
+        self._kbd_web_keys = set()
+
+    def keyboard_state(self):
+        """Return what the keyboard drives, for the web UI's status bar."""
+        return {'on': self.keyboard_control_enabled(), 'space': self._kbd_space,
+                'joint': self._kbd_joint}
+
+    def keyboard_web_keys(self, keys, tap=None):
+        """Take the keys the web page holds down, and a key it just pressed.
+
+        ``keys`` replaces the page's previous list: an empty one lets go of
+        everything at once. ``tap`` is Tab or a joint number, which act once.
+        Returns the state with ``ok`` False while keyboard control is off.
+        """
+        if not self.keyboard_control_enabled():
+            self._kbd_web_keys = set()
+            return dict(self.keyboard_state(), ok=False)
+        if isinstance(tap, str) and driver.is_tap(tap):
+            self._kbd_tap(tap)
+        self._kbd_web_keys = driver.held_keys(keys)
+        self._kbd_web_time = time.monotonic()
+        return dict(self.keyboard_state(), ok=True)
+
+    def _kbd_held(self, now):
+        """Return the keys held now: the window's, and the page's while it keeps saying so."""
+        if self._kbd_web_keys and (self._kbd_web_time is None
+                                   or now - self._kbd_web_time > WEB_STALE_S):
+            self._kbd_web_keys = set()
+        return self._kbd_keys | self._kbd_web_keys
+
+    def _kbd_estop_latched(self):
+        latch = getattr(self, 'estop_latch_state', None)
+        try:
+            return bool(latch is not None and latch().get('latched'))
+        except Exception:
+            return False
+
+    def _kbd_classic_active(self):
+        """Say whether the classic window is the one in front (never, with the web UI)."""
+        from PyQt5.QtWidgets import QApplication
+        return QApplication.activeWindow() is self
+
     def _kbd_forget_targets(self):
         self._kbd_targets = None
         self._kbd_pose = None
@@ -159,12 +219,14 @@ class KeyboardMixin:
         """Take one application event; return True if the keyboard used it."""
         kind = event.type()
         if kind == QEvent.WindowDeactivate:
-            self._kbd_keys.clear()          # alt-tab: let go of everything
+            self._kbd_keys.clear()          # alt-tab: let go of the window's keys
             return False
         if kind not in (QEvent.KeyPress, QEvent.KeyRelease):
             return False
         if not self.keyboard_control_enabled():
             return False
+        if not self._kbd_classic_active():
+            return False                    # the web UI's page reads its own keys
         return self._kbd_handle_key(event, kind == QEvent.KeyPress)
 
     def _kbd_typing(self):
@@ -180,6 +242,10 @@ class KeyboardMixin:
         if event.isAutoRepeat():
             return True                      # we hold it ourselves
         name = _key_name(event)
+        if name in driver.MODIFIERS:
+            # Held for speed, and passed on: Ctrl+K and the menus still need them.
+            (self._kbd_keys.add if pressed else self._kbd_keys.discard)(name)
+            return False
         if name is None or not driver.is_ours(name):
             return False
         if self._kbd_typing():
@@ -187,6 +253,12 @@ class KeyboardMixin:
         if not pressed:
             self._kbd_keys.discard(name)
             return True
+        if not self._kbd_tap(name):
+            self._kbd_keys.add(name)
+        return True
+
+    def _kbd_tap(self, name):
+        """Act on Tab or a joint number; return False for any other key."""
         if name == 'TAB':
             self._kbd_space = 'joint' if self._kbd_space == 'cartesian' else 'cartesian'
             self._kbd_warned = None
@@ -201,8 +273,7 @@ class KeyboardMixin:
             self.log_message('INFO', 'Keyboard: joint J%d' % (picked + 1), 'Keyboard')
             self._kbd_refresh_indicator()
             return True
-        self._kbd_keys.add(name)
-        return True
+        return False
 
     def _kbd_space_for_mode(self):
         """Return the space this robot's control mode actually listens to.
@@ -237,26 +308,31 @@ class KeyboardMixin:
         now = time.monotonic()
         dt = min(0.25, now - (self._kbd_last_tick or now))
         self._kbd_last_tick = now
-        if not self._kbd_keys or dt <= 0:
+        if not self.keyboard_control_enabled():
             return
-        if not self.isActiveWindow():
+        if self._kbd_keys and not self._kbd_classic_active():
             self._kbd_keys.clear()
+        keys = self._kbd_held(now)
+        if not keys or dt <= 0:
+            return
+        if self._kbd_estop_latched():
+            self._kbd_let_go()              # not held over for after Reset
             return
         self._kbd_warn_if_mode_mismatched()
         try:
             if self._kbd_space == 'joint':
-                self._kbd_drive_joint(dt)
+                self._kbd_drive_joint(keys, dt)
             else:
-                self._kbd_drive_cartesian(dt)
-            self._kbd_drive_gripper(dt)
+                self._kbd_drive_cartesian(keys, dt)
+            self._kbd_drive_gripper(keys, dt)
         except Exception as exc:                       # never take the UI down
             self.log_message('WARN', 'Keyboard: %s' % exc, 'Keyboard')
 
     def _kbd_pubs(self):
         return getattr(getattr(self, 'node', None), 'pubs', {}).get(self._kbd_rid(), {})
 
-    def _kbd_drive_joint(self, dt):
-        degrees = driver.joint_step(self._kbd_keys, dt)
+    def _kbd_drive_joint(self, keys, dt):
+        degrees = driver.joint_step(keys, dt)
         if not degrees:
             return
         rid, count = self._kbd_rid(), self._kbd_joint_count()
@@ -286,8 +362,8 @@ class KeyboardMixin:
             return None
         return [(math.radians(low[i]), math.radians(high[i])) for i in range(count)]
 
-    def _kbd_drive_cartesian(self, dt):
-        step = driver.cartesian_step(self._kbd_keys, dt)
+    def _kbd_drive_cartesian(self, keys, dt):
+        step = driver.cartesian_step(keys, dt)
         if not any(step.values()):
             return
         rid = self._kbd_rid()
@@ -321,8 +397,8 @@ class KeyboardMixin:
             qw * o.w - qz * o.z,
         )
 
-    def _kbd_drive_gripper(self, dt):
-        step = driver.gripper_step(self._kbd_keys, dt)
+    def _kbd_drive_gripper(self, keys, dt):
+        step = driver.gripper_step(keys, dt)
         if not step:
             return
         if self._kbd_grip is None:

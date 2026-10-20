@@ -56,3 +56,21 @@ def test_nothing_held_means_nothing_moves():
     assert driver.cartesian_step(set(), 1.0) == {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw': 0.0}
     assert driver.joint_step(set(), 1.0) == 0.0
     assert driver.gripper_step(set(), 1.0) == 0.0
+
+
+def test_held_keys_from_the_web_page_keep_only_drive_keys_and_modifiers():
+    """The page sends names; anything that is not a held drive key or a modifier is dropped."""
+    held = driver.held_keys(['W', 'SHIFT', 'CTRL', 'UP', ',', 'O', 'F1', 'TAB', '3', 5, None, 'w'])
+    assert held == {'W', 'SHIFT', 'CTRL', 'UP', ',', 'O'}      # Tab and 1-9 are taps, not held keys
+
+
+def test_held_keys_take_no_more_than_a_handful():
+    """A page that sends a thousand names gets the first few that mean something."""
+    assert len(driver.held_keys(['W'] * 1000 + ['S'])) == 2
+    assert driver.held_keys('W') == set()                       # a string is not a list of keys
+    assert driver.held_keys(None) == set()
+
+
+def test_a_tap_is_tab_or_a_joint_number():
+    assert driver.is_tap('TAB') and driver.is_tap('1') and driver.is_tap('9')
+    assert not driver.is_tap('W') and not driver.is_tap('SHIFT') and not driver.is_tap(3)

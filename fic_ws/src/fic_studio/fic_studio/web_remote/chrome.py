@@ -96,6 +96,7 @@ def toolbar_state(w, ctx):
         'plotter': bool(getattr(w, 'plotter_running', False)),
         'viewer': bool(getattr(w, 'contact_twin_running', False)),
         'keyboard': bool(getattr(w, '_kbd_on', False)),
+        'keyboard_drive': w.keyboard_state() if hasattr(w, 'keyboard_state') else None,
         'stations': _stations(w),
         'station': picker_value(w.node.station_id),
     }
@@ -386,6 +387,28 @@ def _toolbar(w, args, client):
     if update is not None:
         update()
     return {'ok': True}
+
+
+def _keyboard_keys(w, args, client):
+    """The keys the page holds down while Keyboard Control is on (see keyboard_mixin).
+
+    ``keys`` is the whole list held now; ``tap`` is Tab or a joint number just
+    pressed. Letting go (an empty list) is never refused.
+    """
+    if not hasattr(w, 'keyboard_web_keys'):
+        raise Refused('Keyboard Control is not available', 'unavailable')
+    keys, tap = args.get('keys') or [], args.get('tap')
+    if keys or tap:
+        from fic_studio.web_remote.actions import _estop_gate
+        try:
+            _estop_gate(w)
+        except Refused:
+            w.keyboard_web_keys([])
+            raise
+    reply = w.keyboard_web_keys(keys, tap=tap)
+    if not reply.get('ok'):
+        raise Refused('Keyboard Control is off: turn it on in View', 'keyboard_off')
+    return reply
 
 
 def _station(w, args, client):
@@ -805,6 +828,7 @@ def _build_view(state):
 
 HANDLERS = {
     'toolbar': _toolbar,
+    'keyboard_keys': _keyboard_keys,
     'station': _station,
     'menu': _menu,
     'robot_pause': _robot_pause,

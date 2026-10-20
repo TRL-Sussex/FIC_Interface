@@ -430,6 +430,8 @@ function buildStatusbar() {
   bar.append(h('span', { class: 'spacer' }),
     h('button', { class: 'sb-item sb-ctl', id: 'sb-ctl', type: 'button', hidden: true, title: 'You hold control of this Studio. Click to release it (you keep watching).',
       onclick: () => FIC.releaseControl() }, h('span', { class: 'dot ok' }), h('span', { class: 'sb-l', text: 'In control · Release' })),
+    h('span', { class: 'sb-item', id: 'sb-kbd', hidden: true, title: 'Keyboard Control is on (View menu): what the keys drive. Tab swaps joint / Cartesian, 1–9 picks a joint.' },
+      h('span', { class: 'dot ok' }), h('span', { class: 'sb-l', text: 'KBD' }), h('span', { class: 'sb-t faint' })),
     h('span', { class: 'sb-item', id: 'sb-link' }, h('span', { class: 'dot' }), h('span', { class: 'sb-l', text: 'STUDIO' }), h('span', { class: 'sb-t faint' })),
     h('span', { class: 'sb-robot', id: 'sb-robot' }));
 }
@@ -515,12 +517,51 @@ function updateNavVisibility(s) {
   for (const a of document.querySelectorAll('#side a[data-legged="1"]')) a.hidden = !legged;
 }
 
-// ── Keyboard: the classic shortcuts, plus mode keys ───────────────────────
+// ── Keyboard: Keyboard Control, the classic shortcuts, the mode keys ──────
 const OPTION_KEY = { hpmp: 'f', postural: 'p', elbow: 'e', admittance_planner: 'p' };
+function isTyping(t) {
+  const tag = t && t.tagName;
+  return tag === 'TEXTAREA' || tag === 'SELECT' || (tag === 'INPUT' && !['checkbox', 'range', 'button'].includes(t.type)) || !!(t && t.isContentEditable);
+}
+// Keyboard Control (View menu): the held drive keys go to the Studio (keys.js says how).
+const KBD = FIC.keys.Driver((keys, tap) => cmd('keyboard_keys', tap ? { keys, tap } : { keys }, true).then(r => {
+  if (r && r.ok === false && (keys.length || tap)) {
+    KBD.clear();                                  // refused (E-STOP, no control): stop sending
+    if (Date.now() - (KBD.told || 0) > 4000) { KBD.told = Date.now(); toast(r.message || 'Keyboard Control refused', true); }
+  }
+}));
+/** Take a drive key while Keyboard Control is on; true when the shortcuts must not see it. */
+function driveKey(e) {
+  const S = FIC.state();
+  if (!S || !(S.toolbar || {}).keyboard || e.altKey || e.metaKey || FIC.keys.modeKey(e) || isTyping(e.target)) return false;
+  const n = FIC.keys.name(e);
+  if (!n || !FIC.keys.isOurs(n)) return false;
+  if (FIC.keys.MODS.has(n)) { KBD.down(n); return false; }      // Shift / Ctrl: speed, and still Shift+H
+  e.preventDefault();                             // Tab must not move the focus, nor the arrows scroll
+  if (!e.repeat) KBD.down(n);
+  return true;
+}
+let kbdWasOn = false;
+function updateKeyboard(s) {
+  const tb = s.toolbar || {}, d = tb.keyboard_drive || {}, on = !!tb.keyboard;
+  if (!on) KBD.clear();
+  if (on && !kbdWasOn) toast('Keyboard Control on: W/S A/D Q/E move, J/L yaw, 1–9 then ↑/↓ a joint, Tab joint/Cartesian, O/C gripper, Shift faster, Ctrl slower');
+  kbdWasOn = on;
+  const el = $('#sb-kbd');
+  if (!el) return;
+  el.hidden = !on;
+  setText(el.lastChild, d.space === 'joint' ? 'J' + ((d.joint || 0) + 1) : 'CART');
+}
 function onKey(e) {
+  if (driveKey(e)) return;
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && FIC.keys.name(e) === 'K') {     // Ctrl+K, as in the classic window
+    e.preventDefault();
+    const on = !!((FIC.state() || {}).toolbar || {}).keyboard;
+    cmd('toolbar', { op: 'keyboard', value: !on });
+    return;
+  }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  const t = e.target, tag = t && t.tagName;
-  const typing = tag === 'TEXTAREA' || tag === 'SELECT' || (tag === 'INPUT' && !['checkbox', 'range', 'button'].includes(t.type)) || (t && t.isContentEditable);
+  const t = e.target, typing = isTyping(t), tag = t && t.tagName;
   if (e.key === 'Escape') {
     if (cancelArm()) return;
     if (closeMenus()) return;
@@ -535,17 +576,21 @@ function onKey(e) {
   const S = FIC.state();
   if (!S) return;
   const k = e.key, mode = S.mode || {}, av = S.availability || {};
-  const modeKey = k === 'j' || k === 'c' || /^[1-4]$/.test(k) || Object.values(OPTION_KEY).includes(k);
-  if (modeKey && !(S.toolbar || {}).keyboard) {     // a stray key must not change how a robot is driven
+  const mk = FIC.keys.modeKey(e);                  // Shift+J / C / 1-4 / F / P / E
+  if (mk && !(S.toolbar || {}).keyboard) {          // a stray key must not change how a robot is driven
     if (Date.now() - (onKey.hinted || 0) > 8000) { onKey.hinted = Date.now(); toast('Mode keys are off. Turn on View → Keyboard Control to use them.'); }
     return;
   }
-  if (k === 'j' || k === 'c') {
-    const kind = k === 'j' ? 'joint' : 'cart', m = (mode.menus || {})[kind];
+  if (mk === 'j' || mk === 'c') {
+    const kind = mk === 'j' ? 'joint' : 'cart', m = (mode.menus || {})[kind];
     if (m && m.modes.length && (kind === 'joint' || av.cart)) cmd('set_mode', { index: m.modes[0].index });
-  } else if (/^[1-4]$/.test(k)) {
-    const m = ((mode.menus || {})[mode.kind] || { modes: [] }).modes[Number(k) - 1];
+  } else if (mk && /^[1-4]$/.test(mk)) {
+    const m = ((mode.menus || {})[mode.kind] || { modes: [] }).modes[Number(mk) - 1];
     if (m && av.command) cmd('set_mode', { index: m.index });
+  } else if (mk) {
+    for (const [name, o] of Object.entries(S.options || {})) {
+      if (o.kind === mode.kind && OPTION_KEY[name] === mk && av[o.kind]) cmd('set_option', { name, value: !o.value });
+    }
   } else if (k === 'g') FIC.dock && FIC.dock.toggleGripper();
   else if (k === 'H') goHome();
   else if (k === 's') onSessionClick();
@@ -554,10 +599,6 @@ function onKey(e) {
     const ready = FIC.pageList().filter(p => p.ready && p.nav !== 'hidden'), i = ready.findIndex(p => p.id === FIC.currentPage());
     const next = ready[(i + (k === ']' ? 1 : -1) + ready.length) % ready.length];
     if (next) location.hash = '#/' + next.id;
-  } else {
-    for (const [name, o] of Object.entries(S.options || {})) {
-      if (o.kind === mode.kind && OPTION_KEY[name] === k && av[o.kind]) cmd('set_option', { name, value: !o.value });
-    }
   }
 }
 
@@ -572,12 +613,15 @@ function build() {
     armed(b, 'Confirm?', () => cmd('toolbar', { op, confirm: true }).then(r => { if (r.ok !== false) toast(b.dataset.label + (b.classList.contains('running') ? ' stopping' : ' starting')); }));
   }
   document.addEventListener('keydown', onKey);
+  document.addEventListener('keyup', e => { const n = FIC.keys.name(e); if (n) KBD.up(n); });     // letting go is always taken
+  window.addEventListener('blur', () => KBD.clear());
+  document.addEventListener('visibilitychange', () => { if (document.hidden) KBD.clear(); });
   loadExtensions();
   window.addEventListener('hashchange', markNav);
 }
 FIC.shell = {
   build,
-  update(s) { updateToolbar(s); updateSafetyChrome(s); updateNotices(s); updateStatusbar(s); updateNavVisibility(s); if (FIC.dock) FIC.dock.update(s); },
+  update(s) { updateKeyboard(s); updateToolbar(s); updateSafetyChrome(s); updateNotices(s); updateStatusbar(s); updateNavVisibility(s); if (FIC.dock) FIC.dock.update(s); },
   route(id) { markNav(); },
 };
 })();

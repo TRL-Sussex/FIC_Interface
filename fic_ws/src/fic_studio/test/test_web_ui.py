@@ -332,9 +332,26 @@ def test_the_control_bar_has_the_classic_buttons_and_every_control_lives_in_it()
         assert needle in js.replace('"', "'")
     keys = (UI_DIR / 'shell.js').read_text()
     keys = keys[keys.index('function onKey'):keys.index('// ── Wiring')]
-    for k in ("e.key === ' '", "'Escape'", "k === 'j'", "k === 'g'", "k === 'H'", "k === 's'", "'['"):
+    for k in ("e.key === ' '", "'Escape'", "mk === 'j'", "k === 'g'", "k === 'H'", "k === 's'", "'['"):
         assert k in keys
     assert 'typing' in keys                                  # never fires from a text field
+
+
+def test_keyboard_control_drives_from_the_page_and_moves_the_mode_keys_to_shift():
+    """With Keyboard Control on, J C 1-4 E are drive keys; the mode keys need Shift (keys.js modeKey)."""
+    js = (UI_DIR / 'shell.js').read_text()
+    keys = js[js.index('function onKey'):js.index('// ── Wiring')]
+    assert keys.index('driveKey(e)') < keys.index("e.key === ' '")       # drive keys first, then the shortcuts
+    assert 'FIC.keys.modeKey(e)' in keys and not re.search(r"\bk === '[jc1-4]'", keys)
+    drive = js[js.index('function driveKey'):js.index('function onKey')]
+    assert 'isTyping(' in drive and 'e.repeat' in drive and 'preventDefault' in drive
+    wiring = js[js.index('// ── Wiring'):]
+    for needle in ("'keyup'", "'blur'", "'visibilitychange'", "cmd('keyboard_keys'"):
+        assert needle in js, needle
+    assert "'keyup'" in wiring and "'blur'" in wiring
+    assert "id: 'sb-kbd'" in js                               # the status bar says what the keys drive
+    toggle = keys[:keys.index('if (e.ctrlKey || e.metaKey || e.altKey) return;')]
+    assert "=== 'K'" in toggle and "op: 'keyboard'" in toggle    # Ctrl+K, as in the classic window and the handout
 
 
 def test_estop_stays_above_everything_and_is_the_only_boxed_control():

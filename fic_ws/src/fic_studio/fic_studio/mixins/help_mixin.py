@@ -1479,24 +1479,48 @@ class HelpMixin:
         window_keys = [
             ('Space', 'E-STOP (not while a button or a text field has the focus)'),
             ('Esc', 'Cancel a pending confirm, close a menu, panel or dialog, '
-                    'or leave a text field; with nothing to close, E-STOP'),
-            ('J / C', 'Joint / Cartesian control (first mode)'),
-            ('1 &ndash; 4', 'Mode within Joint or Cartesian'),
-            ('F / P / E', 'H-PMP / Postural (Cart) or Planner (Joint) / Elbow'),
+                    'or leave a text field (never an E-STOP: that is Space)'),
+            ('Shift+J / Shift+C', 'Joint / Cartesian control (first mode)'),
+            ('Shift+1 &ndash; 4', 'Mode within Joint or Cartesian'),
+            ('Shift+F / P / E', 'H-PMP / Postural (Cart) or Planner (Joint) / Elbow'),
             ('G', 'Gripper'),
             ('Shift+H', 'Home'),
-            ('S', 'Start / Stop (press again to confirm)'),
+            ('S', 'Start / Stop (press again to confirm; with Keyboard Control on, S drives)'),
             ('T', 'Theme: light / dark'),
             ('[ / ]', 'Previous / next page'),
             ('Shift+&uarr; / &darr;', '1&deg; steps in the control bar&rsquo;s number fields'),
         ]
 
+        # (e) Keyboard Control: the arm from the keys (keyboard/driver.py).
+        drive_keys = [
+            ('W / S', 'Forward / back (Cartesian)'),
+            ('A / D', 'Left / right (Cartesian)'),
+            ('Q / E', 'Up / down (Cartesian)'),
+            ('J / L', 'Yaw (Cartesian)'),
+            ('1 &ndash; 9', 'Pick a joint (switches to joint space)'),
+            ('&uarr; / &darr;  or  , / .', 'Move the picked joint'),
+            ('Tab', 'Swap joint / Cartesian space'),
+            ('O / C', 'Open / close the gripper'),
+            ('Shift / Ctrl (held)', 'Faster / slower'),
+        ]
+
         html = (
             '<h2>Keyboard Shortcuts</h2>'
             '<h3>Studio window</h3>'
-            '<p>Single keys, used when no text field has the focus.</p>'
+            '<p>Single keys, used when no text field has the focus. The mode keys '
+            '(Shift+J, Shift+C, Shift+1&ndash;4, Shift+F/P/E) work while Keyboard '
+            'Control is on.</p>'
             '<table>'
             + _rows(window_keys)
+            + '</table>'
+            '<h3>Keyboard Control: driving the arm</h3>'
+            '<p>Turn it on in View &rarr; Keyboard Control (Ctrl+K in the classic '
+            'window); the status bar shows KBD and what the keys drive. Hold a key '
+            'to move; let go and the arm holds its target. It needs control of the '
+            'Studio, lets go after an E-STOP, and ignores keys typed in a text field. '
+            'In a browser tab, Ctrl+W still closes the tab.</p>'
+            '<table>'
+            + _rows(drive_keys)
             + '</table>'
             '<p>The tables below are for the classic desktop window '
             '(<code>fic_studio_pro</code> without <code>--web-ui</code>); '
