@@ -1,0 +1,115 @@
+<?xml version="1.0"?>
+<!-- Generated from scene.xml by FIC Studio: the frames, joints and inertias of the MuJoCo model the simulator runs. -->
+<robot name="iiwa14">
+  <link name="iiwa_link_0">
+    <inertial>
+      <origin xyz="-0.1 0 0.07" rpy="0 0 0"/>
+      <mass value="5"/>
+      <inertia ixx="0.05" ixy="0" ixz="0" iyy="0.06" iyz="0" izz="0.03"/>
+    </inertial>
+  </link>
+  <link name="iiwa_link_1">
+    <inertial>
+      <origin xyz="0 -0.03 0.12" rpy="0 0 0"/>
+      <mass value="5.76"/>
+      <inertia ixx="0.0333" ixy="0" ixz="0" iyy="0.033" iyz="0" izz="0.0123"/>
+    </inertial>
+  </link>
+  <joint name="joint1" type="revolute">
+    <parent link="iiwa_link_0"/>
+    <child link="iiwa_link_1"/>
+    <origin xyz="0 0 0.1575" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.96706" upper="2.96706" effort="320" velocity="1.5"/>
+  </joint>
+  <link name="iiwa_link_2">
+    <inertial>
+      <origin xyz="0.0003 0.059 0.042" rpy="1.5708 0 3.14159"/>
+      <mass value="6.35"/>
+      <inertia ixx="0.0305" ixy="0" ixz="0" iyy="0.0304" iyz="0" izz="0.011"/>
+    </inertial>
+  </link>
+  <joint name="joint2" type="revolute">
+    <parent link="iiwa_link_1"/>
+    <child link="iiwa_link_2"/>
+    <origin xyz="0 0 0.2025" rpy="1.5708 0 3.14159"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.0944" upper="2.0944" effort="320" velocity="1.5"/>
+  </joint>
+  <link name="iiwa_link_3">
+    <inertial>
+      <origin xyz="0 0.03 0.13" rpy="0 0 0"/>
+      <mass value="3.5"/>
+      <inertia ixx="0.025" ixy="0" ixz="0" iyy="0.0238" iyz="0" izz="0.0076"/>
+    </inertial>
+  </link>
+  <joint name="joint3" type="revolute">
+    <parent link="iiwa_link_2"/>
+    <child link="iiwa_link_3"/>
+    <origin xyz="0 0.2045 0" rpy="1.5708 0 3.14159"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.96706" upper="2.96706" effort="176" velocity="1.5"/>
+  </joint>
+  <link name="iiwa_link_4">
+    <inertial>
+      <origin xyz="0 0.067 0.034" rpy="1.5708 0 0"/>
+      <mass value="3.5"/>
+      <inertia ixx="0.017" ixy="0" ixz="0" iyy="0.0164" iyz="0" izz="0.006"/>
+    </inertial>
+  </link>
+  <joint name="joint4" type="revolute">
+    <parent link="iiwa_link_3"/>
+    <child link="iiwa_link_4"/>
+    <origin xyz="0 0 0.2155" rpy="1.5708 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.0944" upper="2.0944" effort="176" velocity="1.5"/>
+  </joint>
+  <link name="iiwa_link_5">
+    <inertial>
+      <origin xyz="0.0001 0.021 0.076" rpy="0 0 0"/>
+      <mass value="3.5"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.0087" iyz="0" izz="0.00449"/>
+    </inertial>
+  </link>
+  <joint name="joint5" type="revolute">
+    <parent link="iiwa_link_4"/>
+    <child link="iiwa_link_5"/>
+    <origin xyz="0 0.1845 0" rpy="1.5708 0 3.14159"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.96706" upper="2.96706" effort="110" velocity="1.5"/>
+  </joint>
+  <link name="iiwa_link_6">
+    <inertial>
+      <origin xyz="0 0.0006 0.0004" rpy="1.5708 0 0"/>
+      <mass value="1.8"/>
+      <inertia ixx="0.0049" ixy="0" ixz="0" iyy="0.0047" iyz="0" izz="0.0036"/>
+    </inertial>
+  </link>
+  <joint name="joint6" type="revolute">
+    <parent link="iiwa_link_5"/>
+    <child link="iiwa_link_6"/>
+    <origin xyz="0 0 0.2155" rpy="1.5708 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.0944" upper="2.0944" effort="40" velocity="1.5"/>
+  </joint>
+  <link name="iiwa_link_7">
+    <inertial>
+      <origin xyz="0 0 0.02" rpy="0 0 0"/>
+      <mass value="1.2"/>
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+    </inertial>
+  </link>
+  <joint name="joint7" type="revolute">
+    <parent link="iiwa_link_6"/>
+    <child link="iiwa_link_7"/>
+    <origin xyz="0 0.081 0" rpy="1.5708 0 3.14159"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.05433" upper="3.05433" effort="40" velocity="1.5"/>
+  </joint>
+  <link name="iiwa_link_ee"/>
+  <joint name="iiwa_link_ee_joint" type="fixed">
+    <parent link="iiwa_link_7"/>
+    <child link="iiwa_link_ee"/>
+    <origin xyz="0 0 0.045" rpy="0 0 0"/>
+  </joint>
+</robot>

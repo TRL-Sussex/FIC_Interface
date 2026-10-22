@@ -48,12 +48,30 @@ static uint64_t nowUs() {
     return (uint64_t)t.tv_sec * 1000000ull + t.tv_nsec / 1000;
 }
 
+// Sleep until the absolute CLOCK_MONOTONIC time `t`: clock_nanosleep(TIMER_ABSTIME) where there is one (Linux);
+// elsewhere (macOS) a relative sleep for what is left, so the tick keeps the same deadlines.
+static void sleepUntil(const timespec& t) {
+#ifdef TIMER_ABSTIME
+    clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, nullptr);
+#else
+    timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    timespec left{t.tv_sec - now.tv_sec, t.tv_nsec - now.tv_nsec};
+    if (left.tv_nsec < 0) { left.tv_nsec += 1000000000; --left.tv_sec; }
+    if (left.tv_sec >= 0) nanosleep(&left, nullptr);
+#endif
+}
+
 static void goRealtime() {
+#ifdef __linux__
     sched_param sp{};
     sp.sched_priority = 80;
     if (sched_setscheduler(0, SCHED_FIFO, &sp) != 0)
         std::fprintf(stderr, "fic_inner_loop: --rt: SCHED_FIFO not permitted (%s); running at normal priority\n",
                      std::strerror(errno));
+#else
+    std::fprintf(stderr, "fic_inner_loop: --rt: real-time scheduling is Linux-only; running at normal priority\n");
+#endif
     if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0)
         std::fprintf(stderr, "fic_inner_loop: --rt: mlockall failed (%s)\n", std::strerror(errno));
 }
@@ -223,7 +241,7 @@ int main(int argc, char** argv) {
     for (;;) {
         next.tv_nsec += 1000000;
         if (next.tv_nsec >= 1000000000) { next.tv_nsec -= 1000000000; ++next.tv_sec; }
-        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next, nullptr);
+        sleepUntil(next);
         const uint64_t now = nowUs();
         const uint64_t due = (uint64_t)next.tv_sec * 1000000ull + next.tv_nsec / 1000;
         const uint64_t late = now > due ? now - due : 0;

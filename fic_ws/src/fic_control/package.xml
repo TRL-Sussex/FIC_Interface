@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>fic_control</name>
-  <version>6.0.1</version>
+  <version>6.1.0</version>
   <description>FIC Control - the controller node (task-space layer) and fic_inner_loop (joint layer) for a real or simulated robot; the controller configuration (config.xml) and the plotter</description>
 
   <maintainer email="at717@sussex.ac.uk">Adnan</maintainer>

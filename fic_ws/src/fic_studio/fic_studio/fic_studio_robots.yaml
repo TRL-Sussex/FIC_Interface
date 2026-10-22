@@ -33,6 +33,7 @@ robots:
     - 5.4
     - 110.7
     - 44.0
+    sim_start_at_home: true
     q_home_rad:
     - -0.15707963267948966
     - -0.2897246558310587
@@ -272,13 +273,13 @@ robots:
     display_name: KUKA iiwa 14
     num_joints: 7
     joint_names:
-    - A1
-    - A2
-    - A3
-    - A4
-    - A5
-    - A6
-    - A7
+    - joint1
+    - joint2
+    - joint3
+    - joint4
+    - joint5
+    - joint6
+    - joint7
     urdf_path: menagerie/model/IIWA_14/URDF/IIWA_14.urdf
     mujoco_xml_path: menagerie/model/IIWA_14/XML/scene.xml
     ee_frame_name: iiwa_link_ee
@@ -301,6 +302,15 @@ robots:
     - 0.0
     - 90.0
     - 0.0
+    sim_start_at_home: true
+    q_home_rad:
+    - 0.0
+    - 0.0
+    - 0.0
+    - -1.5707963267948966
+    - 0.0
+    - 1.5707963267948966
+    - 0.0
     joint_limits_deg:
       lower:
       - -170
@@ -318,6 +328,23 @@ robots:
       - 170
       - 120
       - 175
+    joint_torque_limits:
+      min:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      max:
+      - 320.0
+      - 320.0
+      - 176.0
+      - 176.0
+      - 110.0
+      - 40.0
+      - 40.0
     has_gripper: false
     gripper_range:
     - 0.0
@@ -326,6 +353,13 @@ robots:
       joint_tau: 1.5
       cart_force: 4.0
       cart_torque: 0.2
+    safety_zones:
+      velocity:
+        max_joint_vel: 1.0
+        # Simulation only: a weaker joint velocity damper (L/v) so large moves converge.
+        sim_max_joint_vel: 3.0
+        max_cart_vel: 0.5
+        enabled: true
   Pendulum:
     display_name: Simple Pendulum
     num_joints: 1
@@ -346,12 +380,20 @@ robots:
       - 0.0
       - 1.0
     q_home_deg:
-    - 0.0
+    - 30.0
+    sim_start_at_home: true
+    q_home_rad:
+    - 0.5235987755982988
     joint_limits_deg:
       lower:
       - -180
       upper:
       - 180
+    joint_torque_limits:
+      min:
+      - 0.0
+      max:
+      - 5.0
     has_gripper: false
     gripper_range:
     - 0.0
@@ -360,3 +402,10 @@ robots:
       joint_tau: 1.5
       cart_force: 4.0
       cart_torque: 0.2
+    safety_zones:
+      velocity:
+        max_joint_vel: 1.0
+        # Simulation only: a weaker joint velocity damper (L/v) so moves converge on this light pole.
+        sim_max_joint_vel: 0.5
+        max_cart_vel: 0.5
+        enabled: true

@@ -658,11 +658,12 @@ def _sync_marshal(fn, block=True, timeout=10.0):
 class TestSeedExamples:
     """Tests for the example-script seeder."""
 
-    def test_seed_creates_five_files(self, tmp_path):
-        """_seed_examples() writes all five example files."""
+    def test_seed_creates_the_built_in_and_shipped_examples(self, tmp_path):
+        """_seed_examples() writes the five built-in examples and the lessons and demos in examples/."""
         _seed_examples(str(tmp_path))
         files = sorted(f.name for f in tmp_path.iterdir())
-        assert files == sorted(_EXAMPLES.keys()), f'Missing files: {files}'
+        shipped = [f for f in _os.listdir(_ext_mod.SHIPPED_EXAMPLES_DIR) if f.endswith(".py")]
+        assert files == sorted(set(_EXAMPLES) | set(shipped)), f'Missing files: {files}'
 
     def test_seed_is_idempotent(self, tmp_path):
         """Calling _seed_examples() twice does not alter existing files."""

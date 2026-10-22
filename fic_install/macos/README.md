@@ -21,11 +21,16 @@ wheel), so no Linux binaries or CUDA are needed.
   (Moving an already-built repo needs a clean rebuild — colcon bakes absolute
   paths; the installer handles that.)
 
-## Install (one command)
+## Install
+
+Double-click **`Install_FIC_Studio.command`** in the repository's folder (it opens in Terminal), or run
 
 ```bash
-zsh fic_install/macos/install-fic-studio-macos.sh
+bash install.sh
 ```
+
+Both find the system and run this installer on a Mac (`zsh fic_install/macos/install-fic-studio-macos.sh` runs it
+directly).
 
 (`bash install.sh` from the repository root calls this on a Mac. `--dry-run` shows what it would
 install and create without changing anything; the full list is in

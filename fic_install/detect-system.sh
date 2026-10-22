@@ -106,6 +106,16 @@ fi
 # apt waits for the lock instead of failing while unattended-upgrades runs.
 FIC_APT="apt-get -o DPkg::Lock::Timeout=900"
 
+# The apt commands for one root step: fresh lists, the required packages ($1), then the optional ones ($2),
+# best-effort. Nothing missing: nothing printed.
+fic_apt_steps() {
+    [ -z "$1$2" ] && return 0
+    echo "$FIC_APT update -y || echo 'apt-get update failed; installing from the package lists there are.'"
+    [ -n "$1" ] && echo "$FIC_APT install -y $1 || exit 1"
+    [ -n "$2" ] && echo "$FIC_APT install -y $2 || echo 'Optional packages unavailable — the app will build without the built-in solver.'"
+    return 0
+}
+
 fic_colcon_args() {
     # colcon arguments for this machine: skipped packages + job cap.
     local args="--symlink-install --parallel-workers $FIC_BUILD_JOBS"

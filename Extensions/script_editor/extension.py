@@ -51,6 +51,7 @@ from Extensions.script_editor.web_backend import (  # noqa: E402
 
 SCRIPTS_DIR = os.path.expanduser('~/.fic_studio_scripts')
 EXAMPLES_DIR = os.path.join(SCRIPTS_DIR, 'examples')
+SHIPPED_EXAMPLES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'examples')
 
 
 # ── Syntax highlighter (verbatim from script_mixin) ───────────────────
@@ -643,7 +644,16 @@ def _seed_examples(examples_dir):
         Absolute path to ~/.fic_studio_scripts/examples/.
 
     """
-    for fname, source in _EXAMPLES.items():
+    sources = dict(_EXAMPLES)
+    # The lessons and demos shipped as files beside this one (examples/).
+    try:
+        for fname in sorted(os.listdir(SHIPPED_EXAMPLES_DIR)):
+            if fname.endswith('.py'):
+                with open(os.path.join(SHIPPED_EXAMPLES_DIR, fname), encoding='utf-8') as fh:
+                    sources.setdefault(fname, fh.read())
+    except OSError:
+        pass
+    for fname, source in sources.items():
         fpath = os.path.join(examples_dir, fname)
         if not os.path.exists(fpath):
             try:

@@ -6,6 +6,11 @@
 <robot name="fr3">
   <!-- sub-link defining detailed meshes for collision with environment -->
   <link name="fr3_link0">
+    <inertial>
+      <origin xyz="-0.0298548 -0.000248355 0.0575793" rpy="1.04524 0.031893 1.56027"/>
+      <mass value="2.82067"/>
+      <inertia ixx="0.0114679" ixy="0" ixz="0" iyy="0.0112574" iyz="0" izz="0.00768511"/>
+    </inertial>
     <visual>
       <geometry>
         <mesh filename="package://franka_description/meshes/visual/link0.dae"/>
@@ -46,6 +51,11 @@
   </joint>
   <!-- sub-link defining detailed meshes for collision with environment -->
   <link name="fr3_link1">
+    <inertial>
+      <origin xyz="4.128e-07 -0.0181251 -0.0386036" rpy="0.00442229 0.00852305 0.0264849"/>
+      <mass value="2.92747"/>
+      <inertia ixx="0.0186043" ixy="0" ixz="0" iyy="0.0181194" iyz="0" izz="0.00538716"/>
+    </inertial>
     <visual>
       <geometry>
         <mesh filename="package://franka_description/meshes/visual/link1.dae"/>
@@ -95,6 +105,11 @@
   </joint>
   <!-- sub-link defining detailed meshes for collision with environment -->
   <link name="fr3_link2">
+    <inertial>
+      <origin xyz="0.00318289 -0.0743222 0.00881461" rpy="2.89151 -1.2504 -0.955771"/>
+      <mass value="2.93554"/>
+      <inertia ixx="0.0299291" ixy="0" ixz="0" iyy="0.0299291" iyz="0" izz="0.0299291"/>
+    </inertial>
     <visual>
       <geometry>
         <mesh filename="package://franka_description/meshes/visual/link2.dae"/>
@@ -144,6 +159,11 @@
   </joint>
   <!-- sub-link defining detailed meshes for collision with environment -->
   <link name="fr3_link3">
+    <inertial>
+      <origin xyz="0.0407016 -0.00482006 -0.0289731" rpy="-0.24526 0.502317 0.250382"/>
+      <mass value="2.2449"/>
+      <inertia ixx="0.0140109" ixy="0" ixz="0" iyy="0.0140109" iyz="0" izz="0.0140109"/>
+    </inertial>
     <visual>
       <geometry>
         <mesh filename="package://franka_description/meshes/visual/link3.dae"/>
@@ -193,6 +213,11 @@
   </joint>
   <!-- sub-link defining detailed meshes for collision with environment -->
   <link name="fr3_link4">
+    <inertial>
+      <origin xyz="-0.0459101 0.0630493 -0.00851879" rpy="2.52138 -0.754412 0.25079"/>
+      <mass value="2.6156"/>
+      <inertia ixx="0.0206104" ixy="0" ixz="0" iyy="0.0206104" iyz="0" izz="0.0206104"/>
+    </inertial>
     <visual>
       <geometry>
         <mesh filename="package://franka_description/meshes/visual/link4.dae"/>
@@ -242,6 +267,11 @@
   </joint>
   <!-- sub-link defining detailed meshes for collision with environment -->
   <link name="fr3_link5">
+    <inertial>
+      <origin xyz="-0.00160396 0.0292536 -0.0972966" rpy="0.115434 0.25526 -0.730431"/>
+      <mass value="2.32712"/>
+      <inertia ixx="0.0182879" ixy="0" ixz="0" iyy="0.0182879" iyz="0" izz="0.0182879"/>
+    </inertial>
     <visual>
       <geometry>
         <mesh filename="package://franka_description/meshes/visual/link5.dae"/>
@@ -309,6 +339,11 @@
   </joint>
   <!-- sub-link defining detailed meshes for collision with environment -->
   <link name="fr3_link6">
+    <inertial>
+      <origin xyz="0.0597131 -0.0410295 -0.0101693" rpy="1.66939 0.290046 1.29852"/>
+      <mass value="1.81704"/>
+      <inertia ixx="0.00483538" ixy="0" ixz="0" iyy="0.00483538" iyz="0" izz="0.00483538"/>
+    </inertial>
     <visual>
       <geometry>
         <mesh filename="package://franka_description/meshes/visual/link6.dae"/>
@@ -358,6 +393,11 @@
   </joint>
   <!-- sub-link defining detailed meshes for collision with environment -->
   <link name="fr3_link7">
+    <inertial>
+      <origin xyz="0.00452258 0.00862619 -0.0161633" rpy="-2.34377 -0.567268 -2.46845"/>
+      <mass value="0.627143"/>
+      <inertia ixx="3.076e-07" ixy="0" ixz="0" iyy="3.076e-07" iyz="0" izz="3.076e-07"/>
+    </inertial>
     <visual>
       <geometry>
         <mesh filename="package://franka_description/meshes/visual/link7.dae"/>

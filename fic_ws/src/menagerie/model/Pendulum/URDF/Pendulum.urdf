@@ -1,18 +1,21 @@
 <robot name="pendulum">
-  <link name="base_link">
-    <visual>
-      <geometry>
-        <cylinder radius="0.021" length="0.06"/>
-      </geometry>
-      <origin xyz="0 0 0.03" rpy="0 0 0"/>
-    </visual>
-  </link>
+  <!-- Matches xml/pendulum.xml: one hinge (Actuator1) 0.6 m above the floor, the
+       pole and its mass upright at q = 0; inertia as MuJoCo computes it. -->
+  <link name="world"/>
+
+  <joint name="base_joint" type="fixed">
+    <parent link="world"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 0.6"/>
+  </joint>
+
+  <link name="base_link"/>
 
   <link name="pole">
     <inertial>
-      <origin xyz="0 0 0.25"/>
-      <mass value="0.5"/>
-      <inertia ixx="0.0001" iyy="0.0001" izz="0.0001" ixy="0" ixz="0" iyz="0"/>
+      <origin xyz="0 0 0.251656"/>
+      <mass value="1.51"/>
+      <inertia ixx="0.075454" iyy="0.075359" izz="0.000814" ixy="0" ixz="0" iyz="0"/>
     </inertial>
     <visual>
       <geometry>
@@ -20,14 +23,6 @@
       </geometry>
       <origin xyz="0 0 0.25" rpy="0 0 0"/>
     </visual>
-  </link>
-
-  <link name="mass">
-    <inertial>
-      <origin xyz="0 0 0.5"/>
-      <mass value="1.0"/>
-      <inertia ixx="0.0002" iyy="0.0002" izz="0.0002" ixy="0" ixz="0" iyz="0"/>
-    </inertial>
     <visual>
       <geometry>
         <sphere radius="0.05"/>
@@ -36,25 +31,18 @@
     </visual>
   </link>
 
-  <joint name="hinge" type="revolute">
+  <joint name="Actuator1" type="revolute">
     <parent link="base_link"/>
     <child link="pole"/>
-    <origin xyz="0 0 0.03"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-3.14" upper="3.14" effort="1.0" velocity="1.0"/>
+    <limit lower="-3.14159" upper="3.14159" effort="39.0" velocity="10.0"/>
   </joint>
 
-  <joint name="ee_link" type="fixed">
+  <link name="ee_link"/>
+
+  <joint name="ee_joint" type="fixed">
     <parent link="pole"/>
-    <child link="mass"/>
+    <child link="ee_link"/>
     <origin xyz="0 0 0.5"/>
   </joint>
-
-  <transmission type="SimpleTransmission">
-    <joint name="hinge"/>
-    <actuator name="motor">
-      <mechanicalReduction>1</mechanicalReduction>
-    </actuator>
-  </transmission>
 </robot>
-

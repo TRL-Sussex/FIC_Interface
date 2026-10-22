@@ -4,6 +4,7 @@ web_state() and web_action(), and the files the web interface loads. Qt and
 fic_studio are stubbed by test_page_render, imported below.
 """
 import json
+import os
 import pathlib
 import re
 import time
@@ -105,7 +106,8 @@ def test_state_lists_scripts_examples_and_where_runs_go(tmp_path):
     _ext_mod._seed_examples(_ext_mod.EXAMPLES_DIR)
     s = ext.web_state()
     assert s['scripts'] == ['a', 'b']
-    assert [e['name'] for e in s['examples']] == sorted(n[:-3] for n in _ext_mod._EXAMPLES)
+    shipped = [f for f in os.listdir(_ext_mod.SHIPPED_EXAMPLES_DIR) if f.endswith('.py')]
+    assert [e['name'] for e in s['examples']] == sorted(n[:-3] for n in set(_ext_mod._EXAMPLES) | set(shipped))
     assert all(e['description'] and not e['description'].endswith('.py') for e in s['examples'])
     assert s['examples'][0]['description'].startswith('Read robot state')
     assert s['target'] == 'simulation' and s['robot'] == 'Robot 1 (fake_robot)'

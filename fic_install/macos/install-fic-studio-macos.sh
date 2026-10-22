@@ -167,7 +167,7 @@ cd "$WS_PATH"
 #     ld: library 'atomic' not found
 LIBRARY_PATH="$CONDA_PREFIX/lib${LIBRARY_PATH:+:$LIBRARY_PATH}" \
 colcon build \
-  --cmake-args -DPython3_EXECUTABLE="$CONDA_PREFIX/bin/python" -DBUILD_TESTING=OFF
+  --cmake-args -DPython3_EXECUTABLE="$CONDA_PREFIX/bin/python" -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release
 
 if grep -q "pinocchio not found" "$WS_PATH/log/latest_build/"*/stderr.log 2>/dev/null; then
   echo "Warning: Pinocchio was NOT found — Cartesian control will be disabled."

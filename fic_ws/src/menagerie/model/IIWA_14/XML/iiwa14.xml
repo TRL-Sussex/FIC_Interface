@@ -8,19 +8,17 @@
   <default>
     <default class="iiwa">
       <material specular="0.5" shininess="0.25"/>
-      <joint axis="0 0 1"/>
-      <general gaintype="fixed" biastype="affine" gainprm="2000" biasprm="0 -2000 -200"/>
+      <!-- FIC Studio: torque motors (torq_jN) instead of the Menagerie position servos, and
+           joint damping and armature for a simulated arm the torque controller drives. -->
+      <joint axis="0 0 1" damping="5.0" armature="0.1"/>
       <default class="joint1">
         <joint range="-2.96706 2.96706"/>
-        <general ctrlrange="-2.96706 2.96706"/>
         <default class="joint2">
           <joint range="-2.0944 2.0944"/>
-          <general ctrlrange="-2.0944 2.0944"/>
         </default>
       </default>
       <default class="joint3">
         <joint range="-3.05433 3.05433"/>
-        <general ctrlrange="-3.05433 3.05433"/>
       </default>
       <default class="visual">
         <geom type="mesh" contype="0" conaffinity="0" group="2" material="gray"/>
@@ -161,16 +159,21 @@
   </contact>
 
   <actuator>
-    <general name="actuator1" joint="joint1" class="joint1"/>
-    <general name="actuator2" joint="joint2" class="joint2"/>
-    <general name="actuator3" joint="joint3" class="joint1"/>
-    <general name="actuator4" joint="joint4" class="joint2"/>
-    <general name="actuator5" joint="joint5" class="joint1"/>
-    <general name="actuator6" joint="joint6" class="joint2"/>
-    <general name="actuator7" joint="joint7" class="joint3"/>
+    <motor name="torq_j1" joint="joint1" ctrlrange="-320 320"/>
+    <motor name="torq_j2" joint="joint2" ctrlrange="-320 320"/>
+    <motor name="torq_j3" joint="joint3" ctrlrange="-176 176"/>
+    <motor name="torq_j4" joint="joint4" ctrlrange="-176 176"/>
+    <motor name="torq_j5" joint="joint5" ctrlrange="-110 110"/>
+    <motor name="torq_j6" joint="joint6" ctrlrange="-40 40"/>
+    <motor name="torq_j7" joint="joint7" ctrlrange="-40 40"/>
   </actuator>
 
+  <sensor>
+    <force name="force_sensor" site="attachment_site"/>
+    <torque name="torque_sensor" site="attachment_site"/>
+  </sensor>
+
   <keyframe>
-    <key name="home" qpos="0 0.785398 0 -1.5708 0 0 0" ctrl="0 0.785398 0 -1.5708 0 0 0"/>
+    <key name="home" qpos="0 0.785398 0 -1.5708 0 0 0" ctrl="0 0 0 0 0 0 0"/>
   </keyframe>
 </mujoco>

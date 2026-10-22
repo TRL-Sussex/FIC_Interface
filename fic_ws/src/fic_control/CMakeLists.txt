@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.14)
 project(fic_control)
 
+# macOS drops DYLD_LIBRARY_PATH whenever a program starts through a system binary (/usr/bin/env, /bin/bash: the
+# launcher's and the Studio's own way of starting things), so the workspace's libraries (communication's messages)
+# are found through each binary's own rpath instead: every linked library's folder goes into it.
+if(APPLE)
+  set(CMAKE_INSTALL_RPATH_USE_LINK_PATH ON)
+endif()
+
 if(NOT CMAKE_CXX_STANDARD)
   # pinocchio >= 3 (Jazzy ships 4.x) requires C++17; building its headers under
   # C++14 breaks boost::variant template instantiation (JointModelMimic).
@@ -90,7 +97,9 @@ endif()
 # The joint inner loop as a PC process (on the vendor driver's shared memory): no ROS, no Eigen.
 add_executable(fic_inner_loop src/fic_inner_loop.cpp)
 target_include_directories(fic_inner_loop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../../fic_library/include)
-target_link_libraries(fic_inner_loop rt)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_libraries(fic_inner_loop rt)  # shm_open on older glibc; macOS has it in libSystem, and no librt
+endif()
 
 install(TARGETS
   fic_control

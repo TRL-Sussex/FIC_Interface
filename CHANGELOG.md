@@ -24,6 +24,34 @@ Studio is published here as one commit, with its entry below.
 
 ## [Unreleased]
 
+## [6.1.0] — 2026-10-22 — Script Editor lessons; macOS install
+
+### Added
+- **Script Editor lessons and demos** (Examples): five lessons, from reading the robot to a small pick-and-place
+  program, each with TODOs to fill in, checks that say what is right, and a solution; and six demos (a live force
+  meter, a joint wave, a figure eight with the tool, a compliant hold, the robot's topics, the gripper and the
+  modes). For the simulation; written for the Kinova Gen3 7DOF.
+
+### Fixed
+- **One installer for every machine**: `Install_FIC_Studio.desktop` hands over to the macOS installer on a Mac, and
+  `Install_FIC_Studio.command` (double-click in Finder) runs `install.sh`, which picks the installer by system.
+- **`fic_control` builds on macOS**: `fic_inner_loop` no longer needs Linux's real-time scheduling,
+  `clock_nanosleep(TIMER_ABSTIME)` or `librt` there, and its binaries find the workspace's libraries by themselves.
+  The macOS installer builds in Release, as Ubuntu does.
+- **The Ubuntu installer installs Pinocchio the first time**: the required and optional packages go in one root
+  step (one password prompt) on freshly updated package lists.
+- **Every robot holds its pose and follows moves in simulation.** Each was checked the same way: hold home, a joint
+  move, the joint and Cartesian HAP-FIC and admittance holds, and a Cartesian move with H-PMP.
+  - **Franka FR3**: its URDF had no masses, so the controller worked with a weightless arm, and its MuJoCo model also
+    cancelled gravity itself. The URDF now carries the MuJoCo model's inertias, gravity is the controller's alone,
+    joint damping is 10 (was 45), the arm starts at home, and a `sim` gain profile lets the joint laws use the
+    robot's 30 / 9 N m limits. It holds home, settles a joint move in about 3 s and a Cartesian move in about 1 s.
+  - **KUKA iiwa 14** simulates: torque motors (`torq_j1`..`torq_j7`) in its MuJoCo model, a URDF generated from that
+    model (it had none), the model's joint names, its torque limits, a `sim` gain profile, and a start at home.
+  - **Pendulum**: a URDF that matches the MuJoCo model (joint `Actuator1`, its masses), a home at 30° (upright at
+    exactly 0 the simulator reports all zeros, which the controller takes for "no feedback yet"), and a 5 N m torque
+    limit, so its velocity damper suits a 1.5 kg pole.
+
 ## [6.0.1] — 2026-10-20 — Keyboard Control in the web UI
 
 ### Fixed

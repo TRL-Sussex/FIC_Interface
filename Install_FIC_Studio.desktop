@@ -6,6 +6,11 @@
 # Don't use set -e — we handle errors manually with GUI/terminal messages
 
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# ── One installer for every machine: on a Mac, the macOS installer (RoboStack ROS 2, no sudo) ──
+if [ "$(uname -s)" = "Darwin" ]; then
+    exec zsh "$APP_DIR/fic_install/macos/install-fic-studio-macos.sh" "$@"
+fi
 INCLUDE_DIR="$APP_DIR/fic_install"
 BUILD_GUI="$INCLUDE_DIR/build_gui.py"
 INSTALLER_GUI="$INCLUDE_DIR/installer_gui.py"
@@ -556,20 +561,18 @@ if [ "$DRY_RUN" -eq 1 ]; then
     exit 0
 fi
 
-# ── Install missing apt packages ──
-if [ -n "$MISSING_APT" ]; then
+# ── Install missing apt packages, then the optional ones (best-effort, never fatal) ──
+# One root step, so one password prompt (pkexec asks per call: a second prompt missed or closed skipped pinocchio),
+# and always on fresh package lists (an old index fails the install, and only a second run found pinocchio).
+apt_cmds=$(fic_apt_steps "$MISSING_APT" "$MISSING_OPTIONAL_APT")
+if [ -n "$apt_cmds" ]; then
+    apt_script=$(mktemp)
+    printf '%s\n' "$apt_cmds" > "$apt_script"
     gui_progress \
-        "Installing System Dependencies" \
-        "Installing system and ROS2 packages..." \
-        "$FIC_SUDO $FIC_APT update -y && $FIC_SUDO $FIC_APT install -y $MISSING_APT"
-fi
-
-# ── Install optional apt packages (best-effort, never fatal) ──
-if [ -n "$MISSING_OPTIONAL_APT" ]; then
-    gui_progress \
-        "Installing Optional Dependencies" \
-        "Installing pinocchio (default kinematics solver)..." \
-        "$FIC_SUDO $FIC_APT install -y $MISSING_OPTIONAL_APT || echo 'Optional packages unavailable — the app will build without the built-in solver.'"
+        "Installing Dependencies" \
+        "Installing system and ROS 2 packages${MISSING_OPTIONAL_APT:+, and pinocchio (the default kinematics solver)}..." \
+        "$FIC_SUDO bash '$apt_script'"
+    rm -f "$apt_script"
 fi
 
 # ── adb for Android devices over USB (best-effort, never fatal) ──
