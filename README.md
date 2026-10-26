@@ -247,7 +247,7 @@ your work relies on. The software citation is in
 [`CITATION.cff`](CITATION.cff) (GitHub's **Cite this repository** button gives
 it as BibTeX or APA).
 
-##Acknowledgements
+## Acknowledgements
 This work was partially funded by the Royal Society International Exchanges 2025 Cost Share (Italy) scheme under grant number IEC/R2/252022 (``Development of a Biomimetic Synovial Ball and Socket for Robotics'').
 
 ## Questions and bug reports
