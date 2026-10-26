@@ -178,8 +178,7 @@ Remote). See `fic_docs/pages/web-remote.html`.
 
 ### FIC Interface
 
-- A. Takriti, M. Sadeq, Q. Rouxel, D. Cafolla, M. Mistry and C. Tiseo, “Whole-Arm
-  Haptic Compliance via a Unified Fractal Impedance Control Interface,” in
+- A. Takriti, M. Sadeq, Q. Rouxel, D. Cafolla, M. Mistry and C. Tiseo, “A Unified Fractal Impedance Control Framework”, in
   preparation, 2026.
 
 ### General
@@ -243,11 +242,13 @@ their own licences; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 ## Citing
 
 If you use FIC Interface in your work, please cite the paper that describes it
-(*Whole-Arm Haptic Compliance via a Unified Fractal Impedance Control
-Interface*, under References), the software, and the other papers above that
+(*A Unified Fractal Impedance Control Framework*, under References), the software, and the other papers above that
 your work relies on. The software citation is in
 [`CITATION.cff`](CITATION.cff) (GitHub's **Cite this repository** button gives
 it as BibTeX or APA).
+
+##Acknowledgements
+This work was partially funded by the Royal Society International Exchanges 2025 Cost Share (Italy) scheme under grant number IEC/R2/252022 (``Development of a Biomimetic Synovial Ball and Socket for Robotics'').
 
 ## Questions and bug reports
 
