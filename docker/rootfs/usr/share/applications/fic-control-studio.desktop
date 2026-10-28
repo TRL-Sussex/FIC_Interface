@@ -2,7 +2,7 @@
 Type=Application
 Name=FIC Control Studio
 Comment=The full FIC Studio: control, tuning, simulation, extensions
-Exec=env QTWEBENGINE_CHROMIUM_FLAGS="--no-sandbox --disable-gpu --disable-dev-shm-usage" fic studio --web-ui
+Exec=env QT_XCB_GL_INTEGRATION=xcb_glx QTWEBENGINE_CHROMIUM_FLAGS="--no-sandbox --ignore-gpu-blocklist --disable-dev-shm-usage" fic studio --web-ui
 Icon=fic-studio
 Terminal=false
 Categories=Science;Robotics;

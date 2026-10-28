@@ -24,6 +24,13 @@ Studio is published here as one commit, with its entry below.
 
 ## [Unreleased]
 
+## [6.1.1] — 2026-10-28 — 3D views in Docker without a GPU
+
+### Fixed
+- **Docker: the 3D views work without a GPU** (#1): the Studio's web view started with WebGL off ("No 3D view:
+  Error creating WebGL context", as on Windows); it now renders WebGL with Mesa's OpenGL, on the CPU when the
+  container has no GPU.
+
 ## [6.1.0] — 2026-10-22 — Script Editor lessons; macOS install
 
 ### Added

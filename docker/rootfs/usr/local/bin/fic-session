@@ -195,8 +195,9 @@ case "${FIC_DISPLAY:-vnc}" in
     *)    log "ERROR: FIC_DISPLAY must be 'vnc' or 'host' (got '${FIC_DISPLAY}')"; exit 2 ;;
 esac
 
-# The Studio draws with plain Qt widgets, so skip Qt's OpenGL probing.
-# (The MuJoCo viewers use OpenGL through GLFW; this does not affect them.)
+# The classic Studio and the other Qt programs draw with plain Qt widgets, so
+# skip Qt's OpenGL probing. (The MuJoCo viewers use OpenGL through GLFW; this
+# does not affect them. The web interface turns it back on: see below.)
 export QT_XCB_GL_INTEGRATION=none
 
 # ─────────────────────────────────────────────────── background helpers ───
@@ -223,9 +224,13 @@ trap on_stop TERM INT HUP
 gui_pid=""
 case "${mode}" in
     # The web interface, as the desktop entry starts it (its "Classic interface"
-    # action is in the menu). Chromium has no sandbox, GPU or large /dev/shm here.
+    # action is in the menu). Chromium has no sandbox or large /dev/shm here, and
+    # often no GPU. Its 3D views need WebGL, so Qt's OpenGL (GLX) is on and
+    # Chromium takes Mesa's (llvmpipe on the CPU without a GPU), which it would
+    # otherwise refuse.
     studio)  log "starting FIC Control Studio"
-             QTWEBENGINE_CHROMIUM_FLAGS="--no-sandbox --disable-gpu --disable-dev-shm-usage" \
+             QT_XCB_GL_INTEGRATION=xcb_glx \
+             QTWEBENGINE_CHROMIUM_FLAGS="--no-sandbox --ignore-gpu-blocklist --disable-dev-shm-usage" \
                  fic studio --web-ui & gui_pid=$! ;;
     dev)     log "starting FIC Dev Console";    fic dev    & gui_pid=$! ;;
     desktop) log "desktop only: start programs from the taskbar" ;;
