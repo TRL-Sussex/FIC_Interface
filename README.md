@@ -223,8 +223,8 @@ Remote). See `fic_docs/pages/web-remote.html`.
 
 **Main contributors**
 
-- Adnan Takriti (University of Sussex)
-- Carlo Tiseo (University of Sussex)
+- Adnan Takriti | School of Engineering and Informatics | University of Sussex | UK
+- [Carlo Tiseo](https://profiles.sussex.ac.uk/p555178-carlo-tiseo) | School of Engineering and Informatics | University of Sussex | UK
 
 **Supporting contributors**
 
@@ -232,6 +232,10 @@ Remote). See `fic_docs/pages/web-remote.html`.
 - Quentin Rouxel
 - Daniele Cafolla
 - Michael Mistry
+
+**Interested in becoming a contributor**
+
+Contact [Carlo Tiseo](mailto:c.tiseo@sussex.ac.uk)
 
 ## License
 
