@@ -178,8 +178,8 @@ Remote). See `fic_docs/pages/web-remote.html`.
 
 ### FIC Interface
 
-- A. Takriti, M. Sadeq, Q. Rouxel, D. Cafolla, M. Mistry and C. Tiseo, “A Unified Fractal Impedance Control Framework”, in
-  preparation, 2026.
+- A. Takriti, M. Sadeq, Q. Rouxel, D. Cafolla, M. Mistry and C. Tiseo, “A Unified Fractal Impedance Control Framework”,
+  ArXiv, 2026. [https://arxiv.org/abs/2611.08009](https://arxiv.org/abs/2611.08009)
 
 ### General
 
